@@ -1,0 +1,64 @@
+{
+  "topic": "Demo Solar Co — HJT Technology Play",
+  "started_at": "2026-05-01T10:00:00",
+  "rounds": [
+    {
+      "round": 1,
+      "timestamp": "2026-05-01T10:30:00",
+      "lfi": 0.72,
+      "posterior": 35.0,
+      "open_attacks": 3,
+      "new_evidence": 2,
+      "next_action": "Search for HJT production cost data from recent industry conferences",
+      "unrefuted_attacks": [
+        {
+          "attack": "HJT equipment depreciation cycle is 7 years, while PERC payback is 3 years",
+          "reason": "No concrete evidence of accelerated depreciation agreements found yet",
+          "trigger_date": "2026-06-15"
+        },
+        {
+          "attack": "Top 5 module makers have not committed to HJT transition timeline",
+          "reason": "Industry survey data pending from SNEC conference",
+          "trigger_condition": "SNEC 2026 announcements (June)"
+        },
+        {
+          "attack": "Silver paste consumption per cell remains 2x higher than PERC",
+          "reason": "Need latest data on silver-free metallization progress",
+          "trigger_date": "2026-07-01"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "timestamp": "2026-05-01T11:00:00",
+      "lfi": 0.45,
+      "posterior": 42.0,
+      "open_attacks": 2,
+      "new_evidence": 4,
+      "next_action": "Verify silver paste cost reduction claims against supply chain data",
+      "unrefuted_attacks": [
+        {
+          "attack": "Top 5 module makers have not committed to HJT transition timeline",
+          "reason": "Partially addressed with Longi's patent filing data, but not conclusive",
+          "trigger_condition": "SNEC 2026 announcements (June)"
+        },
+        {
+          "attack": "Even if HJT wins on efficiency, PERC+TopCon capacity expansion is already committed through 2027",
+          "reason": "Sunk cost and capacity lock-in creates structural headwind for HJT adoption",
+          "trigger_date": "2026-08-30"
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "timestamp": "2026-05-01T11:30:00",
+      "lfi": 0.12,
+      "posterior": 58.0,
+      "open_attacks": 0,
+      "new_evidence": 3,
+      "next_action": "Converged. Proceed to quantitative synthesis.",
+      "unrefuted_attacks": []
+    }
+  ],
+  "unrefuted_attacks": []
+}

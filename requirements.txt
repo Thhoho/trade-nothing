@@ -1,0 +1,34 @@
+# === Core Dependencies (Required) ===
+requests>=2.31.0
+
+# === Market Data APIs (Free Tier) ===
+# AkShare: China A-share market data, macro indicators
+# https://akshare.akfamily.xyz/
+akshare>=1.14.0
+
+# yfinance: Global market data (US Treasury, VIX, Oil, FX, Gold)
+# https://github.com/ranaroussi/yfinance
+yfinance>=0.2.40
+
+# === Financial Modeling ===
+# openpyxl: Excel model generation (DCF, sensitivity tables)
+openpyxl>=3.1.0
+
+# === Optional: Enhanced Data Sources ===
+# Uncomment to enable additional data providers:
+#
+# Tushare Pro: Premium China A-share data (requires API token)
+# Register at https://tushare.pro/ for a free token
+# tushare>=1.4.0
+#
+# Alpha Vantage: Global stock fundamentals + forex (free tier: 25 req/day)
+# Get free API key at https://www.alphavantage.co/support/#api-key
+# alpha-vantage>=2.3.1
+#
+# CCXT: Cryptocurrency exchange data (100+ exchanges)
+# https://github.com/ccxt/ccxt
+# ccxt>=4.0.0
+#
+# fredapi: U.S. Federal Reserve Economic Data (free API key)
+# Register at https://fred.stlouisfed.org/docs/api/api_key.html
+# fredapi>=0.5.0

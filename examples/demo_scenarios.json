@@ -1,0 +1,38 @@
+{
+  "topic": "Demo Solar Co — HJT Technology Play",
+  "current_price": 15.0,
+  "scenarios": [
+    {
+      "name": "Bear (悲观)",
+      "probability": 20,
+      "target_price": 10.0,
+      "trigger": "Silicon feedstock oversupply + HJT cost reduction below target + Trade barriers escalate",
+      "key_assumptions": ["HJT cost reduction <5%/yr", "Module ASP drops below 0.8 CNY/W"],
+      "timeframe": "6-12 months"
+    },
+    {
+      "name": "Base (基准)",
+      "probability": 45,
+      "target_price": 18.0,
+      "trigger": "HJT penetration grows as expected + Electricity pricing reform lands",
+      "key_assumptions": ["HJT market share reaches 15%", "Module gross margin 15-18%"],
+      "timeframe": "6-12 months"
+    },
+    {
+      "name": "Bull (乐观)",
+      "probability": 25,
+      "target_price": 28.0,
+      "trigger": "Large-scale HJT procurement order + Efficiency breakthrough 26.5%",
+      "key_assumptions": ["Space-grade module order confirmed", "World record efficiency refresh"],
+      "timeframe": "6-12 months"
+    },
+    {
+      "name": "Black Swan (极端)",
+      "probability": 10,
+      "target_price": 5.0,
+      "trigger": "Perovskite achieves mass production / Company financial fraud exposed",
+      "key_assumptions": ["Cross-generational tech replacement", "Audit anomaly"],
+      "timeframe": "Any time"
+    }
+  ]
+}
