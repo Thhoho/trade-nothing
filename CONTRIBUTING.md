@@ -5,7 +5,7 @@ Thank you for your interest in contributing to Trade Nothing! This project aims 
 ## Development Setup
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/trade-nothing.git
+git clone https://github.com/Thhoho/trade-nothing.git
 cd trade-nothing
 pip install -r requirements.txt
 ```

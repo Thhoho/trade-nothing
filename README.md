@@ -110,7 +110,7 @@ The debate ends only when:
 ### Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/trade-nothing.git
+git clone https://github.com/Thhoho/trade-nothing.git
 cd trade-nothing
 pip install -r requirements.txt
 ```
