@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/images/hero_banner.jpg" alt="Trade Nothing Hero Banner" width="800" style="border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);" />
+
 # Trade Nothing
 
 ### *Trade nothing but your mind.*
@@ -33,6 +35,10 @@ Trade Nothing is a skill that forces your AI agent to ask that same question —
 
 ## The Philosophy
 
+<div align="center">
+  <img src="assets/images/philosophy.jpg" alt="Alpha Gap Concept - Consensus vs Reality" width="600" style="border-radius: 8px; margin: 20px 0;" />
+</div>
+
 > *"You are not a commentator explaining past facts. You are a hunter seeking misalignments in the mist. Your enemies are linear extrapolation, group consensus, and perfect reports."*
 
 The name "Trade Nothing" is a deliberate paradox. It means three things:
@@ -55,6 +61,10 @@ The name "Trade Nothing" is a deliberate paradox. It means three things:
 ---
 
 ## How It Works
+
+<div align="center">
+  <img src="assets/images/architecture.jpg" alt="Adversarial Architecture - Detective vs Inquisitor" width="650" style="border-radius: 8px; margin: 20px 0;" />
+</div>
 
 Trade Nothing deploys **two physically isolated AI sub-agents** in structured adversarial debate:
 
@@ -170,6 +180,10 @@ python3 scripts/excel_model_builder.py --help
 ---
 
 ## The Five Phases of DeepThink
+
+<div align="center">
+  <img src="assets/images/pipeline.jpg" alt="Five-Phase DeepThink Pipeline" width="700" style="border-radius: 8px; margin: 20px 0;" />
+</div>
 
 When you trigger `-deepthink`, the system executes a rigorous 5-phase pipeline:
 
