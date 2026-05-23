@@ -1,4 +1,4 @@
-# Workspace & Vault Protocol (v7.0)
+# Workspace & Vault Protocol (v0.9)
 
 Defines physical storage locations for all reports and research data.
 

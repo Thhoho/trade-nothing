@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Trade Nothing v7.0 — Logic Radar v2 (逻辑雷达)
+Trade Nothing v0.9 — Logic Radar v2 (逻辑雷达)
 
 Reads Radar Hooks and Assertions from Evolution.md,
 fetches current market data, updates status and performs calibration.

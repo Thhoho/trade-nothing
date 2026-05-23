@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Trade Nothing v7.0 — Logic Radar Daemon (逻辑雷达常驻守护进程)
+Trade Nothing v0.9 — Logic Radar Daemon (逻辑雷达常驻守护进程)
 
 Checks all registered macro indicators at N-minute intervals.
 Triggers cross-platform system notifications when thresholds are breached.

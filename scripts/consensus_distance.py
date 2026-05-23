@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Trade Nothing v7.0 — Consensus Distance Calculator (共识距离计算器)
+Trade Nothing v0.9 — Consensus Distance Calculator (共识距离计算器)
 
 Quantifies deviation between your analysis conclusion and market consensus.
 Too close = mundane (no alpha); Too far without evidence = dangerous contrarianism.
@@ -114,7 +114,7 @@ class ConsensusDistanceCalculator:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Consensus Distance Calculator v7.0")
+    parser = argparse.ArgumentParser(description="Consensus Distance Calculator v0.9")
     parser.add_argument("--code", required=True, help="Stock code (e.g. 300118)")
     parser.add_argument("--target", type=float, help="Your target price")
     parser.add_argument("--eps", type=float, help="Your EPS estimate")

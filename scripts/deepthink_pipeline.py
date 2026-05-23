@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Trade Nothing v7.0 — DeepThink Pipeline Orchestration Helper
+Trade Nothing v0.9 — DeepThink Pipeline Orchestration Helper
 
 Automates:
 1. Dynamic prior active memory extraction and injection (with semantic concept aliasing).
@@ -104,7 +104,7 @@ def extract_active_memory(topic: str, evolution_path: str) -> str:
         return "ℹ️ Active memory scanned. No context-matching prior constraints found. Keep general vigilance."
 
     output = (
-        "### 🧠 Active Memory Injection (v7.0 Prior constraints)\n"
+        "### 🧠 Active Memory Injection (v0.9 Prior constraints)\n"
         "Orchestrator auto-extracted historical memory and negative feedback constraints. "
         "Detective and Inquisitor sub-agents **must unconditionally obey** these:\n\n"
         + "\n\n".join(extracted_memory)
@@ -196,7 +196,7 @@ target_date: {trigger_date_str}
 # [TODO] Trade Nothing: Unresolved Attack on {topic}
 
 ## Description
-This issue was dynamically harvested by the Trade Nothing v7.0 Pipeline
+This issue was dynamically harvested by the Trade Nothing v0.9 Pipeline
 due to an unresolved adversarial attack.
 
 **Attack Vector**:
@@ -279,7 +279,7 @@ def generate_next_round_prompts(topic: str, state_file: str):
     else:
         formatted_attacks = "(No lethal unrefuted attacks from prior round. Continue hardening logic.)\n"
 
-    detective_prompt = f"""Role: Trade Nothing v7.0 — The Detective [Round {next_round}]
+    detective_prompt = f"""Role: Trade Nothing v0.9 — The Detective [Round {next_round}]
 Topic: {topic}
 
 The Inquisitor raised the following lethal attack vectors against your bull thesis.
@@ -298,7 +298,7 @@ supply-chain cross-validation, or macro variables.
 Obey Active Memory negative constraints. Output must include updated [Falsifiable Evidence Chain]:
 Evidence A (quantified) + Evidence B (channel-verified) → Marginal pricing change → Logic holds."""
 
-    inquisitor_prompt = f"""Role: Trade Nothing v7.0 — The Inquisitor [Round {next_round}]
+    inquisitor_prompt = f"""Role: Trade Nothing v0.9 — The Inquisitor [Round {next_round}]
 Topic: {topic}
 
 In Round {next_round}, the Detective will attempt to patch the gaps you exposed.
@@ -322,7 +322,7 @@ and identify the Detective's [Cognitive Bias] this round."""
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Trade Nothing v7.0 Pipeline Manager")
+    parser = argparse.ArgumentParser(description="Trade Nothing v0.9 Pipeline Manager")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--extract", action="store_true",
                        help="Extract context-aware prior constraints from Evolution.md")

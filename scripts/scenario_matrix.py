@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Trade Nothing v7.0 — Scenario Matrix Generator (情景矩阵生成器)
+Trade Nothing v0.9 — Scenario Matrix Generator (情景矩阵生成器)
 
 Transforms qualitative Bull/Bear analysis into structured probability-weighted
 scenario matrices. Enforces probability sum = 100% and computes expected returns
@@ -235,7 +235,7 @@ def demo_mode():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Scenario Matrix Generator v7.0")
+    parser = argparse.ArgumentParser(description="Scenario Matrix Generator v0.9")
     parser.add_argument("--topic", default="Analysis", help="Topic of the analysis")
     parser.add_argument("--interactive", action="store_true", help="Interactive input")
     parser.add_argument("--from-json", help="Load scenarios from JSON file")

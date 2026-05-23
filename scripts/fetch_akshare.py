@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Trade Nothing v7.0 — A-Share Stock Data Fetcher (A股行情与财务数据获取器)
+Trade Nothing v0.9 — A-Share Stock Data Fetcher (A股行情与财务数据获取器)
 
 Multi-source fallback: Tencent HQ (P0) → AkShare (P1) → YahooFinance (backup)
 

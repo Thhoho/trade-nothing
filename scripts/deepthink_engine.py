@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Trade Nothing v7.0 — DeepThink Engine (递归引擎)
+Trade Nothing v0.9 — DeepThink Engine (递归引擎)
 
 Unified controller: state tracking + convergence judgment + 12-round fuse + 
 unrefuted attack vector JSON storage.
@@ -311,7 +311,7 @@ def cmd_status(state_file: str):
 # ─── CLI ───
 
 def main():
-    parser = argparse.ArgumentParser(description="DeepThink Engine v7.0")
+    parser = argparse.ArgumentParser(description="DeepThink Engine v0.9")
 
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--start", action="store_true", help="Initialize new analysis")

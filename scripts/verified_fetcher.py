@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Trade Nothing v7.0 — Verified Data Fetcher (验证式数据获取器)
+Trade Nothing v0.9 — Verified Data Fetcher (验证式数据获取器)
 
 Ensures every data point has a source, confidence score, and fallback.
 Priority: AkShare → YahooFinance → Tencent HQ → WebSearch (manual annotation)

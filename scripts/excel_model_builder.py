@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Trade Nothing v7.0 — DCF Financial Model Excel Builder
+Trade Nothing v0.9 — DCF Financial Model Excel Builder
 
 Generates professional, institutional-grade, formula-driven Excel models.
 Adheres strictly to "Formulas Over Hardcodes" and 5×5 WACC/g Sensitivity Analysis.
@@ -74,7 +74,7 @@ def build_dcf_model(filepath, code, name, current_price, shares, net_debt,
     # Title Block
     ws.merge_cells("A1:H2")
     title_cell = ws["A1"]
-    title_cell.value = f"TRADE NOTHING v7.0 — DCF VALUATION MODEL: {name} ({code})"
+    title_cell.value = f"TRADE NOTHING v0.9 — DCF VALUATION MODEL: {name} ({code})"
     title_cell.font = font_title
     title_cell.fill = fill_dark_navy
     title_cell.alignment = align_center
@@ -366,7 +366,7 @@ def build_dcf_model(filepath, code, name, current_price, shares, net_debt,
             if row_num == 34 and col_num == 8:
                 cell.font = font_input_bold
                 cell.fill = fill_center_base
-                cell.comment = Comment("Center = Base Case implied value.", "Trade Nothing v7.0")
+                cell.comment = Comment("Center = Base Case implied value.", "Trade Nothing v0.9")
             else:
                 cell.font = font_regular
 
@@ -381,7 +381,7 @@ def build_dcf_model(filepath, code, name, current_price, shares, net_debt,
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Trade Nothing Excel DCF Builder v7.0")
+    parser = argparse.ArgumentParser(description="Trade Nothing Excel DCF Builder v0.9")
     parser.add_argument("--code", default="300118", help="Stock code")
     parser.add_argument("--name", default="Target Co", help="Stock name")
     parser.add_argument("--price", type=float, default=15.0, help="Current price")

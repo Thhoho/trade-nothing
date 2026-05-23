@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Trade Nothing v7.0 — DeepThink Countdown Timer
+Trade Nothing v0.9 — DeepThink Countdown Timer
 
 Interactive countdown timer for pause-and-think breaks.
 Auto-skips in non-TTY (agent) environments.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Trade Nothing v7.0 — Polymarket Data Fetcher
+Trade Nothing v0.9 — Polymarket Data Fetcher
 
 Fetches prediction market probabilities for political, economic, or global events.
 

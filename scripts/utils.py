@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Trade Nothing v7.0 — Shared Utilities
+Trade Nothing v0.9 — Shared Utilities
 
 Portable helper functions used across multiple scripts.
 All paths resolved via environment variables or OS-agnostic defaults.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Trade Nothing v7.0 — Catalyst Calendar (催化剂日历)
+Trade Nothing v0.9 — Catalyst Calendar (催化剂日历)
 
 Auto-fetches macro economic calendar and industry key events to answer "Why Now?".
 Supports: global macro events, A-share earnings calendar, sector policy windows.

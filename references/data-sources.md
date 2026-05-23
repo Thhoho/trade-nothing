@@ -1,4 +1,4 @@
-# Data Acquisition & Governance Protocol (v7.0)
+# Data Acquisition & Governance Protocol (v0.9)
 
 Defines data acquisition paths and priorities for all research workflows.
 

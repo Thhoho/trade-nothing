@@ -1,4 +1,4 @@
-# Architecture — Trade Nothing v7.0
+# Architecture — Trade Nothing v0.9
 
 ## System Overview
 
