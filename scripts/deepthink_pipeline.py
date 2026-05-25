@@ -466,6 +466,43 @@ def generate_next_round_prompts(topic: str, state_file: str):
     forbidden_consensus = extract_forbidden_consensus_list(topic)
     formatted_consensus = "\n".join(f"  * {c}" for c in forbidden_consensus[:6])
 
+    # ─── MICRO SUPPLY CHAIN FACT CRAWLING & INJECTION ───
+    codes = re.findall(r"\d{6}", topic)
+    symbol = codes[0] if codes else "300118"
+    
+    tech_keyword = "低温银浆"
+    topic_lower = topic.lower()
+    for category, synonyms in ALIAS_MAP.items():
+        for syn in synonyms:
+            if syn in topic_lower:
+                tech_keyword = syn
+                break
+
+    formatted_facts = ""
+    try:
+        from verified_crawler import VerifiedCrawler
+        crawler = VerifiedCrawler()
+        micro_facts = crawler.synthesize_micro_facts(symbol, tech_keyword)
+        
+        if micro_facts:
+            formatted_facts += "【1. 公开招标与中标公示 (Public Bids)】:\n"
+            for t in micro_facts.get("micro_order_tenders", []):
+                formatted_facts += f"  * {t['title']} | 中标参数: {t['snippet']} ({t['date']})\n"
+            
+            c = micro_facts.get("raw_material_price_track", {})
+            formatted_facts += f"\n【2. 供应链大宗原料高频价格 (Raw Material Price)】:\n"
+            formatted_facts += f"  * 辅料/材料: {c.get('material')} | 均价: {c.get('price')} {c.get('unit')} | 周变动: {c.get('trend_wow')} (来源: {c.get('source')})\n"
+            
+            cust = micro_facts.get("customs_export_validation", {})
+            formatted_facts += f"\n【3. 海关进出口出货核验 (Port & HS Code)】:\n"
+            formatted_facts += f"  * 海关HS编码: {cust.get('hs_code')} | 宁波海关月出货值: {cust.get('export_value_millions_usd')}百万美元 | 换算均价: {cust.get('implied_price_per_watt')} USD/W | 月环比: {cust.get('change_mom')}\n"
+            
+            formatted_facts += f"\n【4. 买方草根调研与专家纪要泄露 (Expert Minutes)】:\n"
+            for e in micro_facts.get("expert_minutes_leak", []):
+                formatted_facts += f"  * {e['title']}: {e['snippet']} ({e['date']})\n"
+    except Exception as ex:
+        formatted_facts = f"⚠️ [CRAWLER ERROR] Micro supply chain intelligence temporarily offline: {ex}\n"
+
     # Detective next round prompt
     detective_prompt = f"""Role: Trade Nothing v6.0 — The Detective (侦探智能体) [Round {next_round}]
 Topic: {topic}
@@ -480,6 +517,10 @@ Topic: {topic}
 
 【下一轮数据获取提示】:
 {next_action}
+
+🚨🚨🚨【海关与微观供应链硬证据库（CRITICAL INPUT）】🚨🚨🚨:
+你本轮的所有辩护、看多逻辑及出货推演，必须严格锚定在以下【海关与微观供应链硬证据库】中。严禁进行任何无微观硬数据支撑的定性吹水或线性外推！
+{formatted_facts.strip()}
 
 🚨🚨🚨【非共识与数据强迫护栏约束（CRITICAL）】🚨🚨🚨:
 1. **平庸共识禁区**：你被绝对禁止使用或复述以下任何平庸共识（Clichés），否则法官将在Jaccard语义检测中直接作废并打回你的论点：
@@ -499,7 +540,8 @@ Topic: {topic}
 💀💀💀【逆向死亡路径前提（Premortem Axiom）】💀💀💀:
 你本轮的攻击发起必须无条件服从【逆向死亡路径公理】：
 **“假设当前时间点向后推移 6 个月，该标的因某项微观物理/财务/供应链故障爆雷，导致股价暴跌了 70%。”**
-你必须以此为既定事实，反向推理、拼凑并追溯出一条极其具体的、致命的微观死亡路径（拒绝任何宏观、行业层面的宽泛叙事风险，必须精准定位到微观物理死角，如：硅片超薄片化导致的碎片率失控、银包铜浆料在湿热条件下的银离子迁移故障等），对侦探发起毁灭式审计。
+你必须以此为既定事实，结合以下【海关与微观供应链硬证据库】，反向推理并审计侦探所引用的“订单大增”、“出货顺畅”是否存在虚假逻辑：
+{formatted_facts.strip()}
 
 🚨🚨🚨【平庸共识禁区约束】🚨🚨🚨:
 你同样被绝对禁止使用以下任何平庸的、人云亦云的看空逻辑：
