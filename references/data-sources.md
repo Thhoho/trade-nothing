@@ -164,3 +164,56 @@ class ProprietaryApiProvider(BaseDataProvider):
         # Implement proprietary socket/HTTP fetching logic
         ...
 ```
+
+
+## 7. Autonomous Daemon REST API Specifications (v7.0)
+
+Trade Nothing v7.0 introduces a standing, zero-dependency REST API daemon server running on port `8000`. This enables cloud deployment and automated TradingView webhook triggers.
+
+### 7.1 GET `/api/status`
+Returns server health status, current cash balances (CNY and USD), and all active or completed background research debate processes.
+*   **Response Payload**:
+    ```json
+    {
+      "status": "UP",
+      "timestamp": 1716654812.23,
+      "portfolio_summary": {
+        "cash": {
+          "CNY": 1000000.0,
+          "USD": 100000.0
+        },
+        "holdings": {},
+        "transactions": []
+      },
+      "active_research_sessions": {}
+    }
+    ```
+
+### 7.2 POST `/api/research/start`
+Triggers an asynchronous 3-round background research debate simulation, which automatically executes the Kelly Sizing order on the simulated portfolio ledger once it converges.
+*   **Request Payload**:
+    ```json
+    {
+      "symbol": "300118",
+      "target_price": 25.0,
+      "fractional": 0.25
+    }
+    ```
+
+### 7.3 POST `/api/webhook/tradingview`
+Standard webhook listener for automated alerts from TradingView charts or other screening engines.
+*   **Dynamic Dual Mode**:
+    *   **Direct Sizing Execution**: If `posterior` and `lfi` are passed in the JSON alert payload, the Kelly transaction is calculated and executed immediately.
+    *   **Deferred Debate Verification**: If only `ticker` and `target_price` are sent, the server spawns an asynchronous background research debate thread first, executing Kelly order sizing once it successfully converges.
+*   **Request Payload Example**:
+    ```json
+    {
+      "ticker": "AAPL",
+      "price": 182.50,
+      "action": "BUY",
+      "target_price": 220.0,
+      "posterior": 0.85,
+      "lfi": 0.08
+    }
+    ```
+```

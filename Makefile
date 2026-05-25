@@ -1,17 +1,19 @@
-# Trade Nothing v6.0 — Local Environment Synchronization & Maintenance Automation
+# Trade Nothing v7.0 — Autonomous Investment Agent & Maintenance Automation
 
 SKILL_DIR = $(HOME)/.gemini/skills/trade-nothing
 DEV_DIR = $(HOME)/Documents/trade-nothing
 
-.PHONY: help install pull status test clean
+.PHONY: help install pull status test clean server portfolio
 
 help:
 	@echo "=================================================================="
-	@echo "Trade Nothing v6.0 Developer Maintenance Suite"
+	@echo "Trade Nothing v7.0 Autonomous Agent Maintenance Suite"
 	@echo "=================================================================="
 	@echo "make install  : Sync dev files from Documents to Gemini Active Skill"
 	@echo "make pull     : Pull updates from Active Skill back to Documents repo"
 	@echo "make status   : Check Git status and verify directory alignment"
+	@echo "make server   : Start the Autonomous REST Daemon Server (Port 8000)"
+	@echo "make portfolio: Print current multi-currency transaction ledger"
 	@echo "make test     : Run automated LFI, Bayesian, and Concurrency test suites"
 	@echo "make clean    : Clean Python cache files and temp state files"
 	@echo "=================================================================="
@@ -22,6 +24,7 @@ install:
 	cp -r $(DEV_DIR)/scripts/* $(SKILL_DIR)/scripts/
 	cp $(DEV_DIR)/SKILL.md $(SKILL_DIR)/SKILL.md
 	@echo "✅ Install complete. Active Gemini Skill is now up to date with dev workspace."
+
 
 pull:
 	@echo "📥 Pulling runtime updates from active Gemini Skill to dev workspace..."
@@ -49,3 +52,12 @@ clean:
 	rm -rf /tmp/concurrency_test_state.json
 	rm -rf /tmp/test_trade_nothing_state.json
 	@echo "✨ Clean complete."
+
+server:
+	@echo "⚡ Starting Autonomous REST Daemon Server..."
+	python3 $(DEV_DIR)/scripts/trade_nothing_server.py
+
+portfolio:
+	@echo "📊 Reading Multi-Currency Transaction Ledger..."
+	python3 $(DEV_DIR)/scripts/portfolio_manager.py
+

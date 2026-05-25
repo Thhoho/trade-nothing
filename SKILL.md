@@ -120,6 +120,13 @@ Spawn 3 independent Inquisitor instances. Premise: "This stock has crashed 50% i
 ## 3. Toolbox Quick Reference (工具箱速查)
 
 ```bash
+# Start the Standing Autonomous Daemon Server (Port 8000)
+python3 scripts/trade_nothing_server.py
+
+# Run research and trade execution via pluggable Bridge Client (auto-discovery)
+python3 scripts/trade_nothing_skill.py --code 300118 --target 25.0
+python3 scripts/trade_nothing_skill.py --code AAPL --target 220.0 --fractional 0.5
+
 # Initialize deepthink and extract Evolution.md memory injection
 python3 scripts/deepthink_pipeline.py --extract --topic "Topic Name"
 
@@ -168,8 +175,10 @@ All paths are portable. Override defaults via environment variables:
 | `TRADE_NOTHING_VAULT_DIR` | `~/trade-nothing-vault` | Research data vault |
 | `TRADE_NOTHING_EVOLUTION_PATH` | `<skill_dir>/Methodology_Evolution.md` | Active memory file |
 | `TRADE_NOTHING_AUTO_CONTINUE` | unset | If set, skip interactive timers (headless mode) |
+| `TRADE_NOTHING_PORT` | `8000` | Port for the standalone REST daemon server |
 
 ---
 
-*Trade Nothing v0.9 — Hunt Alpha, Not Consensus.*
+*Trade Nothing v7.0 — Hunt Alpha, Not Consensus.*
 *Adversarial multi-agent architecture with full lifecycle negative feedback loops.*
+
