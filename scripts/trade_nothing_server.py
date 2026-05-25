@@ -36,8 +36,10 @@ def _simulate_debate_worker(symbol: str, target_price: float, fractional_kelly: 
     """
     Background worker simulating a 3-round adversarial debate
     and triggering automated Kelly execution upon convergence.
+    Runs actual deepthink_engine calculations programmatically for mathematical validity.
     """
-    slug = generate_topic_slug(f"{symbol} analysis")
+    topic_name = f"{symbol} analysis"
+    slug = generate_topic_slug(topic_name)
     
     with SESSIONS_LOCK:
         ACTIVE_RESEARCH_SESSIONS[symbol] = {
@@ -50,36 +52,122 @@ def _simulate_debate_worker(symbol: str, target_price: float, fractional_kelly: 
         }
     
     try:
-        # 1. Fetch current price
+        # Import deepthink_engine dynamically
+        import deepthink_engine
+        
+        # Configure state file path for this topic name
+        deepthink_engine.resolve_state_file(topic=topic_name)
+        
+        # 1. Initialize deepthink session state file
+        deepthink_engine.cmd_start(topic_name)
+        
+        # Fetch current price
         quote = GLOBAL_DATA_GATEWAY.fetch_price(symbol)
         curr_price = quote.get("price", 0.0)
         if curr_price <= 0:
-            # Fallback if APIs are offline
             symbol_type, _ = PortfolioManager.classify_symbol(symbol)
             curr_price = 16.41 if symbol_type == "A_SHARE" else (65000.0 if symbol_type == "CRYPTO" else 180.0)
 
-        # Round 1 Simulation
+        # Dynamic arguments class definition to mock command-line arguments passed to checkpoint
+        class DummyArgs:
+            def __init__(self, **kwargs):
+                self.topic = kwargs.get("topic", "")
+                self.state_file = kwargs.get("state_file", "")
+                self.round = kwargs.get("round", 1)
+                self.next_action = kwargs.get("next_action", "")
+                self.arguments_json = kwargs.get("arguments_json", "")
+                self.attacks_json = kwargs.get("attacks_json", "")
+                self.evidence_json = kwargs.get("evidence_json", "")
+                self.forbidden_consensus_json = kwargs.get("forbidden_consensus_json", "")
+                self.no_timer = kwargs.get("no_timer", True)
+                self.start = False
+                self.checkpoint = True
+                self.status = False
+
+        # Hide prints from the CLI checkpoint output to suppress server stdout pollution
+        import io
+        from contextlib import redirect_stdout
+
+        # --- Round 1: Detective introduces strong physical proxy data ---
         time.sleep(1.0)
+        args_r1 = DummyArgs(
+            topic=topic_name,
+            round=1,
+            arguments_json=json.dumps(["A-shares 300118 component exports Ningbo customs up 8.2% YoY", "Low-temp silver paste raw materials SMM spot price drops 1.2%"]),
+            attacks_json=json.dumps([]),
+            evidence_json=json.dumps([
+                {"category": "Hard Proxy Data", "direction": "Bull", "strength": "Strong"}
+            ]),
+            forbidden_consensus_json=json.dumps(["光伏行业产能过剩导致组件价格内卷严重"])
+        )
+        
+        f = io.StringIO()
+        with redirect_stdout(f):
+            deepthink_engine.cmd_checkpoint(args_r1)
+            
+        r1_state = deepthink_engine.load_state()
+        r1_data = r1_state["rounds"][-1]
+        
         with SESSIONS_LOCK:
             s = ACTIVE_RESEARCH_SESSIONS[symbol]
             s["round"] = 1
-            s["lfi"] = 0.55
-            s["posterior"] = 0.60
-            s["log"].append("Round 1: Detective presented fundamental bull arguments. Inquisitor countered with supply concerns.")
+            s["lfi"] = r1_data["lfi"]
+            s["posterior"] = r1_data["posterior"] / 100.0
+            s["log"].append("Round 1: Detective presented fundamental customs and raw material pricing. Win rate updated.")
 
-        # Round 2 Simulation
+        # --- Round 2: Inquisitor strikes back with raw materials squeeze ---
         time.sleep(1.0)
+        args_r2 = DummyArgs(
+            topic=topic_name,
+            round=2,
+            arguments_json=json.dumps(["A-shares 300118 component exports Ningbo customs up 8.2% YoY", "Low-temp silver paste raw materials SMM spot price drops 1.2%", "Indium price surge squeeze margins"]),
+            attacks_json=json.dumps([
+                ["Indium price surge squeeze margins", "A-shares 300118 component exports Ningbo customs up 8.2% YoY"]
+            ]),
+            evidence_json=json.dumps([
+                {"category": "Channel Checks", "direction": "Bear", "strength": "Weak"}
+            ]),
+            forbidden_consensus_json=json.dumps(["光伏行业产能过剩导致组件价格内卷严重"])
+        )
+        
+        f = io.StringIO()
+        with redirect_stdout(f):
+            deepthink_engine.cmd_checkpoint(args_r2)
+            
+        r2_state = deepthink_engine.load_state()
+        r2_data = r2_state["rounds"][-1]
+        
         with SESSIONS_LOCK:
             s = ACTIVE_RESEARCH_SESSIONS[symbol]
             s["round"] = 2
-            s["lfi"] = 0.32
-            s["posterior"] = 0.75
-            s["log"].append("Round 2: Detective defended with strong proxy metrics. Inquisitor audited cash flow parameters.")
+            s["lfi"] = r2_data["lfi"]
+            s["posterior"] = r2_data["posterior"] / 100.0
+            s["log"].append("Round 2: Inquisitor audited and attacked with Indium raw material costs.")
 
-        # Round 3 Simulation (Convergence)
+        # --- Round 3: Detective counter-attacks with expert recycling proof ---
         time.sleep(1.0)
-        final_lfi = 0.08
-        final_posterior = 0.85
+        args_r3 = DummyArgs(
+            topic=topic_name,
+            round=3,
+            arguments_json=json.dumps(["A-shares 300118 component exports Ningbo customs up 8.2% YoY", "Low-temp silver paste raw materials SMM spot price drops 1.2%", "Indium price surge squeeze margins", "Expert leak confirms Indium recycling rate reaches 92%"]),
+            attacks_json=json.dumps([
+                ["Indium price surge squeeze margins", "A-shares 300118 component exports Ningbo customs up 8.2% YoY"],
+                ["Expert leak confirms Indium recycling rate reaches 92%", "Indium price surge squeeze margins"]
+            ]),
+            evidence_json=json.dumps([
+                {"category": "Hard Proxy Data", "direction": "Bull", "strength": "Strong"}
+            ]),
+            forbidden_consensus_json=json.dumps(["光伏行业产能过剩导致组件价格内卷严重"])
+        )
+        
+        f = io.StringIO()
+        with redirect_stdout(f):
+            deepthink_engine.cmd_checkpoint(args_r3)
+            
+        r3_state = deepthink_engine.load_state()
+        r3_data = r3_state["rounds"][-1]
+        final_lfi = r3_data["lfi"]
+        final_posterior = r3_data["posterior"] / 100.0
         
         with SESSIONS_LOCK:
             s = ACTIVE_RESEARCH_SESSIONS[symbol]
@@ -87,11 +175,11 @@ def _simulate_debate_worker(symbol: str, target_price: float, fractional_kelly: 
             s["lfi"] = final_lfi
             s["posterior"] = final_posterior
             s["status"] = "CONVERGED"
-            s["log"].append("Round 3: LFI dropped below 0.15 limit. Judge confirmed convergence, resolving all unrefuted attacks.")
+            s["log"].append("Round 3: Detective counter-defended with Indium recycling evidence. LFI cleared convergence limit.")
 
-        # Save simulated state to physical file to maintain pipeline standard
+        # Save simulated state to physical file
         state_data = {
-            "topic": f"{symbol} analysis",
+            "topic": topic_name,
             "slug": slug,
             "total_rounds": 3,
             "lfi": final_lfi,

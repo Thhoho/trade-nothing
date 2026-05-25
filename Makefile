@@ -21,7 +21,9 @@ help:
 install:
 	@echo "🚀 Syncing dev workspace to active Gemini Skill folder..."
 	@mkdir -p $(SKILL_DIR)/scripts
+	@mkdir -p $(SKILL_DIR)/agents
 	cp -r $(DEV_DIR)/scripts/* $(SKILL_DIR)/scripts/
+	cp -r $(DEV_DIR)/agents/* $(SKILL_DIR)/agents/
 	cp $(DEV_DIR)/SKILL.md $(SKILL_DIR)/SKILL.md
 	@echo "✅ Install complete. Active Gemini Skill is now up to date with dev workspace."
 
@@ -29,6 +31,7 @@ install:
 pull:
 	@echo "📥 Pulling runtime updates from active Gemini Skill to dev workspace..."
 	cp -r $(SKILL_DIR)/scripts/* $(DEV_DIR)/scripts/
+	cp -r $(SKILL_DIR)/agents/* $(DEV_DIR)/agents/
 	cp $(SKILL_DIR)/SKILL.md $(DEV_DIR)/SKILL.md
 	@echo "✅ Pull complete. Local Documents workspace has been synchronized."
 
@@ -43,7 +46,11 @@ test:
 	python3 $(DEV_DIR)/scripts/dungs_argumentation.py
 	python3 $(HOME)/.gemini/antigravity-cli/brain/f67491f6-a96d-474b-864f-9668f63ce8a6/scratch/test_lfi_bayes.py
 	python3 $(HOME)/.gemini/antigravity-cli/brain/f67491f6-a96d-474b-864f-9668f63ce8a6/scratch/test_decoupling_concurrency.py
-	@echo "🎉 All tests run successfully!"
+	python3 $(HOME)/.gemini/antigravity-cli/brain/f67491f6-a96d-474b-864f-9668f63ce8a6/scratch/test_data_resilience.py
+	python3 $(HOME)/.gemini/antigravity-cli/brain/f67491f6-a96d-474b-864f-9668f63ce8a6/scratch/test_global_data.py
+	python3 $(HOME)/.gemini/antigravity-cli/brain/f67491f6-a96d-474b-864f-9668f63ce8a6/scratch/test_pluggable_ext.py
+	python3 $(HOME)/.gemini/antigravity-cli/brain/f67491f6-a96d-474b-864f-9668f63ce8a6/scratch/test_portfolio_execution.py
+	@echo "🎉 All 7 verification test suites run successfully!"
 
 clean:
 	@echo "🧹 Cleaning pycache and temp states..."

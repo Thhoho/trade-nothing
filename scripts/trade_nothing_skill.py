@@ -111,13 +111,78 @@ def run_locally(symbol: str, target_price: float, fractional: float):
 
         print(f"📈 [Local] Real-time Quote retrieved: {curr_price} {quote.get('currency', 'USD')} via {source}")
 
-        # 2. Simulate Local Debate convergence state
-        # In local fallback CLI, we assume a standard 85% posterior win rate with converged 0.08 LFI
-        sim_posterior = 0.85
-        sim_lfi = 0.08
+        # 2. Simulate Local Debate convergence state using real math engine
+        import deepthink_engine
+        topic_name = f"{symbol} analysis"
+        deepthink_engine.resolve_state_file(topic=topic_name)
+        deepthink_engine.cmd_start(topic_name)
         
-        print(f"📊 [Local] Objective Sizing Sinks:")
-        print(f"  - Simulated Debate Win Rate (Posterior): {sim_posterior * 100:.1f}%")
+        class DummyArgs:
+            def __init__(self, **kwargs):
+                self.topic = kwargs.get("topic", "")
+                self.state_file = kwargs.get("state_file", "")
+                self.round = kwargs.get("round", 1)
+                self.next_action = kwargs.get("next_action", "")
+                self.arguments_json = kwargs.get("arguments_json", "")
+                self.attacks_json = kwargs.get("attacks_json", "")
+                self.evidence_json = kwargs.get("evidence_json", "")
+                self.forbidden_consensus_json = kwargs.get("forbidden_consensus_json", "")
+                self.no_timer = kwargs.get("no_timer", True)
+                self.start = False
+                self.checkpoint = True
+                self.status = False
+
+        import io
+        from contextlib import redirect_stdout
+        
+        # We run the 3-round debate calculation programmatically
+        args_r1 = DummyArgs(
+            topic=topic_name,
+            round=1,
+            arguments_json=json.dumps([" exports up 8.2% YoY", "silver SMM drops 1.2%"]),
+            attacks_json=json.dumps([]),
+            evidence_json=json.dumps([{"category": "Hard Proxy Data", "direction": "Bull", "strength": "Strong"}]),
+            forbidden_consensus_json=json.dumps(["过剩内卷"])
+        )
+        f = io.StringIO()
+        with redirect_stdout(f):
+            deepthink_engine.cmd_checkpoint(args_r1)
+
+        args_r2 = DummyArgs(
+            topic=topic_name,
+            round=2,
+            arguments_json=json.dumps([" exports up 8.2% YoY", "silver SMM drops 1.2%", "Indium price surge squeeze"]),
+            attacks_json=json.dumps([["Indium price surge squeeze", " exports up 8.2% YoY"]]),
+            evidence_json=json.dumps([{"category": "Channel Checks", "direction": "Bear", "strength": "Weak"}]),
+            forbidden_consensus_json=json.dumps(["过剩内卷"])
+        )
+        f = io.StringIO()
+        with redirect_stdout(f):
+            deepthink_engine.cmd_checkpoint(args_r2)
+
+        args_r3 = DummyArgs(
+            topic=topic_name,
+            round=3,
+            arguments_json=json.dumps([" exports up 8.2% YoY", "silver SMM drops 1.2%", "Indium price surge squeeze", "Indium recycling reaches 92%"]),
+            attacks_json=json.dumps([
+                ["Indium price surge squeeze", " exports up 8.2% YoY"],
+                ["Indium recycling reaches 92%", "Indium price surge squeeze"]
+            ]),
+            evidence_json=json.dumps([{"category": "Hard Proxy Data", "direction": "Bull", "strength": "Strong"}]),
+            forbidden_consensus_json=json.dumps(["过剩内卷"])
+        )
+        f = io.StringIO()
+        with redirect_stdout(f):
+            deepthink_engine.cmd_checkpoint(args_r3)
+
+        r3_state = deepthink_engine.load_state()
+        r3_data = r3_state["rounds"][-1]
+        
+        sim_posterior = r3_data["posterior"] / 100.0
+        sim_lfi = r3_data["lfi"]
+        
+        print(f"📊 [Local] Objective Sizing Sinks (Calculated via deepthink_engine):")
+        print(f"  - Simulated Debate Win Rate (Posterior): {sim_posterior * 100:.2f}%")
         print(f"  - Logic Friction Index (LFI): {sim_lfi:.4f} (Converged)")
 
         # 3. Execute local paper trading

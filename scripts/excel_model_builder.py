@@ -37,7 +37,7 @@ def generate_slug(text):
 
 
 def build_dcf_model(filepath, code, name, current_price, shares, net_debt,
-                    wacc, terminal_g, tax_rate, hist_rev, growth_rates, ebit_margins):
+                    wacc, terminal_g, tax_rate, hist_rev, growth_rates, ebit_margins, kelly=0.125):
     os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
 
     wb = openpyxl.Workbook()
@@ -101,7 +101,7 @@ def build_dcf_model(filepath, code, name, current_price, shares, net_debt,
         ("Implied Equity Value (M)", "=B36", "¥#,##0.0", False),
         ("Implied Value / Share", "=B38", "¥#,##0.00", False),
         ("Premium / (Discount)", "=B40", "0.0%", False),
-        ("Kelly Sizing Suggestion", 0.125, "0.0%", True),
+        ("Kelly Sizing Suggestion", kelly, "0.0%", True),
     ]
 
     for i, (label, val, num_fmt, is_input) in enumerate(metadata_rows):
@@ -391,6 +391,7 @@ def main():
     parser.add_argument("--g", type=float, default=0.02, help="Terminal growth rate")
     parser.add_argument("--tax", type=float, default=0.15, help="Tax rate")
     parser.add_argument("--rev", type=float, default=35300.0, help="Year 0 Revenue (M)")
+    parser.add_argument("--kelly", type=float, default=0.125, help="Dynamic Kelly Sizing Suggestion")
     parser.add_argument("--out", default="", help="Output filepath")
     args = parser.parse_args()
 
@@ -399,14 +400,32 @@ def main():
         os.makedirs(out_dir, exist_ok=True)
         args.out = os.path.join(out_dir, f"{args.code}_{generate_slug(args.name)}_dcf_model.xlsx")
 
+    # Real-time Treasury Yield fetch and WACC dynamic indexing
+    wacc_value = args.wacc
+    try:
+        from verified_fetcher import VerifiedFetcher
+        fetcher = VerifiedFetcher()
+        res = fetcher.fetch("US_10Y")
+        if res and res.get("value") is not None:
+            rf_rate = res["value"] / 100.0
+            # Calculated WACC = Risk-Free Rate + ERP (Equity Risk Premium, default 5.0%)
+            calculated_wacc = rf_rate + 0.05
+            # Only override if WACC is not explicitly set (defaults to 0.09)
+            if args.wacc == 0.09:
+                wacc_value = calculated_wacc
+                print(f"[VALUATION] Dynamically calculating WACC based on real-time US_10Y yield ({res['value']:.3f}%): WACC = {wacc_value * 100:.3f}%")
+    except Exception as ex:
+        print(f"[WARN] Failed to fetch real-time US_10Y yield: {ex}. Falling back to default WACC = 9.0%", file=sys.stderr)
+
     growth_rates = [0.12, 0.10, 0.08, 0.06, 0.05]
     ebit_margins = [0.09, 0.095, 0.10, 0.10, 0.10]
 
     build_dcf_model(
         filepath=args.out, code=args.code, name=args.name,
         current_price=args.price, shares=args.shares, net_debt=args.net_debt,
-        wacc=args.wacc, terminal_g=args.g, tax_rate=args.tax,
-        hist_rev=args.rev, growth_rates=growth_rates, ebit_margins=ebit_margins
+        wacc=wacc_value, terminal_g=args.g, tax_rate=args.tax,
+        hist_rev=args.rev, growth_rates=growth_rates, ebit_margins=ebit_margins,
+        kelly=args.kelly
     )
 
 
