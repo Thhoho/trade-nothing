@@ -14,12 +14,29 @@ import argparse
 import json
 import os
 import sys
+import re
 import requests
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from utils import clean_proxy_env
 clean_proxy_env()
+
+
+def safe_float(val, default=None):
+    if val is None:
+        return default
+    try:
+        return float(str(val).strip())
+    except (ValueError, TypeError):
+        return default
+
+
+def safe_get(lst, idx, default=None):
+    try:
+        return lst[idx] if idx < len(lst) else default
+    except (IndexError, TypeError):
+        return default
 
 
 class ConsensusDistanceCalculator:
@@ -33,22 +50,13 @@ class ConsensusDistanceCalculator:
         )
 
     def fetch_current_price(self) -> dict:
-        """Fetch current price via Tencent HQ API."""
-        url = f"http://qt.gtimg.cn/q={self.full_symbol_szsh}"
+        """Fetch current price using the unified pluggable global data gateway."""
         try:
-            resp = requests.get(url, headers={"User-Agent": self.ua}, timeout=5)
-            data = resp.text.split('~')
-            if len(data) > 39:
-                return {
-                    "name": data[1],
-                    "price": float(data[3]) if data[3] else None,
-                    "pe_dynamic": float(data[39]) if data[39] else None,
-                    "turnover_rate": float(data[38]) if data[38] else None,
-                    "market_cap_billions": float(data[45]) / 1e8 if len(data) > 45 and data[45] else None,
-                }
+            from data_providers import GLOBAL_DATA_GATEWAY
+            return GLOBAL_DATA_GATEWAY.fetch_price(self.symbol)
         except Exception as e:
-            print(f"[WARN] Tencent HQ fetch failed: {e}", file=sys.stderr)
-        return {}
+            print(f"[WARN] Pluggable data gateway lookup failed: {e}", file=sys.stderr)
+            return {}
 
     def fetch_analyst_consensus(self) -> dict:
         """Attempt to fetch analyst consensus. Free sources are limited."""

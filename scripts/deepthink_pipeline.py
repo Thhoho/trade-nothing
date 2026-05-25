@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Trade Nothing v0.9 — DeepThink Pipeline Orchestration Helper
+Trade Nothing v6.0 — DeepThink Pipeline Orchestration Helper
 
 Automates:
 1. Dynamic prior active memory extraction and injection (with semantic concept aliasing).
 2. Topic slugification for physical state and folder isolation.
-3. Harvesting unresolved attacks → local Issues + optional OS reminders.
-4. Generating next-round sub-agent prompts based on debate state.
-5. Maintaining a structured JSON Research Index database.
+3. Harvesting unresolved attacks and converting them to nested Local Issues & macOS Reminders.
+4. Maintaining a structured JSON Research Index database.
+5. Dynamically generating academic-grade, edge-forcing subagent prompts (Forbidden Consensus, Proxy Anchoring, and Premortem Axiom).
 """
 
 import os
@@ -16,48 +16,106 @@ import sys
 import json
 import argparse
 import subprocess
+import urllib.request
+import fcntl
 from datetime import datetime, timedelta
 
-# Import shared utilities
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from utils import (
-    generate_topic_slug, get_skill_dir, get_scratch_dir,
-    get_evolution_path, get_state_dir, load_json_safe, save_json,
-    send_notification
-)
-
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+SKILL_DIR = os.path.dirname(SCRIPT_DIR)
+DEFAULT_EVOLUTION_PATH = os.path.join(SKILL_DIR, "Methodology_Evolution_Backup.md")
+REMINDERS_SCRIPT = os.path.join(os.path.expanduser("~"), ".gemini/skills/mac-reminders/scripts/manage_reminders.py")
+BASE_SCRATCH_DIR = "/Users/xiaweiqi/.gemini/.scratch/trade-nothing"
 
 # Concept alias dictionary for semantic expansions
 ALIAS_MAP = {
-    "hjt": ["hjt", "异质结", "异质结电池", "薄片化", "heterojunction"],
-    "solar": ["光伏", "新能源", "太阳能", "topcon", "perc", "硅片", "组件", "cell", "module", "solar"],
-    "storage": ["储能", "电池柜", "锂电", "battery", "energy storage"],
-    "ai": ["ai", "deepseek", "mla", "moe", "推理", "大模型", "算力", "液冷", "配电", "gpu", "llm"],
-    "semiconductor": ["半导体", "芯片", "晶圆", "光刻", "wafer", "asml", "tsmc", "chip"],
-    "ev": ["新能源汽车", "锂电", "固态电池", "电池", "electric vehicle"],
-    "biotech": ["生物", "医药", "创新药", "基因", "biotech", "pharma"],
-    "crypto": ["加密", "比特币", "以太坊", "bitcoin", "ethereum", "crypto", "web3"],
+    "hjt": ["hjt", "异质结", "异质结电池", "薄片化", "东方日升", "300118", "日升"],
+    "solar": ["光伏", "新能源", "太阳能", "topcon", "perc", "硅片", "组件", "cell", "module"],
+    "storage": ["储能", "双一力", "电池柜", "锂电", "c&i", "shuangyili"],
+    "ai": ["ai", "deepseek", "mla", "moe", "推理", "大模型", "算力", "液冷", "配电", "gpu"],
+    "semiconductor": ["半导体", "芯片", "晶圆", "光刻", "wafer", "硅片", "asml", "tsmc"],
+    "ev": ["新能源汽车", "锂电", "固态电池", "电池", "宁德时代", "比亚迪"]
+}
+
+# Static standard clichés pool to inject as "Forbidden Consensus" if no dynamic web consensus is passed
+CLICHE_POOL = {
+    "hjt": [
+        "异质结转换效率高但成本依然偏高",
+        "低温银浆耗量大导致生产成本不占优势",
+        "双面率高且温度系数好",
+        "HJT是下一代技术但需要等待产业链成熟",
+        "核心壁垒在于硅片薄片化和浆料降本"
+    ],
+    "solar": [
+        "光伏行业产能过剩导致组件价格内卷严重",
+        "组件厂利润受到产业链上下游双向挤压",
+        "海外关税壁垒阻碍了光伏出口利润",
+        "核心竞争力在于一体化产能的成本控制",
+        "分布式光伏装机量见顶，地面电站等政策落地"
+    ],
+    "ai": [
+        "大模型竞争激烈，推理成本是关键瓶颈",
+        "算力芯片短缺限制了训练和推理速度",
+        "核心在于寻找AI killer app应用落地",
+        "模型蒸馏和小模型私有化部署是趋势",
+        "数据瓶颈和优质中文语料匮乏限制了天花板"
+    ],
+    "semiconductor": [
+        "半导体行业正处于库存去化和周期底部",
+        "先进光刻设备受限导致工艺节点突破缓慢",
+        "晶圆代工产能利用率下滑压制利润率",
+        "国产化替代是核心逻辑但中高端替代仍需时间",
+        "AI算力芯片需求暴增拉动了CoWoS先进封装"
+    ],
+    "general": [
+        "行业竞争激烈，龙头企业优势明显",
+        "受制于宏观流动性收紧，板块估值承压",
+        "公司在进行技术转型，短期研发费用拖累业绩",
+        "行业需求增速放缓，进入存量博弈阶段",
+        "核心在于成本控制和渠道建设"
+    ]
 }
 
 
+def generate_topic_slug(topic: str) -> str:
+    """Convert topic text to a clean, lowercase, alphanumeric-and-underscore slug"""
+    if not topic:
+        return "general"
+    
+    # Try to extract stock code (6 digits)
+    codes = re.findall(r"\d{6}", topic)
+    code_prefix = f"{codes[0]}_" if codes else ""
+    
+    # Clean words
+    words = re.findall(r"[\u4e00-\u9fa5\w]+", topic.lower())
+    stopwords = {"研究", "分析", "破产", "重整", "关于", "价格", "走势", "突破", "标的", "效率", "技术"}
+    cleaned_words = [w for w in words if len(w) > 0 and w not in stopwords]
+    
+    if not cleaned_words:
+        cleaned_words = ["general"]
+        
+    slug = "_".join(cleaned_words)
+    if len(slug) > 30:
+        slug = slug[:30].rstrip("_")
+    return code_prefix + slug
+
+
 def clean_matching_keywords(text: str) -> list:
-    """Extract clean keywords with semantic expansion for matching."""
+    """Extract clean keywords from text/topic for semantic matching"""
     words = re.findall(r"[\u4e00-\u9fa5\w]+", text.lower())
     stopwords = {"研究", "分析", "破产", "重整", "东方", "的", "关于", "价格", "走势", "突破", "标的"}
     base_keywords = [w for w in words if len(w) > 1 and w not in stopwords]
-
+    
     expanded = set(base_keywords)
     for kw in base_keywords:
         for key, synonyms in ALIAS_MAP.items():
             if kw in synonyms or kw == key:
                 expanded.update(synonyms)
-
+                
     return list(expanded)
 
 
 def extract_active_memory(topic: str, evolution_path: str) -> str:
-    """Extract context-aware prior constraints from Evolution.md active memory."""
+    """Extract context-aware prior constraints from Evolution.md"""
     if not os.path.exists(evolution_path):
         return "⚠️ Active memory source (Evolution.md) not found. Standard initialization applied."
 
@@ -65,7 +123,7 @@ def extract_active_memory(topic: str, evolution_path: str) -> str:
         content = f.read()
 
     keywords = clean_matching_keywords(topic)
-
+    
     sections = {
         "User-Confirmed Facts": r"## 1\. 用户确认事实.*?\n(.*?)\n---",
         "Methodology Corrections": r"## 2\. 方法论修正.*?\n(.*?)\n---",
@@ -74,12 +132,12 @@ def extract_active_memory(topic: str, evolution_path: str) -> str:
     }
 
     extracted_memory = []
-
+    
     for sec_name, pattern in sections.items():
         match = re.search(pattern, content, re.DOTALL)
         if not match:
             continue
-
+        
         sec_content = match.group(1).strip()
         lines = sec_content.split("\n")
         relevant_lines = []
@@ -87,76 +145,159 @@ def extract_active_memory(topic: str, evolution_path: str) -> str:
         for line in lines:
             if not line.strip() or line.strip() == "（暂无条目）":
                 continue
-
-            is_relevant = any(kw in line.lower() for kw in keywords)
-
+            
+            is_relevant = False
+            for kw in keywords:
+                if kw in line.lower():
+                    is_relevant = True
+                    break
+            
             if not is_relevant and sec_name in ["Methodology Corrections", "Calibration Logs"] and len(relevant_lines) < 2:
                 relevant_lines.append(f"  * [General Background] {line.strip()}")
             elif is_relevant:
                 relevant_lines.append(f"  * [Context-Match] {line.strip()}")
 
         if relevant_lines:
-            extracted_memory.append(
-                f"#### 🔍 {sec_name} (Active Prior Constraints):\n" + "\n".join(relevant_lines)
-            )
+            extracted_memory.append(f"#### 🔍 {sec_name} (Active Prior Constraints):\n" + "\n".join(relevant_lines))
 
     if not extracted_memory:
         return "ℹ️ Active memory scanned. No context-matching prior constraints found. Keep general vigilance."
 
     output = (
-        "### 🧠 Active Memory Injection (v0.9 Prior constraints)\n"
-        "Orchestrator auto-extracted historical memory and negative feedback constraints. "
-        "Detective and Inquisitor sub-agents **must unconditionally obey** these:\n\n"
+        "### 🧠 Active Memory Injection (v6.0 Prior constraints)\n"
+        "主 Agent 根据当前标的自动提取的历史记忆和负反馈约束。侦探与审问者子智能体在进行分析时**必须无条件遵守**：\n\n"
         + "\n\n".join(extracted_memory)
     )
     return output
 
 
 def update_research_index(topic: str, slug: str, posterior: float, issues_count: int):
-    """Maintain a structured index of all research sessions."""
-    index_path = os.path.join(get_scratch_dir(), ".research_index.json")
-    index = load_json_safe(index_path)
+    """Maintain a structured index of all research sessions in a single JSON database (Process-Safe)"""
+    index_path = os.path.join(SCRIPT_DIR, ".research_index.json")
+    index = {}
+    
+    # Process-safe read-write cycle
+    try:
+        # Create empty file if not exists
+        if not os.path.exists(index_path):
+            with open(index_path, "w", encoding="utf-8") as f:
+                json.dump({}, f)
+                
+        with open(index_path, "a+", encoding="utf-8") as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            f.seek(0)
+            try:
+                index = json.load(f)
+            except Exception:
+                index = {}
+                
+            index[slug] = {
+                "topic": topic,
+                "last_posterior": posterior,
+                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "open_issues": issues_count
+            }
+            
+            f.seek(0)
+            f.truncate()
+            json.dump(index, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+            fcntl.flock(f, fcntl.LOCK_UN)
+    except Exception as e:
+        print(f"[WARN] Failed to write research index atomically: {e}", file=sys.stderr)
 
-    index[slug] = {
-        "topic": topic,
-        "last_posterior": posterior,
-        "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "open_issues": issues_count
-    }
-    save_json(index_path, index)
+
+def send_webhook_notification(webhook_url: str, topic: str, attack_text: str, reason: str, trigger_date_str: str) -> bool:
+    """Post logical vulnerabilities directly to Slack/Feishu webhooks via urllib (zero-dependency)"""
+    if not webhook_url:
+        return False
+        
+    try:
+        is_feishu = "feishu.cn" in webhook_url or "larksuite.com" in webhook_url
+        
+        if is_feishu:
+            payload = {
+                "msg_type": "post",
+                "content": {
+                    "post": {
+                        "zh_cn": {
+                            "title": f"🚨 [Trade Nothing v6.0] 质证逻辑漏洞预警: {topic}",
+                            "content": [
+                                [
+                                    {"tag": "text", "text": "未反驳致命攻击向量:\n"},
+                                    {"tag": "text", "text": f"{attack_text}\n\n", "style": ["bold"]}
+                                ],
+                                [
+                                    {"tag": "text", "text": "未能推翻归因:\n"},
+                                    {"tag": "text", "text": f"{reason}\n\n"}
+                                ],
+                                [
+                                    {"tag": "text", "text": f"触发监控时间: {trigger_date_str}\n"}
+                                ]
+                            ]
+                        }
+                    }
+                }
+            }
+        else:
+            payload = {
+                "text": (
+                    f"🚨 *[Trade Nothing v6.0] 质证逻辑漏洞预警: {topic}*\n\n"
+                    f"*未反驳致命攻击向量*:\n> {attack_text}\n\n"
+                    f"*未能推翻归因*:\n> {reason}\n\n"
+                    f"*触发监控时间*: `{trigger_date_str}`\n"
+                    f"---"
+                )
+            }
+            
+        req = urllib.request.Request(
+            webhook_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        
+        with urllib.request.urlopen(req, timeout=5) as response:
+            return response.status == 200
+    except Exception as e:
+        print(f"[WARN] Webhook notification failed: {e}", file=sys.stderr)
+        return False
 
 
 def harvest_unresolved_attacks(topic: str, state_file: str, raw_attacks: str):
-    """Harvest unrefuted attacks → generate local issues + optional OS reminders."""
+    """Harvest unrefuted attacks, generate nested Local Issues & schedule macOS reminders/webhooks"""
     attacks_list = []
     posterior = 50.0
     topic_slug = generate_topic_slug(topic)
-
-    # Resolve state file
+    
     if not state_file:
-        state_file = os.path.join(get_state_dir(), f"{topic_slug}_state.json")
+        state_dir = os.path.join(SCRIPT_DIR, ".state")
+        state_file = os.path.join(state_dir, f"{topic_slug}_state.json")
 
-    # Load attacks from raw JSON or state file
     if raw_attacks:
         try:
             attacks_list = json.loads(raw_attacks)
         except json.JSONDecodeError as e:
             print(f"[ERROR] Failed to parse raw attacks JSON: {e}", file=sys.stderr)
             return
-    elif state_file and os.path.exists(state_file):
-        state = load_json_safe(state_file)
-        attacks_list = state.get("unrefuted_attacks", [])
-        rounds = state.get("rounds", [])
-        if rounds:
-            posterior = rounds[-1].get("posterior", 50.0)
 
-    # Topic-isolated scratch directory
-    scratch_dir = os.path.join(get_scratch_dir(), topic_slug)
+    elif state_file and os.path.exists(state_file):
+        try:
+            with open(state_file, "r", encoding="utf-8") as f:
+                state = json.load(f)
+                attacks_list = state.get("unrefuted_attacks", [])
+                rounds = state.get("rounds", [])
+                if rounds:
+                    posterior = rounds[-1].get("posterior", 50.0)
+        except Exception as e:
+            print(f"[ERROR] Failed to load state file {state_file}: {e}", file=sys.stderr)
+            return
+
+    scratch_dir = os.path.join(BASE_SCRATCH_DIR, topic_slug)
     os.makedirs(scratch_dir, exist_ok=True)
 
     if not attacks_list:
-        print(f"[INFO] No unrefuted attacks to harvest for {topic}. Excellent logical hardness!",
-              file=sys.stderr)
+        print(f"[INFO] No unrefuted attacks to harvest for {topic}. Excellent logical hardness reached!", file=sys.stderr)
         update_research_index(topic, topic_slug, posterior, 0)
         print(json.dumps({"status": "success", "harvested": 0}))
         return
@@ -166,22 +307,18 @@ def harvest_unresolved_attacks(topic: str, state_file: str, raw_attacks: str):
 
     for idx, attack_data in enumerate(attacks_list):
         attack_text = attack_data.get("attack", "").strip()
-        reason = attack_data.get("reason", "Insufficient data to refute currently").strip()
-
+        reason = attack_data.get("reason", "缺乏充足的客观代理数据支撑，暂时无法推翻").strip()
+        
         trigger_date_str = attack_data.get("trigger_date", "")
         if not trigger_date_str:
             trigger_date = datetime.now() + timedelta(days=7)
             trigger_date_str = trigger_date.strftime("%Y-%m-%d")
-
-        trigger_condition = attack_data.get(
-            "trigger_condition",
-            "Awaiting next financial report or key macro/supply-chain data update"
-        ).strip()
+        
+        trigger_condition = attack_data.get("trigger_condition", "等待新一期高频微观物理/财务代理数据公开以重新质证").strip()
 
         if not attack_text:
             continue
 
-        # Create local issue file
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         issue_filename = f"issue_{timestamp}_{idx + 1}.md"
         issue_path = os.path.join(scratch_dir, issue_filename)
@@ -196,13 +333,12 @@ target_date: {trigger_date_str}
 # [TODO] Trade Nothing: Unresolved Attack on {topic}
 
 ## Description
-This issue was dynamically harvested by the Trade Nothing v0.9 Pipeline
-due to an unresolved adversarial attack.
+This issue was dynamically harvested by the Trade Nothing v6.0 Pipeline due to an unresolved adversarial attack in Dung's graph.
 
 **Attack Vector**:
 {attack_text}
 
-**Why it remained unrefuted**:
+**Why it remained undefeated**:
 {reason}
 
 ## Trigger Condition
@@ -210,21 +346,45 @@ due to an unresolved adversarial attack.
 - **Target Date**: {trigger_date_str}
 
 ## Action Plan
-When the trigger condition is met or the target date is reached,
-invoke the Trade Nothing Detective sub-agent to fetch new data and resolve this logic gap.
+When the trigger condition is met or the target date is reached, invoke the Trade Nothing Detective subagent to fetch new proxy data and resolve this logic gap.
 """
+
         with open(issue_path, "w", encoding="utf-8") as f:
             f.write(issue_content)
 
-        # Optional OS notification
-        send_notification(
-            f"Trade Nothing: {topic}",
-            f"Unresolved attack harvested: {attack_text[:50]}..."
-        )
+        reminder_scheduled = False
+        if os.path.exists(REMINDERS_SCRIPT):
+            due_time_str = f"{trigger_date_str} 09:00:00"
+            reminder_name = f"Trade Nothing: Resolve attack on {topic} ({attack_text[:30]}...)"
+            
+            cmd = [
+                "python3",
+                REMINDERS_SCRIPT,
+                "add",
+                "--name", reminder_name,
+                "--due", due_time_str,
+                "--list", "工作待办"
+            ]
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode == 0:
+                    reminder_scheduled = True
+                else:
+                    print(f"[WARN] Reminder script returned non-zero: {result.stderr.strip()}", file=sys.stderr)
+            except Exception as e:
+                print(f"[WARN] Failed to invoke macOS Reminders script: {e}", file=sys.stderr)
+
+        # Webhook Notification Integration
+        webhook_url = os.environ.get("TRADE_NOTHING_WEBHOOK_URL", "")
+        webhook_sent = False
+        if webhook_url:
+            webhook_sent = send_webhook_notification(webhook_url, topic, attack_text, reason, trigger_date_str)
 
         results.append({
             "issue_file": issue_path,
             "attack": attack_text,
+            "reminder_scheduled": reminder_scheduled,
+            "webhook_sent": webhook_sent,
             "trigger_date": trigger_date_str
         })
         harvested_count += 1
@@ -241,11 +401,28 @@ invoke the Trade Nothing Detective sub-agent to fetch new data and resolve this 
     print(json.dumps(final_result, ensure_ascii=False, indent=2))
 
 
+def extract_forbidden_consensus_list(topic: str) -> list:
+    """Identify the exact category of cliches from the topic name to inject as forbidden zones"""
+    topic_lower = topic.lower()
+    cliches = set(CLICHE_POOL["general"])
+    
+    matched_any = False
+    for category, synonyms in ALIAS_MAP.items():
+        for syn in synonyms:
+            if syn in topic_lower:
+                cliches.update(CLICHE_POOL.get(category, []))
+                matched_any = True
+                break
+                
+    return list(cliches)
+
+
 def generate_next_round_prompts(topic: str, state_file: str):
-    """Generate tailored prompts for Detective and Inquisitor for the next round."""
+    """Dynamically generate academic-grade, edge-forcing prompts for Detective and Inquisitor"""
     topic_slug = generate_topic_slug(topic)
     if not state_file:
-        state_file = os.path.join(get_state_dir(), f"{topic_slug}_state.json")
+        state_dir = os.path.join(SCRIPT_DIR, ".state")
+        state_file = os.path.join(state_dir, f"{topic_slug}_state.json")
 
     if not os.path.exists(state_file):
         print(json.dumps({
@@ -254,67 +431,89 @@ def generate_next_round_prompts(topic: str, state_file: str):
         }, ensure_ascii=False))
         return
 
-    state = load_json_safe(state_file)
-    rounds = state.get("rounds", [])
+    try:
+        with open(state_file, "r", encoding="utf-8") as f:
+            state = json.load(f)
+    except Exception as e:
+        print(json.dumps({
+            "status": "error",
+            "message": f"Failed to load state: {str(e)}"
+        }, ensure_ascii=False))
+        return
 
+    rounds = state.get("rounds", [])
     if not rounds:
         next_round = 1
         attacks = []
-        next_action = "Gather baseline market indicators and verify core bull thesis."
+        next_action = "获取底层边缘高频物理数据，确立非共识基准命题。"
     else:
         last_round_data = rounds[-1]
         next_round = last_round_data.get("round", 1) + 1
-        attacks = last_round_data.get("unrefuted_attacks", [])
-        next_action = last_round_data.get("next_action", "Search for edge data.")
+        # Convert engine structured attack format to text
+        engine_attacks = state.get("unrefuted_attacks", [])
+        attacks = [{"attack": a.get("attack", ""), "reason": a.get("reason", "")} for a in engine_attacks]
+        next_action = last_round_data.get("next_action", "寻找更深层的供应链交叉佐证。")
 
-    # Format attacks into checklist
+    # Format attacks
     formatted_attacks = ""
     if attacks:
         for idx, att in enumerate(attacks):
-            formatted_attacks += (
-                f"{idx + 1}. Attack: {att.get('attack', '')}\n"
-                f"   Why unresolved: {att.get('reason', '')}\n"
-                f"   Trigger: {att.get('trigger_condition', '')}\n\n"
-            )
+            formatted_attacks += f"{idx + 1}. 攻击点: {att.get('attack', '')}\n   为什么未解决: {att.get('reason', '')}\n\n"
     else:
-        formatted_attacks = "(No lethal unrefuted attacks from prior round. Continue hardening logic.)\n"
+        formatted_attacks = "（上一轮暂无未反驳的致命漏洞。继续加固图谱逻辑，寻找深层物理死角。）\n"
 
-    detective_prompt = f"""Role: Trade Nothing v0.9 — The Detective [Round {next_round}]
+    # Inject Forbidden Consensus Clichés
+    forbidden_consensus = extract_forbidden_consensus_list(topic)
+    formatted_consensus = "\n".join(f"  * {c}" for c in forbidden_consensus[:6])
+
+    # Detective next round prompt
+    detective_prompt = f"""Role: Trade Nothing v6.0 — The Detective (侦探智能体) [Round {next_round}]
 Topic: {topic}
 
-The Inquisitor raised the following lethal attack vectors against your bull thesis.
-Your defense has exposed serious logical gaps.
+在上一轮辩论中，审问者（Inquisitor）针对你的 Bull Thesis 提出了致命攻击向量（Lethal Attack Vectors）。你目前的逻辑防线已经暴露出严重的漏洞。
 
-In Round {next_round}, your core task is Rebuttal & Data Reconstruction:
-You must unconditionally address each attack vector below with new, hard evidence,
-supply-chain cross-validation, or macro variables.
+在这一轮（Round {next_round}）中，你的核心任务是进行【定向反驳与物理数据重建】（Rebuttal & Data Reconstruction）：
+你必须针对以下每一个攻击向量，寻找新的、确凿的产业链交叉验证或宏观变量，打补丁或推翻审问者的质疑：
 
-[LETHAL GAPS TO CLOSE]:
+【你需要正面击退的致命漏洞】:
 {formatted_attacks.strip()}
 
-[DATA FETCH HINT]:
+【下一轮数据获取提示】:
 {next_action}
 
-Obey Active Memory negative constraints. Output must include updated [Falsifiable Evidence Chain]:
-Evidence A (quantified) + Evidence B (channel-verified) → Marginal pricing change → Logic holds."""
+🚨🚨🚨【非共识与数据强迫护栏约束（CRITICAL）】🚨🚨🚨:
+1. **平庸共识禁区**：你被绝对禁止使用或复述以下任何平庸共识（Clichés），否则法官将在Jaccard语义检测中直接作废并打回你的论点：
+{formatted_consensus}
 
-    inquisitor_prompt = f"""Role: Trade Nothing v0.9 — The Inquisitor [Round {next_round}]
+2. **物理代理数据强迫**：你提出的任何看多论点，必须明确声明其 `[Proxy Data Anchor]`（例如：`[Proxy Data Anchor: ToG政府招标数据]`，`[Proxy Data Anchor: 1688 wholesale 原材料高频现货报价]`，`[Proxy Data Anchor: HR 核心研发岗招聘异动]`）。若不标注物理代理数据锚点，该论点在 Dung 论证图谱中的权重为 0，对最终结论没有任何影响力！
+
+你的输出格式必须包含更新后的 [核心可证伪证据链]：
+Claim_X (物理代理数据支撑) + 证据B (三方渠道校验) → 边际定价变化 → 逻辑硬化成立。"""
+
+    # Inquisitor next round prompt
+    inquisitor_prompt = f"""Role: Trade Nothing v6.0 — The Inquisitor (审问者智能体) [Round {next_round}]
 Topic: {topic}
 
-In Round {next_round}, the Detective will attempt to patch the gaps you exposed.
-Your core task is Second-tier Attack & Reflexivity Audit:
-1. Audit the Detective's new data/patches — is it narrative cover or genuine evidence?
-2. If prior gaps are patched, dig deeper into second-order derivative risks.
-3. Surface at least 2 NEW, more lethal attack vectors.
+在这一轮（Round {next_round}）中，侦探（Detective）将针对你上一轮提出的漏洞进行定向辩护。你的核心任务是执行【二级漏洞审计与反身性打击】。
 
-Obey Active Memory negative constraints. Output must list [Lethal Attack Vectors]
-and identify the Detective's [Cognitive Bias] this round."""
+💀💀💀【逆向死亡路径前提（Premortem Axiom）】💀💀💀:
+你本轮的攻击发起必须无条件服从【逆向死亡路径公理】：
+**“假设当前时间点向后推移 6 个月，该标的因某项微观物理/财务/供应链故障爆雷，导致股价暴跌了 70%。”**
+你必须以此为既定事实，反向推理、拼凑并追溯出一条极其具体的、致命的微观死亡路径（拒绝任何宏观、行业层面的宽泛叙事风险，必须精准定位到微观物理死角，如：硅片超薄片化导致的碎片率失控、银包铜浆料在湿热条件下的银离子迁移故障等），对侦探发起毁灭式审计。
+
+🚨🚨🚨【平庸共识禁区约束】🚨🚨🚨:
+你同样被绝对禁止使用以下任何平庸的、人云亦云的看空逻辑：
+{formatted_consensus}
+你必须挖出市场一致预期（Consensus）之外的隐蔽致命漏洞。
+
+请清晰列出你的 [Lethal Attack Vectors] 并指出侦探本轮犯下的 [Cognitive Bias]（认知偏差）。"""
 
     output = {
         "status": "success",
         "topic": topic,
         "topic_slug": topic_slug,
         "next_round": next_round,
+        "forbidden_consensus": forbidden_consensus,
         "detective_prompt": detective_prompt.strip(),
         "inquisitor_prompt": inquisitor_prompt.strip()
     }
@@ -322,34 +521,30 @@ and identify the Detective's [Cognitive Bias] this round."""
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Trade Nothing v0.9 Pipeline Manager")
+    parser = argparse.ArgumentParser(description="Trade Nothing v6.0 Pipeline Manager")
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--extract", action="store_true",
-                       help="Extract context-aware prior constraints from Evolution.md")
-    group.add_argument("--harvest", action="store_true",
-                       help="Harvest unrefuted attacks → issues + reminders")
-    group.add_argument("--generate-prompts", action="store_true",
-                       help="Generate next-round sub-agent prompts from state")
+    group.add_argument("--extract", action="store_true", help="Extract context-aware prior constraints from Evolution.md")
+    group.add_argument("--harvest", action="store_true", help="Harvest unrefuted attacks and convert to issues/reminders")
+    group.add_argument("--generate-prompts", action="store_true", help="Generate prompts for the next round of debate")
 
-    parser.add_argument("--topic", type=str, default="", help="Research topic/target")
-    parser.add_argument("--evolution-path", type=str, default="",
-                        help="Path to Evolution.md (default: auto-detected)")
-    parser.add_argument("--state-file", type=str, default="", help="Path to state JSON")
-    parser.add_argument("--unrefuted-attacks", type=str, default="",
-                        help="JSON string of unresolved attacks")
+    parser.add_argument("--topic", type=str, default="", help="The research topic/target")
+    parser.add_argument("--evolution-path", type=str, default=DEFAULT_EVOLUTION_PATH, help="Path to Evolution.md")
+    parser.add_argument("--state-file", type=str, default="", help="Path to state json file")
+    parser.add_argument("--unrefuted-attacks", type=str, default="", help="JSON string representing unresolved attacks")
 
     args = parser.parse_args()
-    evolution_path = args.evolution_path or get_evolution_path()
 
     if args.extract:
         if not args.topic:
             parser.error("--extract requires --topic")
-        constraints = extract_active_memory(args.topic, evolution_path)
+        constraints = extract_active_memory(args.topic, args.evolution_path)
         print(constraints)
+
     elif args.harvest:
         if not args.topic:
             parser.error("--harvest requires --topic")
         harvest_unresolved_attacks(args.topic, args.state_file, args.unrefuted_attacks)
+
     elif args.generate_prompts:
         if not args.topic:
             parser.error("--generate-prompts requires --topic")

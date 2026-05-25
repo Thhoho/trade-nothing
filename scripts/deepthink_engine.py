@@ -1,16 +1,8 @@
-#!/usr/bin/env python3
 """
-Trade Nothing v0.9 — DeepThink Engine (递归引擎)
+Trade Nothing v6.0 — DeepThink Engine (递归引擎)
 
-Unified controller: state tracking + convergence judgment + 12-round fuse + 
-unrefuted attack vector JSON storage.
-
-Usage:
-  python3 deepthink_engine.py --start --topic "Topic Name"
-  python3 deepthink_engine.py --checkpoint --round 1 --lfi 0.65 --posterior 28.6 \
-      --open-attacks 2 --new-evidence 3 --next-action "Search XX" \
-      --unrefuted-attacks-json '[{"attack":"...", "reason":"...", "trigger_date":"2026-08-30"}]'
-  python3 deepthink_engine.py --status
+统一控制器：状态追踪 + 收敛判定 + 12轮熔断 + 未反驳攻击向量 JSON 数据存储。
+已升级为工业级/顶刊水平：集成邓氏抽象论证框架、信息商衰减、确定性贝叶斯赔率更新与平庸共识过滤器。
 """
 
 import argparse
@@ -18,99 +10,244 @@ import json
 import os
 import sys
 import time
-import select
+import re
+import math
+import fcntl
+import threading
+from contextlib import contextmanager
 from datetime import datetime
+from typing import List, Set, Tuple, Dict
 
-# Import shared utilities
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from utils import generate_topic_slug, get_state_dir, load_json_safe, save_json
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(SCRIPT_DIR)
+
+from dungs_argumentation import DungSolver
+
+DEFAULT_STATE_FILE = os.path.join(SCRIPT_DIR, ".deepthink_state.json")
+STATE_FILE = DEFAULT_STATE_FILE
+
+def generate_topic_slug(topic: str) -> str:
+    """Convert topic text to a clean, lowercase, alphanumeric-and-underscore slug"""
+    if not topic:
+        return "general"
+    
+    # Try to extract stock code (6 digits)
+    codes = re.findall(r"\d{6}", topic)
+    code_prefix = f"{codes[0]}_" if codes else ""
+    
+    # Clean words
+    words = re.findall(r"[\u4e00-\u9fa5\w]+", topic.lower())
+    stopwords = {"研究", "分析", "破产", "重整", "关于", "价格", "走势", "突破", "标的", "效率", "技术"}
+    cleaned_words = [w for w in words if len(w) > 0 and w not in stopwords]
+    
+    if not cleaned_words:
+        cleaned_words = ["general"]
+        
+    slug = "_".join(cleaned_words)
+    if len(slug) > 30:
+        slug = slug[:30].rstrip("_")
+    return code_prefix + slug
+
+def resolve_state_file(topic: str = "", state_file_override: str = ""):
+    global STATE_FILE
+    if state_file_override:
+        STATE_FILE = state_file_override
+    elif topic:
+        slug = generate_topic_slug(topic)
+        state_dir = os.path.join(SCRIPT_DIR, ".state")
+        os.makedirs(state_dir, exist_ok=True)
+        STATE_FILE = os.path.join(state_dir, f"{slug}_state.json")
+    else:
+        STATE_FILE = DEFAULT_STATE_FILE
 
 MIN_ROUNDS = 3
 MAX_ROUNDS = 12
 LFI_THRESHOLD = 0.15
-TIMER_DURATION = 15
+TIMER_DURATION = 15  # Upgraded to 15s in v6.0 to be snappy
 
 
-def resolve_state_file(topic: str = "", state_file_override: str = "") -> str:
-    """Resolve the state file path based on topic or explicit override."""
-    if state_file_override:
-        return state_file_override
-    elif topic:
-        slug = generate_topic_slug(topic)
-        return os.path.join(get_state_dir(), f"{slug}_state.json")
-    else:
-        return os.path.join(get_state_dir(), "default_state.json")
+# ─── State ───
+
+_thread_lock = threading.RLock()
+
+@contextmanager
+def state_transaction():
+    """Unified Thread-safe and Process-safe transaction lock"""
+    lock_file = STATE_FILE + ".lock"
+    os.makedirs(os.path.dirname(os.path.abspath(lock_file)), exist_ok=True)
+    _thread_lock.acquire()
+    try:
+        with open(lock_file, "a+") as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(f, fcntl.LOCK_UN)
+    finally:
+        _thread_lock.release()
+
+def load_state() -> dict:
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, "r", encoding="utf-8") as f:
+                with _thread_lock:
+                    fcntl.flock(f, fcntl.LOCK_SH)
+                    data = json.load(f)
+                    fcntl.flock(f, fcntl.LOCK_UN)
+                    return data
+        except Exception:
+            pass
+    return {
+        "rounds": [],
+        "started_at": None,
+        "topic": None,
+        "unrefuted_attacks": [],
+        "accumulated_evidence": [],
+        "accumulated_claims": [],
+        "odds": 1.0,  # Prior odds = 1.0 (P = 50%)
+        "posterior": 50.0
+    }
+
+def save_state(state: dict):
+    os.makedirs(os.path.dirname(os.path.abspath(STATE_FILE)), exist_ok=True)
+    try:
+        with open(STATE_FILE, "a+", encoding="utf-8") as f:
+            with _thread_lock:
+                fcntl.flock(f, fcntl.LOCK_EX)
+                f.seek(0)
+                f.truncate()
+                json.dump(state, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+                fcntl.flock(f, fcntl.LOCK_UN)
+    except Exception as e:
+        print(f"[ERROR] failed to save state file {STATE_FILE}: {e}", file=sys.stderr)
 
 
-def load_state(state_file: str) -> dict:
-    return load_json_safe(state_file, {
-        "rounds": [], "started_at": None, "topic": None, "unrefuted_attacks": []
-    })
-
+# ─── Convergence ───
 
 def check_convergence(round_num: int, lfi: float, open_attacks: int) -> dict:
     if round_num >= MAX_ROUNDS:
         return {"decision": "fuse_break",
-                "reason": f"Reached maximum {MAX_ROUNDS} rounds. Fuse triggered."}
+                "reason": f"已达最大轮次 {MAX_ROUNDS}，触发熔断。"}
 
     if round_num < MIN_ROUNDS:
         return {"decision": "continue",
-                "reason": f"Round {round_num} < minimum {MIN_ROUNDS}. Must continue."}
+                "reason": f"轮次 {round_num} < 最低要求 {MIN_ROUNDS}，必须继续进行质证硬化。"}
 
     if open_attacks > 0:
         return {"decision": "continue",
-                "reason": f"{open_attacks} unrefuted attack vectors remain. Must continue."}
+                "reason": f"存在 {open_attacks} 个未完全反驳的攻击向量（Dung图中非Accepted节点），必须继续。"}
 
     if lfi >= LFI_THRESHOLD:
         return {"decision": "continue",
-                "reason": f"LFI={lfi:.2f} >= {LFI_THRESHOLD}. Logic not yet hardened."}
+                "reason": f"逻辑摩擦力指数 LFI={lfi:.4f} >= {LFI_THRESHOLD}，论证冲突未平息或信息量未饱和。"}
 
     return {"decision": "converge",
-            "reason": f"LFI={lfi:.2f} < {LFI_THRESHOLD}, rounds={round_num} >= {MIN_ROUNDS}, "
-                      f"unrefuted attacks=0. Convergence criteria met."}
+            "reason": f"LFI={lfi:.4f} < {LFI_THRESHOLD}，论证冲突完全收敛，未反驳致命漏洞归零。逻辑硬化达成。"}
+
+
+# ─── NLP Jaccard Novelty Helper ───
+
+def tokenize(text: str) -> set:
+    """Helper to extract clean alphanumeric words and individual Chinese characters from text"""
+    # Extract English/Alphanumeric words
+    en_words = re.findall(r"[a-zA-Z0-9]+", text.lower())
+    tokens = set(en_words)
+    
+    # Extract Chinese characters as unigrams
+    zh_chars = re.findall(r"[\u4e00-\u9fa5]", text)
+    tokens.update(zh_chars)
+    
+    return tokens
+
+def calculate_jaccard_novelty(new_texts: List[str], prior_texts: List[str]) -> float:
+    """Calculate the Jaccard distance between new claims and prior claims for lexical novelty"""
+    if not prior_texts:
+        return 1.0
+        
+    new_tokens = set()
+    for t in new_texts:
+        new_tokens.update(tokenize(t))
+        
+    prior_tokens = set()
+    for t in prior_texts:
+        prior_tokens.update(tokenize(t))
+        
+    if not new_tokens:
+        return 0.0
+        
+    intersection = new_tokens.intersection(prior_tokens)
+    union = new_tokens.union(prior_tokens)
+    
+    # Jaccard distance = 1 - Jaccard similarity
+    return 1.0 - (len(intersection) / len(union))
+
+
+# ─── Flat Consensus Overlap Filter ───
+
+def check_consensus_flatness(claims: List[str], forbidden_consensus: List[str], threshold: float = 0.4) -> List[str]:
+    """
+    Check if any new claim overlaps too much with forbidden clichés.
+    Returns list of rejected claims.
+    """
+    rejected = []
+    for claim in claims:
+        claim_tokens = tokenize(claim)
+        if not claim_tokens:
+            continue
+        for cliché in forbidden_consensus:
+            cliché_tokens = tokenize(cliché)
+            if not cliché_tokens:
+                continue
+            overlap = len(claim_tokens.intersection(cliché_tokens)) / len(claim_tokens.union(cliché_tokens))
+            if overlap >= threshold:
+                rejected.append(f"Claim: '{claim}' (Overlaps {overlap*100:.1f}% with cliché: '{cliché}')")
+                break
+    return rejected
+
+
+# ─── Bayesian Odds Matrix ───
+
+BAYES_FACTOR_MATRIX = {
+    "Hard Proxy Data": {
+        "Bull": {"Strong": 4.0, "Weak": 2.0},
+        "Bear": {"Strong": 0.25, "Weak": 0.5}
+    },
+    "Factual Disclosed": {
+        "Bull": {"Strong": 3.0, "Weak": 1.5},
+        "Bear": {"Strong": 0.33, "Weak": 0.67}
+    },
+    "Channel Checks": {
+        "Bull": {"Strong": 2.0, "Weak": 1.2},
+        "Bear": {"Strong": 0.5, "Weak": 0.83}
+    },
+    "Narrative": {
+        "Bull": {"Strong": 1.0, "Weak": 1.0},
+        "Bear": {"Strong": 1.0, "Weak": 1.0}
+    }
+}
+
+def get_bayes_factor(category: str, direction: str, strength: str) -> float:
+    """Safely map evidence to Bayes Factor using the structured matrix"""
+    cat = category if category in BAYES_FACTOR_MATRIX else "Narrative"
+    dir_ = direction if direction in ["Bull", "Bear"] else "Bull"
+    str_ = strength if strength in ["Strong", "Weak"] else "Weak"
+    
+    return BAYES_FACTOR_MATRIX[cat][dir_][str_]
 
 
 # ─── Timer ───
 
-def _get_char(timeout):
-    """Non-blocking character read with TTY safety."""
-    if not sys.stdin.isatty():
-        return None
-    try:
-        import termios
-        import tty
-        fd = sys.stdin.fileno()
-        old = termios.tcgetattr(fd)
-    except Exception:
-        return None
-    try:
-        tty.setraw(fd)
-        rlist, _, _ = select.select([sys.stdin], [], [], timeout)
-        if rlist:
-            return sys.stdin.read(1).lower()
-        return None
-    except Exception:
-        return None
-    finally:
-        try:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old)
-        except Exception:
-            pass
-
-
 def run_timer(duration: int = TIMER_DURATION) -> str:
-    """Interactive countdown timer. Returns 'continue', 'stop', or 'manual'.
-    
-    Auto-skips in non-interactive environments (agent runtimes, CI, pipes).
-    """
-    # Auto-continue in headless/agent environments
-    if not sys.stdin.isatty() or os.environ.get("TRADE_NOTHING_AUTO_CONTINUE"):
+    """Terminal countdown timer with hotkeys"""
+    # Headless safety guardrail: if not a TTY, bypass countdown immediately
+    if not sys.stdin.isatty():
+        sys.stderr.write("⚠️  [DeepThink Engine] 检测到处于无头环境/非TTY，自动跳过倒计时定时器。\n")
         return "continue"
 
-    print(f"\n⏳ [DeepThink Engine] Next round starts in {duration}s.",
-          file=sys.stderr)
-    print("Shortcuts: [C]ontinue | [S]top & report | [M]anual mode\n",
-          file=sys.stderr)
+    print(f"\n⏳ [DeepThink Engine] 下一轮将在 {duration}s 后自动开始。", file=sys.stderr)
+    print("快捷键: [C]继续 | [S]停止出报告 | [M]手动模式\n", file=sys.stderr)
 
     start = time.time()
     last_sec = -1
@@ -124,104 +261,229 @@ def run_timer(duration: int = TIMER_DURATION) -> str:
             last_sec = remaining
 
         if elapsed >= duration:
-            sys.stderr.write("\n\033[K▶️  Timeout. Auto-continuing.\n")
+            sys.stderr.write("\n\033[K▶️  超时，自动继续。\n")
             return "continue"
 
-        ch = _get_char(0.1)
-        if ch:
-            if ch in ('c', '\r', '\n'):
-                sys.stderr.write("\n\033[K▶️  Continuing next round.\n")
-                return "continue"
-            elif ch == 's':
-                sys.stderr.write("\n\033[K🛑  Stopping. Generating final report.\n")
-                return "stop"
-            elif ch == 'm':
-                sys.stderr.write("\n\033[K⏸️  Manual mode.\n")
-                return "manual"
-            elif ch == '\x03':
-                sys.stderr.write("\n\033[K🛑  Interrupted.\n")
-                return "stop"
+        # Safe fallback non-blocking keyboard input
+        try:
+            import select
+            rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
+            if rlist:
+                ch = sys.stdin.read(1).lower()
+                if ch in ('c', '\r', '\n'):
+                    sys.stderr.write("\n\033[K▶️  继续下一轮。\n")
+                    return "continue"
+                elif ch == 's':
+                    sys.stderr.write("\n\033[K🛑  停止递归，生成最终报告。\n")
+                    return "stop"
+                elif ch == 'm':
+                    sys.stderr.write("\n\033[K⏸️  手动模式。\n")
+                    return "manual"
+        except Exception:
+            # Fallback if select/termios is not supported (e.g. non-interactive/cloud context)
+            time.sleep(0.1)
 
 
 # ─── Commands ───
 
-def cmd_start(topic: str, state_file: str):
-    if os.path.exists(state_file):
-        os.remove(state_file)
+def cmd_start(topic: str):
+    if os.path.exists(STATE_FILE):
+        os.remove(STATE_FILE)
 
     state = {
         "rounds": [],
         "started_at": datetime.now().isoformat(),
         "topic": topic,
-        "unrefuted_attacks": []
+        "unrefuted_attacks": [],
+        "accumulated_evidence": [],
+        "accumulated_claims": [],
+        "odds": 1.0,
+        "posterior": 50.0
     }
-    save_json(state_file, state)
+    save_state(state)
 
     template = (
-        f"[SCOPE] Target: {topic} | Core Thesis: [one falsifiable statement] | Time Horizon: ___\n"
-        f"[PRIOR] P₀ = X% (source: ___)\n"
-        f"[Abductive] 🔴 Crash -50% script: ___ | 🟢 Moon +100% script: ___"
+        f"[SCOPE] 标的: {topic} | 核心命题: [一句可证伪的非共识上涨陈述] | 时间视野: 3-6个月\n"
+        f"[PRIOR] P₀ = 50.0% (Odds = 1.0)\n"
+        f"[反向溯因] 🔴暴跌70%死亡路径: ___ | 🟢暴涨100%牛市剧本: ___"
     )
 
     output = {
         "action": "start",
         "topic": topic,
         "session_started": state["started_at"],
-        "state_file": state_file,
         "template": template,
         "instruction": (
-            "New analysis initialized. Fetch data anchors, fill the template above, "
-            "then run Round 1 Detective→Inquisitor→Judge analysis. "
-            "Call --checkpoint after Round 1."
+            "新分析已初始化。首先调用工具获取边缘数据/共识背景，设定平庸共识禁区，"
+            "然后启动 Round 1 的 Detective→Inquisitor→Judge 并行辩论。"
         ),
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
 
 
-def cmd_checkpoint(args, state_file: str):
-    state = load_state(state_file)
+def cmd_checkpoint(args):
+    state = load_state()
 
     if not state["started_at"]:
         state["started_at"] = datetime.now().isoformat()
 
-    unrefuted_attacks_data = []
-    if args.unrefuted_attacks_json:
+    # 1. Parse JSON Arguments
+    new_arguments = []
+    if args.arguments_json:
         try:
-            unrefuted_attacks_data = json.loads(args.unrefuted_attacks_json)
+            new_arguments = json.loads(args.arguments_json)
         except json.JSONDecodeError as e:
-            print(f"[WARN] Failed to parse unrefuted-attacks-json: {e}", file=sys.stderr)
+            print(f"[ERROR] Failed to parse arguments-json: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    new_attacks = []
+    if args.attacks_json:
+        try:
+            new_attacks = json.loads(args.attacks_json)
+        except json.JSONDecodeError as e:
+            print(f"[ERROR] Failed to parse attacks-json: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    new_evidence = []
+    if args.evidence_json:
+        try:
+            new_evidence = json.loads(args.evidence_json)
+        except json.JSONDecodeError as e:
+            print(f"[ERROR] Failed to parse evidence-json: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    forbidden_consensus = []
+    if args.forbidden_consensus_json:
+        try:
+            forbidden_consensus = json.loads(args.forbidden_consensus_json)
+        except json.JSONDecodeError as e:
+            print(f"[WARN] Failed to parse forbidden-consensus-json: {e}", file=sys.stderr)
+
+    # 2. Check Consensus Flatness Guardrail
+    if forbidden_consensus:
+        flat_claims = check_consensus_flatness(new_arguments, forbidden_consensus, threshold=0.4)
+        if flat_claims:
+            print(json.dumps({
+                "status": "rejected",
+                "reason": "检测到人云亦云的平庸共识，触碰过滤禁区！必须强制重新生成深层非共识命题。",
+                "details": flat_claims
+            }, ensure_ascii=False, indent=2))
+            sys.exit(0)
+
+    # 3. Compute Dung's Abstract Argumentation AFI
+    # All historical and current arguments are loaded to build Dung solver
+    all_arguments = set(new_arguments)
+    all_attacks = set(tuple(a) for a in new_attacks)
+    
+    # Pull any unresolved arguments from previous rounds if graph is incremental
+    for r in state["rounds"]:
+        all_arguments.update(r.get("arguments", []))
+        all_attacks.update(tuple(a) for a in r.get("attacks", []))
+        
+    solver = DungSolver(list(all_arguments), list(all_attacks))
+    ge = solver.compute_grounded_extension()
+    afi = solver.get_grounded_friction()
+    
+    # Active attacks that are undefeated or unresolved (i.e. not defended in Grounded Extension)
+    unrefuted_attacks_list = []
+    for attacker, target in all_attacks:
+        # If the attacker is part of the Grounded Extension, it is accepted as undefeated
+        if attacker not in ge:
+            unrefuted_attacks_list.append({
+                "attack": f"{attacker} -> {target}",
+                "reason": f"论点 {attacker} 未被有效证伪，其攻击关系依然悬挂。"
+            })
+
+    # 4. Compute Evidence Saturation (Shannon Entropy + Jaccard Novelty)
+    # Update accumulated evidence
+    state["accumulated_evidence"].extend(new_evidence)
+    
+    # Calculate Category Entropy H(E)
+    categories = [e.get("category", "Narrative") for e in state["accumulated_evidence"]]
+    total_e = len(categories)
+    entropy = 0.0
+    if total_e > 1:
+        cat_counts = {}
+        for cat in categories:
+            cat_counts[cat] = cat_counts.get(cat, 0) + 1
+        for cat, cnt in cat_counts.items():
+            p = cnt / total_e
+            entropy -= p * math.log2(p)
+
+    # Calculate Lexical Novelty
+    prior_claims_texts = state.get("accumulated_claims", [])
+    novelty = calculate_jaccard_novelty(new_arguments, prior_claims_texts)
+    
+    # Record current round claims to accumulated history
+    state["accumulated_claims"].extend(new_arguments)
+    
+    # Compute Information Gain delta_H
+    prev_entropy = 0.0
+    if len(state["rounds"]) > 0:
+        prev_entropy = state["rounds"][-1].get("entropy", 0.0)
+        
+    delta_h = (entropy - prev_entropy) + novelty
+    
+    # Evidence Saturation calculation
+    round_num = args.round
+    gamma = 0.5
+    if delta_h > 0:
+        es = 1.0 - math.exp(-gamma * round_num / delta_h)
+    else:
+        es = 1.0  # Fully saturated if no new entropy or novelty
+
+    # Calculate LFI
+    lfi = 0.6 * afi + 0.4 * (1.0 - es)
+
+    # 5. Deterministic Bayesian Odds Update
+    odds = state.get("odds", 1.0)
+    for e in new_evidence:
+        bf = get_bayes_factor(e.get("category", "Narrative"), e.get("direction", "Bull"), e.get("strength", "Weak"))
+        odds *= bf
+        
+    posterior = (odds / (1.0 + odds)) * 100.0
+    
+    # Save back to state
+    state["odds"] = odds
+    state["posterior"] = posterior
 
     round_data = {
-        "round": args.round,
-        "lfi": args.lfi,
-        "posterior": args.posterior,
-        "open_attacks": args.open_attacks,
-        "new_evidence": args.new_evidence,
+        "round": round_num,
+        "lfi": lfi,
+        "afi": afi,
+        "es": es,
+        "entropy": entropy,
+        "novelty": novelty,
+        "posterior": round(posterior, 2),
+        "open_attacks": len(unrefuted_attacks_list),
+        "arguments": new_arguments,
+        "attacks": new_attacks,
+        "new_evidence_count": len(new_evidence),
         "next_action": args.next_action,
-        "unrefuted_attacks": unrefuted_attacks_data,
         "timestamp": datetime.now().isoformat(),
     }
     state["rounds"].append(round_data)
-    state["unrefuted_attacks"] = unrefuted_attacks_data
-    save_json(state_file, state)
+    state["unrefuted_attacks"] = unrefuted_attacks_list
+    save_state(state)
 
-    convergence = check_convergence(args.round, args.lfi, args.open_attacks)
+    convergence = check_convergence(round_num, lfi, len(unrefuted_attacks_list))
     bayesian_trace = " → ".join(
         f"R{r['round']}:{r['posterior']}%" for r in state["rounds"]
     )
 
-    # Converge / Fuse → no timer
     if convergence["decision"] in ("converge", "fuse_break"):
-        instruction = "Output final report: hard-gate check → scenario matrix → decision tree → evidence chain → action plan."
+        instruction = "输出最终报告：硬门槛检查 → 情景矩阵 → 决策树 → 证据链 → 行动建议。"
         if convergence["decision"] == "fuse_break":
-            instruction = ("⚠️ Fuse warning: max rounds reached, conclusions may be immature. "
-                           + instruction + " List all unresolved disputes.")
+            instruction = ("⚠️ 熔断警告：已达最大轮次，结论可能未完全饱和。"
+                           + instruction + " 列出所有未解决分歧。")
 
         output = {
             "action": convergence["decision"],
-            "round_completed": args.round,
-            "lfi": args.lfi,
-            "posterior": f"{args.posterior}%",
+            "round_completed": round_num,
+            "lfi": round(lfi, 4),
+            "afi": round(afi, 4),
+            "es": round(es, 4),
+            "posterior": f"{round(posterior, 2)}%",
             "bayesian_trace": bayesian_trace,
             "total_rounds": len(state["rounds"]),
             "reason": convergence["reason"],
@@ -230,7 +492,7 @@ def cmd_checkpoint(args, state_file: str):
         print(json.dumps(output, ensure_ascii=False, indent=2))
         return
 
-    # Continue → timer then instruct
+    # Continue → check timer
     if args.no_timer:
         user_choice = "continue"
     else:
@@ -242,48 +504,50 @@ def cmd_checkpoint(args, state_file: str):
     if user_choice == "stop":
         output = {
             "action": "stop",
-            "round_completed": args.round,
-            "posterior": f"{args.posterior}%",
+            "round_completed": round_num,
+            "posterior": f"{round(posterior, 2)}%",
             "bayesian_trace": bayesian_trace,
             "total_rounds": len(state["rounds"]),
-            "reason": "User requested stop.",
-            "instruction": "User stopped. Output report based on current evidence (mark as early termination).",
+            "reason": "用户主动停止。",
+            "instruction": "用户要求停止。输出基于当前证据的最终报告（标注为提前终止）。",
         }
     elif user_choice == "manual":
         output = {
             "action": "manual",
-            "round_completed": args.round,
-            "posterior": f"{args.posterior}%",
+            "round_completed": round_num,
+            "posterior": f"{round(posterior, 2)}%",
             "bayesian_trace": bayesian_trace,
             "total_rounds": len(state["rounds"]),
-            "instruction": "Manual mode. Awaiting user instructions.",
+            "instruction": "用户选择手动模式。等待用户输入具体指令。",
         }
     else:
         output = {
             "action": "continue",
-            "round_completed": args.round,
-            "next_round": args.round + 1,
-            "lfi": args.lfi,
-            "posterior": f"{args.posterior}%",
+            "round_completed": round_num,
+            "next_round": round_num + 1,
+            "lfi": round(lfi, 4),
+            "afi": round(afi, 4),
+            "es": round(es, 4),
+            "posterior": f"{round(posterior, 2)}%",
             "bayesian_trace": bayesian_trace,
             "total_rounds": len(state["rounds"]),
-            "remaining_before_fuse": MAX_ROUNDS - args.round,
+            "remaining_before_fuse": MAX_ROUNDS - round_num,
             "reason": convergence["reason"],
             "fetch_hint": args.next_action,
             "instruction": (
-                f"Enter Round {args.round + 1}. "
-                f"First fetch/search: {args.next_action}. "
-                f"Then run Detective→Inquisitor→Judge analysis."
+                f"进入 Round {round_num + 1}。"
+                f"先执行工具调用或搜索获取: {args.next_action}。"
+                f"然后进行 Detective→Inquisitor→Judge 质证分析。"
             ),
         }
 
     print(json.dumps(output, ensure_ascii=False, indent=2))
 
 
-def cmd_status(state_file: str):
-    state = load_state(state_file)
+def cmd_status():
+    state = load_state()
     if not state["rounds"]:
-        print(json.dumps({"status": "idle", "message": "No active deepthink session."},
+        print(json.dumps({"status": "idle", "message": "没有进行中的 deepthink 会话。"},
                           ensure_ascii=False, indent=2))
         return
 
@@ -299,7 +563,7 @@ def cmd_status(state_file: str):
         "started_at": state["started_at"],
         "total_rounds": len(state["rounds"]),
         "latest_round": latest["round"],
-        "latest_lfi": latest["lfi"],
+        "latest_lfi": round(latest["lfi"], 4),
         "latest_posterior": f"{latest['posterior']}%",
         "bayesian_trace": bayesian_trace,
         "convergence_check": convergence,
@@ -311,45 +575,43 @@ def cmd_status(state_file: str):
 # ─── CLI ───
 
 def main():
-    parser = argparse.ArgumentParser(description="DeepThink Engine v0.9")
+    parser = argparse.ArgumentParser(description="DeepThink Engine v6.0")
 
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--start", action="store_true", help="Initialize new analysis")
-    mode.add_argument("--checkpoint", action="store_true", help="Record round and check convergence")
-    mode.add_argument("--status", action="store_true", help="View session status")
+    mode.add_argument("--start", action="store_true", help="初始化新分析")
+    mode.add_argument("--checkpoint", action="store_true", help="记录轮次并判定收敛")
+    mode.add_argument("--status", action="store_true", help="查看会话状态")
 
-    parser.add_argument("--topic", type=str, default="", help="Analysis target")
-    parser.add_argument("--state-file", type=str, default="", help="Custom state file path")
-    parser.add_argument("--round", type=int, help="Current round number")
-    parser.add_argument("--lfi", type=float, help="Current round LFI")
-    parser.add_argument("--posterior", type=float, help="Current posterior probability (%%)")
-    parser.add_argument("--open-attacks", type=int, default=0,
-                        help="Number of unrefuted attack vectors")
-    parser.add_argument("--new-evidence", type=int, default=0,
-                        help="Number of new evidence items this round")
-    parser.add_argument("--next-action", type=str, default="",
-                        help="Data to fetch next round")
-    parser.add_argument("--unrefuted-attacks-json", type=str, default="",
-                        help="Unrefuted attack vector details (JSON)")
-    parser.add_argument("--no-timer", action="store_true",
-                        help="Skip interactive timer (headless/debug)")
+    parser.add_argument("--topic", type=str, default="", help="分析标的")
+    parser.add_argument("--state-file", type=str, default="", help="自定义状态文件路径")
+    parser.add_argument("--round", type=int, help="当前轮次编号")
+    parser.add_argument("--next-action", type=str, default="", help="下一轮应获取的数据")
+    
+    # Upgraded JSON Inputs for Industrial Math
+    parser.add_argument("--arguments-json", type=str, default="", help="当前轮次活跃论点列表 (JSON format)")
+    parser.add_argument("--attacks-json", type=str, default="", help="论点有向图攻击关系对列表 (JSON format)")
+    parser.add_argument("--evidence-json", type=str, default="", help="当前轮次新引入的证据详情 (JSON format)")
+    parser.add_argument("--forbidden-consensus-json", type=str, default="", help="被禁止的平庸共识逻辑 (JSON format)")
+    
+    parser.add_argument("--no-timer", action="store_true", help="跳过 timer（调试用）")
 
     args = parser.parse_args()
-    state_file = resolve_state_file(topic=args.topic, state_file_override=args.state_file)
+
+    resolve_state_file(topic=args.topic, state_file_override=args.state_file)
 
     if args.start:
-        cmd_start(args.topic, state_file)
+        cmd_start(args.topic)
     elif args.checkpoint:
-        if args.round is None or args.lfi is None or args.posterior is None:
-            parser.error("--checkpoint requires --round, --lfi, --posterior")
-        cmd_checkpoint(args, state_file)
+        if args.round is None:
+            parser.error("--checkpoint 需要 --round")
+        cmd_checkpoint(args)
     elif args.status:
-        cmd_status(state_file)
+        cmd_status()
 
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n🛑 Interrupted.", file=sys.stderr)
+        print("\n🛑 中断。", file=sys.stderr)
         sys.exit(1)

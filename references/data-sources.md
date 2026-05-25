@@ -93,3 +93,74 @@ If a P1-level script fails (Exit Code != 0), **must** cascade:
 | Consensus Estimates | `[code] 一致预期 目标价 EPS site:xueqiu.com` |
 | Institutional Holdings | `[code] 机构持仓 基金重仓 site:eastmoney.com` |
 | Insider Activity | `[code] 高管增减持 大股东质押 site:cninfo.com.cn` |
+
+
+## 6. Pluggable Global Data Provider Gateway (v6.0)
+
+Trade Nothing v6.0 integrates an object-oriented, Open-Closed Principle (OCP) compliant global data gateway in [data_providers.py](file:///Users/xiaweiqi/Documents/trade-nothing/scripts/data_providers.py). This gateway dynamically routes queries to standard free sources (Yahoo Finance, Tencent, Sina, NetEase) or commercial APIs, and provides two highly convenient ways to plug in new custom data feeds.
+
+### 6.1 Unified Data Interface (`BaseDataProvider`)
+All data providers inherit from `BaseDataProvider` and return a standardized dictionary format:
+```python
+from data_providers import BaseDataProvider, GLOBAL_DATA_GATEWAY
+
+class CustomProvider(BaseDataProvider):
+    @property
+    def name(self) -> str:
+        return "My_Custom_Source"
+
+    def fetch_quote(self, symbol: str) -> Optional[dict]:
+        # Perform HTTP requests or API calls
+        return {
+            "symbol": symbol,
+            "name": "Asset Name",
+            "price": 123.45,
+            "currency": "USD",
+            "source": self.name
+        }
+
+# Programmatic registration
+GLOBAL_DATA_GATEWAY.register(CustomProvider())
+```
+
+### 6.2 Zero-Code Custom REST APIs (`custom_providers.json`)
+You can add any HTTP JSON API as a data source without writing a single line of Python code. Simply create `scripts/custom_providers.json` with the following structure:
+```json
+[
+  {
+    "name": "Coingecko_Crypto",
+    "url_template": "https://api.coingecko.com/api/v3/simple/price?ids={symbol}&vs_currencies=usd",
+    "symbol_pattern": "^[a-z\\-]+$",
+    "headers": {
+      "Accept": "application/json",
+      "Authorization": "Bearer ${COINGECKO_API_KEY}"
+    },
+    "price_path": "{symbol}.usd",
+    "currency": "USD"
+  }
+]
+```
+- **`url_template`**: The URL endpoint containing `{symbol}` which is dynamically replaced at runtime.
+- **`symbol_pattern`**: A regular expression determining which symbols are routed to this provider (e.g. only matching lowercase tickers for crypto).
+- **`headers`**: Optional headers. Any string like `${ENV_VAR}` or `$ENV_VAR` will automatically resolve to the system environment variable at query time.
+- **`price_path`**: A dotted path (e.g. `data.ticker.price` or `{symbol}.usd`) used to traverse the parsed JSON response and extract the float value.
+
+### 6.3 Dynamic Python Plugins (`scripts/plugins/`)
+For complex authentication or proprietary APIs, drop any `.py` file into the `scripts/plugins/` directory. 
+
+The system automatically scans the directory on startup, dynamically imports the module, discovers any class inheriting from `BaseDataProvider`, instantiates it, and registers it.
+
+Example dynamic plugin file `scripts/plugins/prop_api.py`:
+```python
+import requests
+from data_providers import BaseDataProvider
+
+class ProprietaryApiProvider(BaseDataProvider):
+    @property
+    def name(self) -> str:
+        return "Proprietary_Trading_API"
+
+    def fetch_quote(self, symbol: str):
+        # Implement proprietary socket/HTTP fetching logic
+        ...
+```
