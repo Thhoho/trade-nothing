@@ -155,22 +155,71 @@ def clean_proxy_env():
 
 # ─── JSON I/O ────────────────────────────────────────────────────────────────
 
+import time
+
+class CrossPlatformFileLock:
+    """An atomic, directory-based cross-platform lock for safe concurrent operations."""
+    def __init__(self, file_path: str, timeout: float = 10.0):
+        self.lock_dir = file_path + ".lockdir"
+        self.timeout = timeout
+        self.locked = False
+
+    def acquire(self):
+        start_time = time.time()
+        while True:
+            try:
+                os.mkdir(self.lock_dir)
+                self.locked = True
+                return True
+            except FileExistsError:
+                if time.time() - start_time > self.timeout:
+                    # Stale lock recovery for local single-user CLI
+                    try:
+                        os.rmdir(self.lock_dir)
+                        os.mkdir(self.lock_dir)
+                        self.locked = True
+                        return True
+                    except Exception:
+                        raise TimeoutError(f"Lock acquire timeout for {self.lock_dir}")
+                time.sleep(0.05)
+
+    def release(self):
+        if self.locked:
+            try:
+                os.rmdir(self.lock_dir)
+            except Exception:
+                pass
+            self.locked = False
+
+    def __enter__(self):
+        self.acquire()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.release()
+
+
 def load_json_safe(filepath: str, default=None):
-    """Load JSON with graceful fallback on missing/corrupt files."""
+    """Load JSON with graceful fallback on missing/corrupt files with lock."""
     if default is None:
         default = {}
     if not os.path.exists(filepath):
         return default
+    lock = CrossPlatformFileLock(filepath)
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            return json.load(f)
+        with lock:
+            with open(filepath, "r", encoding="utf-8") as f:
+                return json.load(f)
     except (json.JSONDecodeError, IOError):
         return default
 
 
 def save_json(filepath: str, data, ensure_dir: bool = True):
-    """Save JSON with optional parent directory creation."""
+    """Save JSON with optional parent directory creation and lock."""
     if ensure_dir:
         os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    lock = CrossPlatformFileLock(filepath)
+    with lock:
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+

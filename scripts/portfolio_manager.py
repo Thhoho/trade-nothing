@@ -10,7 +10,6 @@ import os
 import sys
 import re
 import json
-import fcntl
 import threading
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Tuple
@@ -140,21 +139,19 @@ class PortfolioManager:
 
     def _state_transaction(self, read_only: bool = False):
         """
-        Guarantees process-level flock and thread-level reentrant locks.
+        Guarantees process-level lock and thread-level reentrant locks.
         Yields state dictionary to preserve transactional integrity across read-write gaps.
         """
         class TransactionContext:
             def __init__(self, manager):
                 self.manager = manager
-                self.lock_fd = None
+                self.lock = None
 
             def __enter__(self) -> dict:
                 PORTFOLIO_LOCK.acquire()
-                # Open/create lock file
-                self.lock_fd = open(self.manager.lock_file, "w")
-                # Wait for exclusive flock
-                fcntl.flock(self.lock_fd, fcntl.LOCK_EX)
-                # Load current state safely
+                from utils import CrossPlatformFileLock
+                self.lock = CrossPlatformFileLock(self.manager.state_file)
+                self.lock.acquire()
                 self.state = load_json_safe(self.manager.state_file)
                 return self.state
 
@@ -164,11 +161,8 @@ class PortfolioManager:
                         # Save modified state
                         save_json(self.manager.state_file, self.state)
                 finally:
-                    # Release flock
-                    if self.lock_fd:
-                        fcntl.flock(self.lock_fd, fcntl.LOCK_UN)
-                        self.lock_fd.close()
-                    # Release thread lock
+                    if self.lock:
+                        self.lock.release()
                     PORTFOLIO_LOCK.release()
 
         return TransactionContext(self)

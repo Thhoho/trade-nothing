@@ -12,7 +12,6 @@ import sys
 import time
 import re
 import math
-import fcntl
 import threading
 from contextlib import contextmanager
 from datetime import datetime
@@ -73,28 +72,25 @@ _thread_lock = threading.RLock()
 @contextmanager
 def state_transaction():
     """Unified Thread-safe and Process-safe transaction lock"""
-    lock_file = STATE_FILE + ".lock"
-    os.makedirs(os.path.dirname(os.path.abspath(lock_file)), exist_ok=True)
+    from utils import CrossPlatformFileLock
+    lock = CrossPlatformFileLock(STATE_FILE)
     _thread_lock.acquire()
     try:
-        with open(lock_file, "a+") as f:
-            fcntl.flock(f, fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(f, fcntl.LOCK_UN)
+        with lock:
+            yield
     finally:
         _thread_lock.release()
 
 def load_state() -> dict:
     if os.path.exists(STATE_FILE):
         try:
-            with open(STATE_FILE, "r", encoding="utf-8") as f:
-                with _thread_lock:
-                    fcntl.flock(f, fcntl.LOCK_SH)
-                    data = json.load(f)
-                    fcntl.flock(f, fcntl.LOCK_UN)
-                    return data
+            from utils import CrossPlatformFileLock
+            lock = CrossPlatformFileLock(STATE_FILE)
+            with lock:
+                with open(STATE_FILE, "r", encoding="utf-8") as f:
+                    with _thread_lock:
+                        data = json.load(f)
+                        return data
         except Exception:
             pass
     return {
@@ -111,22 +107,44 @@ def load_state() -> dict:
 def save_state(state: dict):
     os.makedirs(os.path.dirname(os.path.abspath(STATE_FILE)), exist_ok=True)
     try:
-        with open(STATE_FILE, "a+", encoding="utf-8") as f:
-            with _thread_lock:
-                fcntl.flock(f, fcntl.LOCK_EX)
-                f.seek(0)
-                f.truncate()
-                json.dump(state, f, ensure_ascii=False, indent=2)
-                f.flush()
-                os.fsync(f.fileno())
-                fcntl.flock(f, fcntl.LOCK_UN)
+        from utils import CrossPlatformFileLock
+        lock = CrossPlatformFileLock(STATE_FILE)
+        with lock:
+            with open(STATE_FILE, "w", encoding="utf-8") as f:
+                with _thread_lock:
+                    json.dump(state, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"[ERROR] failed to save state file {STATE_FILE}: {e}", file=sys.stderr)
 
 
+
 # ─── Convergence ───
 
-def check_convergence(round_num: int, lfi: float, open_attacks: int) -> dict:
+def get_topic_mode(topic: str) -> str:
+    """Classify research target/topic into 'audit' (cyclical/commodity) or 'vision' (high-optionality/tech) mode."""
+    if not topic:
+        return "audit"
+    topic_lower = topic.lower()
+    cyclical_keywords = ["solar", "光伏", "新能源", "hjt", "电池", "锂电", "topcon", "储能", "电池柜", "300118", "宁德时代", "隆基"]
+    for kw in cyclical_keywords:
+        if kw in topic_lower:
+            return "audit"
+    return "vision"
+
+def classify_argument(arg: str) -> str:
+    """Classify Dung graph argument claims based on their node semantic prefix."""
+    if "[Proxy Data Anchor" in arg or "[Audit Node" in arg:
+        return "audit"
+    elif "[Vision Node" in arg:
+        return "vision"
+    elif "[Narrative Node" in arg:
+        return "narrative"
+    else:
+        return "legacy"
+
+def check_convergence(round_num: int, lfi: float, open_attacks: int, mode: str = "audit") -> dict:
+    lfi_threshold = LFI_THRESHOLD if mode == "audit" else 0.25
+    
     if round_num >= MAX_ROUNDS:
         return {"decision": "fuse_break",
                 "reason": f"已达最大轮次 {MAX_ROUNDS}，触发熔断。"}
@@ -139,12 +157,13 @@ def check_convergence(round_num: int, lfi: float, open_attacks: int) -> dict:
         return {"decision": "continue",
                 "reason": f"存在 {open_attacks} 个未完全反驳的攻击向量（Dung图中非Accepted节点），必须继续。"}
 
-    if lfi >= LFI_THRESHOLD:
+    if lfi >= lfi_threshold:
         return {"decision": "continue",
-                "reason": f"逻辑摩擦力指数 LFI={lfi:.4f} >= {LFI_THRESHOLD}，论证冲突未平息或信息量未饱和。"}
+                "reason": f"逻辑摩擦力指数 LFI={lfi:.4f} >= {lfi_threshold} ({mode}模式)，论证冲突未平息或信息量未饱和。"}
 
     return {"decision": "converge",
-            "reason": f"LFI={lfi:.4f} < {LFI_THRESHOLD}，论证冲突完全收敛，未反驳致命漏洞归零。逻辑硬化达成。"}
+            "reason": f"LFI={lfi:.4f} < {lfi_threshold} ({mode}模式)，论证冲突完全收敛，未反驳致命漏洞归零。逻辑硬化达成。"}
+
 
 
 # ─── NLP Jaccard Novelty Helper ───
@@ -370,35 +389,58 @@ def cmd_checkpoint(args):
             }, ensure_ascii=False, indent=2))
             sys.exit(0)
 
-    # 3. Compute Dung's Abstract Argumentation AFI
-    # All historical and current arguments are loaded to build Dung solver
+    # 3. Compute Dung's Abstract Argumentation AFI with Adaptive Constraints
+    mode = get_topic_mode(state["topic"])
+    
+    # Process arguments with virtual penalty nodes for Audit Mode
     all_arguments = set(new_arguments)
     all_attacks = set(tuple(a) for a in new_attacks)
     
-    # Pull any unresolved arguments from previous rounds if graph is incremental
+    # Inject active penalty attacks for unanchored/visionary claims in Audit Mode
+    if mode == "audit":
+        for arg in list(all_arguments):
+            arg_type = classify_argument(arg)
+            if arg_type == "vision" or (arg_type == "legacy" and "[Proxy Data Anchor" not in arg):
+                penalty_node = "System:AuditHardenedPenalty"
+                all_arguments.add(penalty_node)
+                all_attacks.add((penalty_node, arg))
+                
+    # Pull any unresolved arguments from previous rounds
     for r in state["rounds"]:
-        all_arguments.update(r.get("arguments", []))
-        all_attacks.update(tuple(a) for a in r.get("attacks", []))
-        
+        prev_args = r.get("arguments", [])
+        prev_attacks = r.get("attacks", [])
+        all_arguments.update(prev_args)
+        all_attacks.update(tuple(a) for a in prev_attacks)
+        # Apply historical audit penalty if graph has legacy nodes
+        if mode == "audit":
+            for arg in prev_args:
+                arg_type = classify_argument(arg)
+                if arg_type == "vision" or (arg_type == "legacy" and "[Proxy Data Anchor" not in arg):
+                    penalty_node = "System:AuditHardenedPenalty"
+                    all_arguments.add(penalty_node)
+                    all_attacks.add((penalty_node, arg))
+
     solver = DungSolver(list(all_arguments), list(all_attacks))
     ge = solver.compute_grounded_extension()
     afi = solver.get_grounded_friction()
     
-    # Active attacks that are undefeated or unresolved (i.e. not defended in Grounded Extension)
+    # Active attacks that are undefeated or unresolved
     unrefuted_attacks_list = []
     for attacker, target in all_attacks:
-        # If the attacker is part of the Grounded Extension, it is accepted as undefeated
         if attacker not in ge:
             unrefuted_attacks_list.append({
                 "attack": f"{attacker} -> {target}",
                 "reason": f"论点 {attacker} 未被有效证伪，其攻击关系依然悬挂。"
             })
 
+    # Expectation Gap Index (EGI) calculation
+    narrative_count = sum(1 for arg in ge if classify_argument(arg) == "narrative")
+    audit_count = sum(1 for arg in ge if classify_argument(arg) in ("audit", "legacy"))
+    egi = float(narrative_count - audit_count)
+
     # 4. Compute Evidence Saturation (Shannon Entropy + Jaccard Novelty)
-    # Update accumulated evidence
     state["accumulated_evidence"].extend(new_evidence)
     
-    # Calculate Category Entropy H(E)
     categories = [e.get("category", "Narrative") for e in state["accumulated_evidence"]]
     total_e = len(categories)
     entropy = 0.0
@@ -410,29 +452,23 @@ def cmd_checkpoint(args):
             p = cnt / total_e
             entropy -= p * math.log2(p)
 
-    # Calculate Lexical Novelty
     prior_claims_texts = state.get("accumulated_claims", [])
     novelty = calculate_jaccard_novelty(new_arguments, prior_claims_texts)
-    
-    # Record current round claims to accumulated history
     state["accumulated_claims"].extend(new_arguments)
     
-    # Compute Information Gain delta_H
     prev_entropy = 0.0
     if len(state["rounds"]) > 0:
         prev_entropy = state["rounds"][-1].get("entropy", 0.0)
         
     delta_h = (entropy - prev_entropy) + novelty
     
-    # Evidence Saturation calculation
     round_num = args.round
     gamma = 0.5
     if delta_h > 0:
         es = 1.0 - math.exp(-gamma * round_num / delta_h)
     else:
-        es = 1.0  # Fully saturated if no new entropy or novelty
+        es = 1.0
 
-    # Calculate LFI
     lfi = 0.6 * afi + 0.4 * (1.0 - es)
 
     # 5. Deterministic Bayesian Odds Update
@@ -441,9 +477,14 @@ def cmd_checkpoint(args):
         bf = get_bayes_factor(e.get("category", "Narrative"), e.get("direction", "Bull"), e.get("strength", "Weak"))
         odds *= bf
         
+    # Sovereign Vision Mode optionality premium injection
+    if mode == "vision":
+        for arg in ge:
+            if classify_argument(arg) == "vision":
+                odds *= 1.5  # Asymmetric optionality factor for validated vision nodes
+                
     posterior = (odds / (1.0 + odds)) * 100.0
     
-    # Save back to state
     state["odds"] = odds
     state["posterior"] = posterior
 
@@ -461,12 +502,15 @@ def cmd_checkpoint(args):
         "new_evidence_count": len(new_evidence),
         "next_action": args.next_action,
         "timestamp": datetime.now().isoformat(),
+        "egi": egi,
+        "mode": mode,
+        "grounded_extension": list(ge)
     }
     state["rounds"].append(round_data)
     state["unrefuted_attacks"] = unrefuted_attacks_list
     save_state(state)
 
-    convergence = check_convergence(round_num, lfi, len(unrefuted_attacks_list))
+    convergence = check_convergence(round_num, lfi, len(unrefuted_attacks_list), mode=mode)
     bayesian_trace = " → ".join(
         f"R{r['round']}:{r['posterior']}%" for r in state["rounds"]
     )
@@ -488,6 +532,8 @@ def cmd_checkpoint(args):
             "total_rounds": len(state["rounds"]),
             "reason": convergence["reason"],
             "instruction": instruction,
+            "egi": egi,
+            "mode": mode
         }
         print(json.dumps(output, ensure_ascii=False, indent=2))
         return
@@ -510,6 +556,8 @@ def cmd_checkpoint(args):
             "total_rounds": len(state["rounds"]),
             "reason": "用户主动停止。",
             "instruction": "用户要求停止。输出基于当前证据的最终报告（标注为提前终止）。",
+            "egi": egi,
+            "mode": mode
         }
     elif user_choice == "manual":
         output = {
@@ -519,6 +567,8 @@ def cmd_checkpoint(args):
             "bayesian_trace": bayesian_trace,
             "total_rounds": len(state["rounds"]),
             "instruction": "用户选择手动模式。等待用户输入具体指令。",
+            "egi": egi,
+            "mode": mode
         }
     else:
         output = {
@@ -534,8 +584,10 @@ def cmd_checkpoint(args):
             "remaining_before_fuse": MAX_ROUNDS - round_num,
             "reason": convergence["reason"],
             "fetch_hint": args.next_action,
+            "egi": egi,
+            "mode": mode,
             "instruction": (
-                f"进入 Round {round_num + 1}。"
+                f"进入 Round {round_num + 1} ({mode}模式)。"
                 f"先执行工具调用或搜索获取: {args.next_action}。"
                 f"然后进行 Detective→Inquisitor→Judge 质证分析。"
             ),
@@ -552,8 +604,9 @@ def cmd_status():
         return
 
     latest = state["rounds"][-1]
+    mode = get_topic_mode(state.get("topic", ""))
     convergence = check_convergence(
-        latest["round"], latest["lfi"], latest.get("open_attacks", 0))
+        latest["round"], latest["lfi"], latest.get("open_attacks", 0), mode=mode)
     bayesian_trace = " → ".join(
         f"R{r['round']}:{r['posterior']}%" for r in state["rounds"])
 
@@ -568,8 +621,11 @@ def cmd_status():
         "bayesian_trace": bayesian_trace,
         "convergence_check": convergence,
         "remaining_before_fuse": MAX_ROUNDS - latest["round"],
+        "mode": mode,
+        "egi": latest.get("egi", 0.0)
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
+
 
 
 # ─── CLI ───

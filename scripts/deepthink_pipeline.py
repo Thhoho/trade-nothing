@@ -17,7 +17,6 @@ import json
 import argparse
 import subprocess
 import urllib.request
-import fcntl
 from datetime import datetime, timedelta
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -176,21 +175,23 @@ def update_research_index(topic: str, slug: str, posterior: float, issues_count:
     index_path = os.path.join(SCRIPT_DIR, ".research_index.json")
     index = {}
     
+    from utils import CrossPlatformFileLock
+    lock = CrossPlatformFileLock(index_path)
+    
     # Process-safe read-write cycle
     try:
-        # Create empty file if not exists
-        if not os.path.exists(index_path):
-            with open(index_path, "w", encoding="utf-8") as f:
-                json.dump({}, f)
-                
-        with open(index_path, "a+", encoding="utf-8") as f:
-            fcntl.flock(f, fcntl.LOCK_EX)
-            f.seek(0)
-            try:
-                index = json.load(f)
-            except Exception:
-                index = {}
-                
+        with lock:
+            # Create empty file if not exists
+            if not os.path.exists(index_path):
+                with open(index_path, "w", encoding="utf-8") as f:
+                    json.dump({}, f)
+                    
+            with open(index_path, "r", encoding="utf-8") as f:
+                try:
+                    index = json.load(f)
+                except Exception:
+                    index = {}
+                    
             index[slug] = {
                 "topic": topic,
                 "last_posterior": posterior,
@@ -198,12 +199,8 @@ def update_research_index(topic: str, slug: str, posterior: float, issues_count:
                 "open_issues": issues_count
             }
             
-            f.seek(0)
-            f.truncate()
-            json.dump(index, f, ensure_ascii=False, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-            fcntl.flock(f, fcntl.LOCK_UN)
+            with open(index_path, "w", encoding="utf-8") as f:
+                json.dump(index, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"[WARN] Failed to write research index atomically: {e}", file=sys.stderr)
 
@@ -503,8 +500,56 @@ def generate_next_round_prompts(topic: str, state_file: str):
     except Exception as ex:
         formatted_facts = f"⚠️ [CRAWLER ERROR] Micro supply chain intelligence temporarily offline: {ex}\n"
 
+    # Determine the topic mode
+    topic_lower = topic.lower()
+    cyclical_keywords = ["solar", "光伏", "新能源", "hjt", "电池", "锂电", "topcon", "储能", "电池柜", "300118", "宁德时代", "隆基"]
+    mode = "audit"
+    for kw in cyclical_keywords:
+        if kw in topic_lower:
+            mode = "audit"
+            break
+    else:
+        mode = "vision"
+
+    if mode == "audit":
+        mode_instruction = (
+            "⚠️⚠️⚠️【当前模态：审计硬化模态 (Audit-Hardened Mode)】⚠️⚠️⚠️\n"
+            "本分析标的属于传统周期或重资产制造股。法官运行在极其严苛的审计模式下！\n"
+            "所有提出的看多主张被绝对禁止空洞的定性描述或 speculative 推演。你所提交的每一个论点，"
+            "必须使用以下形式确立为 `[Audit Node]` 且必须标注 `[Proxy Data Anchor: ...]` 物理证据！\n"
+            "格式要求：`[Audit Node: <主张> | Proxy Data Anchor: <具体三方物理出货数据/招标/报价详情>]`\n"
+            "注意：任何未加锚点或试图使用 Vision/Speculative 属性的节点在 Dung 图谱中将直接被法官强制击毁（攻击致死）！"
+        )
+        inquisitor_mode_instruction = (
+            "⚠️⚠️⚠️【当前模态：审计硬化模态 (Audit-Hardened Mode)】⚠️⚠️⚠️\n"
+            "你的任务是执行【最无情的物理数据审计】。\n"
+            "侦探的所有论点必须拥有极高纯度的海关、原材料报价三方印证。你必须使用 `[Audit Attack]` "
+            "攻击任何统计口径偏差、多重定货水分、辅料涨价吞噬利润或 ASP 下降风险。\n"
+            "格式要求：`[Audit Attack | Target: <被攻击侦探节点>]: <具体逻辑攻击内容>`"
+        )
+    else:
+        mode_instruction = (
+            "✨✨✨【当前模态：主权远见模态 (Sovereign Vision Mode)】✨✨✨\n"
+            "本分析标的属于高成长、颠覆性创新的科技/AI/期权资产。法官已解锁远见释放权限！\n"
+            "你除了需要使用 `[Audit Node]` 夯实下行安全地板外，更应当大胆使用 `[Vision Node]` 勾勒上行空间，"
+            "阐释在宏观范式变化、技术爆发与反身性拐点处的早期信号！\n"
+            "三种节点格式要求：\n"
+            "1. `[Audit Node: <安全主张> | Proxy Data Anchor: <高频三方微观数据锚点>]` — 地板审计\n"
+            "2. `[Vision Node: <前瞻主张> | Catalyst/Optionality: <催化事件/非线性期权逻辑>]` — 天花板远见\n"
+            "3. `[Narrative Node: <叙事主张> | Sentiment Source: <Snowball/Futu/专家调研>]` — 预期差与反身性度量"
+        )
+        inquisitor_mode_instruction = (
+            "✨✨✨【当前模态：主权远见模态 (Sovereign Vision Mode)】✨✨✨\n"
+            "侦探除了夯实地板，还提出了具有颠覆性期权可能性的 `[Vision Node]` 前瞻命题。\n"
+            "你的任务不是教条地喊“没有当季海关出货数据验证”，而是发起具有产业反思高度的【二级逻辑质询与反身性打击（Vision Audit）】！\n"
+            "你必须站在 6 个月后跌 70% 的逆向死亡视角，攻击其：物理/工程学不可能边界（如热力学极限、芯片散热瓶颈）、高研发带来的资金链断裂、扩产周期陷阱或反身性高估风险。\n"
+            "攻击格式：\n"
+            "- 对于侦探的 `[Audit Node]` 物理证据，使用 `[Audit Attack | Target: <节点>]: <攻击>`\n"
+            "- 对于侦探的 `[Vision Node]` 远见主张，使用 `[Vision Audit | Target: <节点>]: <逻辑漏洞/反身性陷阱/物理极限>`"
+        )
+
     # Detective next round prompt
-    detective_prompt = f"""Role: Trade Nothing v6.0 — The Detective (侦探智能体) [Round {next_round}]
+    detective_prompt = f"""Role: Trade Nothing v9.0 — The Detective (侦探智能体) [Round {next_round}]
 Topic: {topic}
 
 在上一轮辩论中，审问者（Inquisitor）针对你的 Bull Thesis 提出了致命攻击向量（Lethal Attack Vectors）。你目前的逻辑防线已经暴露出严重的漏洞。
@@ -518,6 +563,8 @@ Topic: {topic}
 【下一轮数据获取提示】:
 {next_action}
 
+{mode_instruction}
+
 🚨🚨🚨【海关与微观供应链硬证据库（CRITICAL INPUT）】🚨🚨🚨:
 你本轮的所有辩护、看多逻辑及出货推演，必须严格锚定在以下【海关与微观供应链硬证据库】中。严禁进行任何无微观硬数据支撑的定性吹水或线性外推！
 {formatted_facts.strip()}
@@ -526,13 +573,11 @@ Topic: {topic}
 1. **平庸共识禁区**：你被绝对禁止使用或复述以下任何平庸共识（Clichés），否则法官将在Jaccard语义检测中直接作废并打回你的论点：
 {formatted_consensus}
 
-2. **物理代理数据强迫**：你提出的任何看多论点，必须明确声明其 `[Proxy Data Anchor]`（例如：`[Proxy Data Anchor: ToG政府招标数据]`，`[Proxy Data Anchor: 1688 wholesale 原材料高频现货报价]`，`[Proxy Data Anchor: HR 核心研发岗招聘异动]`）。若不标注物理代理数据锚点，该论点在 Dung 论证图谱中的权重为 0，对最终结论没有任何影响力！
-
 你的输出格式必须包含更新后的 [核心可证伪证据链]：
 Claim_X (物理代理数据支撑) + 证据B (三方渠道校验) → 边际定价变化 → 逻辑硬化成立。"""
 
     # Inquisitor next round prompt
-    inquisitor_prompt = f"""Role: Trade Nothing v6.0 — The Inquisitor (审问者智能体) [Round {next_round}]
+    inquisitor_prompt = f"""Role: Trade Nothing v9.0 — The Inquisitor (审问者智能体) [Round {next_round}]
 Topic: {topic}
 
 在这一轮（Round {next_round}）中，侦探（Detective）将针对你上一轮提出的漏洞进行定向辩护。你的核心任务是执行【二级漏洞审计与反身性打击】。
@@ -542,6 +587,8 @@ Topic: {topic}
 **“假设当前时间点向后推移 6 个月，该标的因某项微观物理/财务/供应链故障爆雷，导致股价暴跌了 70%。”**
 你必须以此为既定事实，结合以下【海关与微观供应链硬证据库】，反向推理并审计侦探所引用的“订单大增”、“出货顺畅”是否存在虚假逻辑：
 {formatted_facts.strip()}
+
+{inquisitor_mode_instruction}
 
 🚨🚨🚨【平庸共识禁区约束】🚨🚨🚨:
 你同样被绝对禁止使用以下任何平庸的、人云亦云的看空逻辑：
@@ -560,6 +607,7 @@ Topic: {topic}
         "inquisitor_prompt": inquisitor_prompt.strip()
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
+
 
 
 def main():
