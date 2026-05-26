@@ -11,6 +11,8 @@ import re
 import sys
 import json
 import platform
+import math
+import uuid
 from pathlib import Path
 
 
@@ -112,21 +114,26 @@ def send_notification(title: str, message: str) -> bool:
     try:
         if system == "Darwin":
             import subprocess
-            cmd = f'display notification "{message}" with title "{title}"'
+            escaped_title = title.replace("\\", "\\\\").replace('"', '\\"')
+            escaped_message = message.replace("\\", "\\\\").replace('"', '\\"')
+            cmd = f'display notification "{escaped_message}" with title "{escaped_title}"'
             subprocess.call(["osascript", "-e", cmd], timeout=5)
             return True
         elif system == "Linux":
             import subprocess
+            # notify-send arguments list is inherently safe
             subprocess.call(["notify-send", title, message], timeout=5)
             return True
         elif system == "Windows":
             import subprocess
+            escaped_title = title.replace("`", "``").replace('"', '`"').replace("$", "`$")
+            escaped_message = message.replace("`", "``").replace('"', '`"').replace("$", "`$")
             ps_cmd = (
                 f'[System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null; '
                 f'$notify = New-Object System.Windows.Forms.NotifyIcon; '
                 f'$notify.Icon = [System.Drawing.SystemIcons]::Information; '
                 f'$notify.Visible = $true; '
-                f'$notify.ShowBalloonTip(5000, "{title}", "{message}", '
+                f'$notify.ShowBalloonTip(5000, "{escaped_title}", "{escaped_message}", '
                 f'[System.Windows.Forms.ToolTipIcon]::Info)'
             )
             subprocess.call(["powershell", "-Command", ps_cmd], timeout=5)
@@ -158,10 +165,12 @@ def clean_proxy_env():
 import time
 
 class CrossPlatformFileLock:
-    """An atomic, directory-based cross-platform lock for safe concurrent operations."""
+    """An atomic, directory-based cross-platform lock with UUID ownership verification."""
     def __init__(self, file_path: str, timeout: float = 10.0):
         self.lock_dir = file_path + ".lockdir"
+        self.owner_file = os.path.join(self.lock_dir, "owner.txt")
         self.timeout = timeout
+        self.owner_id = str(uuid.uuid4())
         self.locked = False
 
     def acquire(self):
@@ -169,24 +178,43 @@ class CrossPlatformFileLock:
         while True:
             try:
                 os.mkdir(self.lock_dir)
+                # Write ownership ID immediately after atomic directory creation
+                with open(self.owner_file, "w", encoding="utf-8") as f:
+                    f.write(self.owner_id)
                 self.locked = True
                 return True
-            except FileExistsError:
+            except (FileExistsError, PermissionError, FileNotFoundError):
+                # Lock folder already exists or is being deleted/recreated by another process
                 if time.time() - start_time > self.timeout:
-                    # Stale lock recovery for local single-user CLI
+                    # Stale lock recovery: delete owner file and lock directory
                     try:
-                        os.rmdir(self.lock_dir)
+                        if os.path.exists(self.owner_file):
+                            os.remove(self.owner_file)
+                        if os.path.exists(self.lock_dir):
+                            os.rmdir(self.lock_dir)
+                    except Exception:
+                        pass
+                    
+                    # Try to create it once more
+                    try:
                         os.mkdir(self.lock_dir)
+                        with open(self.owner_file, "w", encoding="utf-8") as f:
+                            f.write(self.owner_id)
                         self.locked = True
                         return True
                     except Exception:
-                        raise TimeoutError(f"Lock acquire timeout for {self.lock_dir}")
+                        raise TimeoutError(f"Lock acquire timeout and recovery failed for {self.lock_dir}")
                 time.sleep(0.05)
 
     def release(self):
         if self.locked:
             try:
-                os.rmdir(self.lock_dir)
+                if os.path.exists(self.owner_file):
+                    with open(self.owner_file, "r", encoding="utf-8") as f:
+                        current_owner = f.read().strip()
+                    if current_owner == self.owner_id:
+                        os.remove(self.owner_file)
+                        os.rmdir(self.lock_dir)
             except Exception:
                 pass
             self.locked = False
@@ -222,4 +250,36 @@ def save_json(filepath: str, data, ensure_dir: bool = True):
     with lock:
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+from collections import Counter
+
+def calculate_cosine_similarity(text1: str, text2: str) -> float:
+    """Calculate lightweight TF-IDF cosine similarity between two texts (100% offline)."""
+    # Tokenize into Chinese characters and English alphanumeric words
+    def get_tokens(text):
+        en_words = re.findall(r"[a-zA-Z0-9]+", text.lower())
+        zh_chars = re.findall(r"[\u4e00-\u9fa5]", text)
+        return en_words + zh_chars
+
+    tokens1 = get_tokens(text1)
+    tokens2 = get_tokens(text2)
+    
+    if not tokens1 or not tokens2:
+        return 0.0
+        
+    vec1 = Counter(tokens1)
+    vec2 = Counter(tokens2)
+    
+    intersection = set(vec1.keys()) & set(vec2.keys())
+    numerator = sum(vec1[x] * vec2[x] for x in intersection)
+    
+    sum1 = sum(vec1[x] ** 2 for x in vec1.keys())
+    sum2 = sum(vec2[x] ** 2 for x in vec2.keys())
+    denominator = math.sqrt(sum1) * math.sqrt(sum2)
+    
+    if not denominator:
+        return 0.0
+    return numerator / denominator
+
 

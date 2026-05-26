@@ -1,12 +1,12 @@
-# Test Plan & Verification Methodology: Trade Nothing v9.0
+# Test Plan & Verification Methodology: Trade Nothing v0.9.1
 
-This document defines the formal test suite, execution guidelines, and verification criteria for **Trade Nothing v9.0 — The Sovereign Investment Master**.
+This document defines the formal test suite, execution guidelines, and verification criteria for **Trade Nothing v0.9.1 — The Sovereign Investment Master**.
 
 ---
 
 ## 1. Objectives & Scope
 
-The test plan is designed to verify the core quantitative upgrades of the Trade Nothing v9.0 engine. Specifically, we test:
+The test plan is designed to verify the core quantitative upgrades of the Trade Nothing v0.9.1 engine. Specifically, we test:
 *   **Adaptive Severity Modes**: Correct industry classification and convergence thresholds based on target topic names.
 *   **Dual-Path Argumentation & Dung Graph Penalties**: Automatic rejection of unanchored speculative claims in Audit Mode, while permitting them in Sovereign Vision Mode.
 *   **Expectation Gap Index (EGI)**: Mathematical accuracy of the delta between Narrative nodes and physical facts.

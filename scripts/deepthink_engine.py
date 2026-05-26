@@ -69,17 +69,6 @@ TIMER_DURATION = 15  # Upgraded to 15s in v6.0 to be snappy
 
 _thread_lock = threading.RLock()
 
-@contextmanager
-def state_transaction():
-    """Unified Thread-safe and Process-safe transaction lock"""
-    from utils import CrossPlatformFileLock
-    lock = CrossPlatformFileLock(STATE_FILE)
-    _thread_lock.acquire()
-    try:
-        with lock:
-            yield
-    finally:
-        _thread_lock.release()
 
 def load_state() -> dict:
     if os.path.exists(STATE_FILE):
@@ -205,23 +194,20 @@ def calculate_jaccard_novelty(new_texts: List[str], prior_texts: List[str]) -> f
 
 # ─── Flat Consensus Overlap Filter ───
 
-def check_consensus_flatness(claims: List[str], forbidden_consensus: List[str], threshold: float = 0.4) -> List[str]:
+def check_consensus_flatness(claims: List[str], forbidden_consensus: List[str], mode: str = "audit") -> List[str]:
     """
-    Check if any new claim overlaps too much with forbidden clichés.
+    Check if any new claim overlaps too much with forbidden clichés using dynamic TF-IDF cosine similarity.
     Returns list of rejected claims.
     """
+    from utils import calculate_cosine_similarity
+    # Dynamic sector-specific threshold: growth tech sectors are strict (0.70); cyclical sectors are relaxed (0.85)
+    threshold = 0.85 if mode == "audit" else 0.70
     rejected = []
     for claim in claims:
-        claim_tokens = tokenize(claim)
-        if not claim_tokens:
-            continue
         for cliché in forbidden_consensus:
-            cliché_tokens = tokenize(cliché)
-            if not cliché_tokens:
-                continue
-            overlap = len(claim_tokens.intersection(cliché_tokens)) / len(claim_tokens.union(cliché_tokens))
-            if overlap >= threshold:
-                rejected.append(f"Claim: '{claim}' (Overlaps {overlap*100:.1f}% with cliché: '{cliché}')")
+            sim = calculate_cosine_similarity(claim, cliché)
+            if sim >= threshold:
+                rejected.append(f"Claim: '{claim}' (Semantic similarity {sim*100:.1f}% with cliché: '{cliché}')")
                 break
     return rejected
 
@@ -378,9 +364,12 @@ def cmd_checkpoint(args):
         except json.JSONDecodeError as e:
             print(f"[WARN] Failed to parse forbidden-consensus-json: {e}", file=sys.stderr)
 
+    # Resolve topic mode first
+    mode = get_topic_mode(state["topic"])
+
     # 2. Check Consensus Flatness Guardrail
     if forbidden_consensus:
-        flat_claims = check_consensus_flatness(new_arguments, forbidden_consensus, threshold=0.4)
+        flat_claims = check_consensus_flatness(new_arguments, forbidden_consensus, mode=mode)
         if flat_claims:
             print(json.dumps({
                 "status": "rejected",
@@ -390,7 +379,6 @@ def cmd_checkpoint(args):
             sys.exit(0)
 
     # 3. Compute Dung's Abstract Argumentation AFI with Adaptive Constraints
-    mode = get_topic_mode(state["topic"])
     
     # Process arguments with virtual penalty nodes for Audit Mode
     all_arguments = set(new_arguments)
@@ -433,10 +421,11 @@ def cmd_checkpoint(args):
                 "reason": f"论点 {attacker} 未被有效证伪，其攻击关系依然悬挂。"
             })
 
-    # Expectation Gap Index (EGI) calculation
+    # Expectation Gap Index (EGI) calculation normalized to [-1.0, 1.0]
     narrative_count = sum(1 for arg in ge if classify_argument(arg) == "narrative")
     audit_count = sum(1 for arg in ge if classify_argument(arg) in ("audit", "legacy"))
-    egi = float(narrative_count - audit_count)
+    total_nodes = narrative_count + audit_count
+    egi = float(narrative_count - audit_count) / max(1.0, float(total_nodes))
 
     # 4. Compute Evidence Saturation (Shannon Entropy + Jaccard Novelty)
     state["accumulated_evidence"].extend(new_evidence)

@@ -2,10 +2,6 @@
 requests>=2.31.0
 
 # === Market Data APIs (Free Tier) ===
-# AkShare: China A-share market data, macro indicators
-# https://akshare.akfamily.xyz/
-akshare>=1.14.0
-
 # yfinance: Global market data (US Treasury, VIX, Oil, FX, Gold)
 # https://github.com/ranaroussi/yfinance
 yfinance>=0.2.40

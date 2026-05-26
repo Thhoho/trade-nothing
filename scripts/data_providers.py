@@ -89,7 +89,7 @@ class TencentAShareProvider(BaseDataProvider):
                         "price": price,
                         "pe_dynamic": safe_float(safe_get(data, 39)),
                         "turnover_rate": safe_float(safe_get(data, 38)),
-                        "market_cap_billions": market_cap_raw / 1e8 if market_cap_raw is not None else None,
+                        "market_cap_billions": market_cap_raw / 10.0 if market_cap_raw is not None else None,
                         "currency": "CNY",
                         "source": self.name
                     }
@@ -164,7 +164,7 @@ class NetEaseAShareProvider(BaseDataProvider):
                         "price": price,
                         "pe_dynamic": safe_float(stock_data.get("pe")),
                         "turnover_rate": safe_float(stock_data.get("turnover")) * 100 if stock_data.get("turnover") is not None else None,
-                        "market_cap_billions": market_cap_raw / 1e8 if market_cap_raw is not None else None,
+                        "market_cap_billions": market_cap_raw / 1e9 if market_cap_raw is not None else None,
                         "currency": "CNY",
                         "source": self.name
                     }
@@ -305,6 +305,133 @@ class TiingoCommercialProvider(BaseDataProvider):
         return None
 
 
+class AkShareProvider(BaseDataProvider):
+    @property
+    def name(self) -> str:
+        return "AkShare_Finance"
+
+    def fetch_quote(self, symbol: str) -> Optional[dict]:
+        # AkShare handles A-shares 6-digit symbols
+        if not re.match(r"^\d{6}$", symbol):
+            return None
+
+        try:
+            # Inline import for soft-fail portability
+            import akshare as ak
+            df = ak.stock_zh_a_spot_em()
+            if df is not None and not df.empty:
+                row = df[df['代码'] == symbol]
+                if not row.empty:
+                    r = row.iloc[0]
+                    price = safe_float(r.get("最新价"))
+                    if price is not None:
+                        market_cap_raw = safe_float(r.get("总市值"))
+                        return {
+                            "symbol": symbol,
+                            "name": r.get("名称", "Unknown"),
+                            "price": price,
+                            "pe_dynamic": safe_float(r.get("市盈率-动态")),
+                            "turnover_rate": safe_float(r.get("换手率")),
+                            "market_cap_billions": market_cap_raw / 1e9 if market_cap_raw is not None else None,
+                            "currency": "CNY",
+                            "source": self.name
+                        }
+        except Exception:
+            pass
+        return None
+
+    def fetch_fundamental(self, symbol: str) -> Optional[dict]:
+        if not re.match(r"^\d{6}$", symbol):
+            return None
+
+        # Build EastMoney style symbol (e.g. 300118.SZ or 600000.SH)
+        if symbol.startswith(("00", "30")):
+            em_symbol = f"{symbol}.SZ"
+        elif symbol.startswith(("60", "68")):
+            em_symbol = f"{symbol}.SH"
+        else:
+            em_symbol = f"{symbol}.SZ"
+
+        try:
+            import akshare as ak
+            df = ak.stock_financial_analysis_indicator_em(symbol=em_symbol, indicator="按报告期")
+            if df is not None and not df.empty and "REPORT_DATE" in df.columns:
+                df = df.sort_values("REPORT_DATE", ascending=False)
+                r = df.iloc[0]
+                
+                def _fmt_date(v):
+                    if v is None or str(v) == "nan":
+                        return None
+                    if hasattr(v, "strftime"):
+                        return v.strftime("%Y-%m-%d")
+                    return str(v)[:10]
+
+                return {
+                    "em_symbol": em_symbol,
+                    "report_date": _fmt_date(r.get("REPORT_DATE")),
+                    "notice_date": _fmt_date(r.get("NOTICE_DATE")),
+                    "parent_net_profit": safe_float(r.get("PARENTNETPROFIT")),
+                    "parent_net_profit_yoy_pct": safe_float(r.get("PARENTNETPROFITTZ")),
+                    "total_operating_revenue": safe_float(r.get("TOTALOPERATEREVE")),
+                    "revenue_yoy_pct": safe_float(r.get("TOTALOPERATEREVETZ")),
+                    "basic_eps": safe_float(r.get("EPSJB")),
+                    "roe_pct": safe_float(r.get("ROEJQ")),
+                    "debt_to_asset_pct": safe_float(r.get("ZCFZL")),
+                    "source": self.name
+                }
+        except Exception:
+            pass
+        return None
+
+
+class PolymarketProvider(BaseDataProvider):
+    @property
+    def name(self) -> str:
+        return "Polymarket_Prediction_Market"
+
+    def fetch_quote(self, symbol: str) -> Optional[dict]:
+        # Polymarket handles narrative/prediction markets. Bypass if A-share numeric symbol
+        if re.match(r"^\d{6}$", symbol):
+            return None
+
+        query = symbol.replace("_", " ").strip()
+        query_lower = query.lower()
+        url = "https://gamma-api.polymarket.com/events?active=true&closed=false&limit=100"
+        
+        try:
+            resp = requests.get(url, timeout=5)
+            if resp.status_code == 200:
+                events = resp.json()
+                for event in events:
+                    title = event.get('title', '')
+                    if query_lower in title.lower():
+                        markets = event.get('markets', [])
+                        for market in markets:
+                            if market.get('active'):
+                                raw_prices = market.get('outcomePrices', '[]')
+                                prices = json.loads(raw_prices) if isinstance(raw_prices, str) else raw_prices
+                                try:
+                                    prob = float(prices[0]) if prices else None
+                                except Exception:
+                                    prob = None
+                                    
+                                if prob is not None:
+                                    volume = safe_float(market.get('volume', 0.0))
+                                    return {
+                                        "symbol": symbol,
+                                        "name": title,
+                                        "price": prob,
+                                        "pe_dynamic": None,
+                                        "turnover_rate": None,
+                                        "market_cap_billions": volume / 1e9 if volume else None,
+                                        "currency": "USD",
+                                        "source": self.name
+                                    }
+        except Exception:
+            pass
+        return None
+
+
 class GenericRestApiProvider(BaseDataProvider):
     """
     Generic REST API Provider.
@@ -394,6 +521,154 @@ class GenericRestApiProvider(BaseDataProvider):
         return None
 
 
+class EastMoneyConsensusProvider(BaseDataProvider):
+    @property
+    def name(self) -> str:
+        return "EastMoney_Analyst_Consensus"
+
+    def fetch_quote(self, symbol: str) -> Optional[dict]:
+        # Only handle 6-digit A-share symbols
+        if not re.match(r"^\d{6}$", symbol):
+            return None
+            
+        suffix = "SH" if symbol.startswith(("6", "9")) else "SZ"
+        seccode = f"{symbol}.{suffix}"
+        
+        # Public EastMoney F10 financial forecast Web API
+        url = (
+            f"https://datacenter.eastmoney.com/securities/api/data/v1/get?"
+            f"reportName=RPT_F10_FN_FORECAST&"
+            f"columns=SECUCODE%2CSECURITY_NAME_ABBR%2CREPORT_DATE%2CNOTICE_DATE%2CFORECAST_TYPE%2CFORECAST_CONTENT%2CYOY_MIN_PCT%2CYOY_MAX_PCT&"
+            f"filter=(SECUCODE%3D%22{seccode}%22)&pageNumber=1&pageSize=1"
+        )
+        
+        try:
+            resp = requests.get(url, timeout=5)
+            if resp.status_code == 200:
+                res_json = resp.json()
+                if res_json.get("success") and res_json.get("result"):
+                    data_list = res_json["result"].get("data", [])
+                    if data_list:
+                        item = data_list[0]
+                        yoy_min = safe_float(item.get("YOY_MIN_PCT", 0.0))
+                        yoy_max = safe_float(item.get("YOY_MAX_PCT", 0.0))
+                        avg_yoy = (yoy_min + yoy_max) / 2.0 if yoy_min and yoy_max else (yoy_min or yoy_max or 0.0)
+                        
+                        return {
+                            "symbol": symbol,
+                            "name": item.get("SECURITY_NAME_ABBR", symbol),
+                            "price": avg_yoy,
+                            "pe_dynamic": None,
+                            "turnover_rate": None,
+                            "market_cap_billions": None,
+                            "currency": "CNY",
+                            "source": self.name
+                        }
+        except Exception as e:
+            print(f"[WARN] EastMoneyConsensusProvider failed: {e}", file=sys.stderr)
+        return None
+
+
+class YahooFinanceConsensusProvider(BaseDataProvider):
+    @property
+    def name(self) -> str:
+        return "Yahoo_Finance_Analyst_Consensus"
+
+    def fetch_quote(self, symbol: str) -> Optional[dict]:
+        # Bypass A-share symbols
+        if re.match(r"^\d{6}$", symbol):
+            return None
+            
+        # Yahoo Finance quoteSummary endpoint
+        url = f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{symbol}?modules=financialData,earningsTrend"
+        
+        headers = {"User-Agent": "Mozilla/5.0"}
+        try:
+            resp = requests.get(url, headers=headers, timeout=5)
+            if resp.status_code == 200:
+                res_json = resp.json()
+                result = res_json.get("quoteSummary", {}).get("result", [])
+                if result:
+                    data = result[0]
+                    financial_data = data.get("financialData", {})
+                    target_price = safe_float(financial_data.get("targetMeanPrice", {}).get("raw"))
+                    
+                    earnings_trend = data.get("earningsTrend", {}).get("trend", [])
+                    growth = 0.0
+                    for trend in earnings_trend:
+                        if trend.get("period") == "+1y":
+                            growth = safe_float(trend.get("growth", {}).get("raw")) * 100
+                            break
+                            
+                    if target_price or growth:
+                        return {
+                            "symbol": symbol,
+                            "name": f"{symbol}_Consensus",
+                            "price": growth if growth else target_price,
+                            "pe_dynamic": safe_float(financial_data.get("recommendationMean", {}).get("raw")),
+                            "turnover_rate": None,
+                            "market_cap_billions": None,
+                            "currency": "USD",
+                            "source": self.name
+                        }
+        except Exception as e:
+            print(f"[WARN] YahooFinanceConsensusProvider failed: {e}", file=sys.stderr)
+        return None
+
+
+class FREDMacroProvider(BaseDataProvider):
+    @property
+    def name(self) -> str:
+        return "FRED_Macro_Federal_Reserve"
+
+    def fetch_quote(self, symbol: str) -> Optional[dict]:
+        # Only handle macro query strings like "US10Y"
+        if symbol != "US10Y":
+            return None
+            
+        # Query US 10-Year Treasury Yield using Yahoo's ^TNX ticker
+        try:
+            url = "https://query1.finance.yahoo.com/v8/finance/chart/^TNX"
+            headers = {"User-Agent": "Mozilla/5.0"}
+            resp = requests.get(url, headers=headers, timeout=5)
+            if resp.status_code == 200:
+                meta = resp.json().get("chart", {}).get("result", [{}])[0].get("meta", {})
+                yield_val = safe_float(meta.get("regularMarketPrice"))
+                if yield_val:
+                    return {
+                        "symbol": symbol,
+                        "name": "US 10-Year Treasury Yield",
+                        "price": yield_val,
+                        "pe_dynamic": None,
+                        "turnover_rate": None,
+                        "market_cap_billions": None,
+                        "currency": "USD",
+                        "source": self.name
+                    }
+            else:
+                # Direct fallback query if chart endpoint fails
+                url_fallback = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=^TNX"
+                resp_fb = requests.get(url_fallback, headers=headers, timeout=5)
+                if resp_fb.status_code == 200:
+                    results = resp_fb.json().get("quoteResponse", {}).get("result", [])
+                    if results:
+                        yield_val = safe_float(results[0].get("regularMarketPrice"))
+                        if yield_val:
+                            return {
+                                "symbol": symbol,
+                                "name": "US 10-Year Treasury Yield",
+                                "price": yield_val,
+                                "pe_dynamic": None,
+                                "turnover_rate": None,
+                                "market_cap_billions": None,
+                                "currency": "USD",
+                                "source": self.name
+                            }
+        except Exception as e:
+            print(f"[WARN] FREDMacroProvider (US10Y) failed: {e}", file=sys.stderr)
+        return None
+
+
 # ─── Unified Data Provider Registry Gateway ───
 
 class DataProviderRegistry:
@@ -404,9 +679,14 @@ class DataProviderRegistry:
         self._providers.append(TencentAShareProvider())
         self._providers.append(SinaAShareProvider())
         self._providers.append(NetEaseAShareProvider())
+        self._providers.append(AkShareProvider())
+        self._providers.append(EastMoneyConsensusProvider())
         
         # 2. General free global fallback
         self._providers.append(YahooFinanceGlobalProvider())
+        self._providers.append(YahooFinanceConsensusProvider())
+        self._providers.append(FREDMacroProvider())
+        self._providers.append(PolymarketProvider())
         
         # 3. Commercial sources (prepended, only executed if API keys are set)
         self._providers.insert(0, AlphaVantageCommercialProvider())
@@ -482,7 +762,11 @@ class DataProviderRegistry:
         is_a_share = re.match(r"^\d{6}$", symbol) is not None
         
         # Split custom vs built-in providers to ensure custom plugins always override defaults
-        builtin_names = {"Tencent_HQ", "Sina_Finance", "NetEase_Finance", "Yahoo_Finance", "Alpha_Vantage_Commercial", "Tiingo_Commercial"}
+        builtin_names = {
+            "Tencent_HQ", "Sina_Finance", "NetEase_Finance", "AkShare_Finance",
+            "Yahoo_Finance", "Polymarket_Prediction_Market",
+            "Alpha_Vantage_Commercial", "Tiingo_Commercial"
+        }
         custom_providers = [p for p in self._providers if p.name not in builtin_names]
         builtin_providers = [p for p in self._providers if p.name in builtin_names]
         
@@ -490,7 +774,7 @@ class DataProviderRegistry:
         
         if is_a_share:
             # For A-shares, execute local domestic built-in providers first
-            domestic = [p for p in builtin_providers if "Finance" in p.name or "Tencent" in p.name]
+            domestic = [p for p in builtin_providers if "Finance" in p.name or "Tencent" in p.name or "AkShare" in p.name]
             providers_to_execute.extend(domestic)
             # Then execute global / commercial built-in fallbacks
             providers_to_execute.extend([p for p in builtin_providers if p not in domestic])

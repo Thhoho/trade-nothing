@@ -19,6 +19,10 @@ The project operates under five core pillars of investment science:
 4.  **Discretionary Capital Fuse (主观资本熔断机制)**: Sizing must reflect logical uncertainty. If the logical friction (LFI) of a thesis is high or the win rate collapses, the system triggers an instant **0% Kelly Capital Fuse** to prevent cognitive-bias-driven capital destruction.
 5.  **Decorated Facts & Narrative Arbitrage (被装饰的事实与叙事套利)**: Public opinion on professional forums (such as Snowball or Futu) is often seeded by grassroots actors close to the supply chain (engineers, procurement agents, sales managers). Therefore, narratives are not mere noise — they are **"decorated facts" (被装饰的事实)**.
     *   *Usage Protocol (使用法则)*: While hard physical facts (Customs HS, Bids) possess absolute negation power and cannot be defeated by opinion, "decorated facts" are treated as **Weak Signal Nodes** in Dung's graph. They are highly vulnerable to hard data attacks. We explicitly exploit the delta between "narrative heat" and "physical shipping volumes" to quantify expectation gaps and trade reflexivity (Soros).
+6.  **The Anti-Formalism Principle (反格式主义公理 / 战报重于报告)**: Standardization must never suppress raw variant perceptions. 
+    *   *Sovereign Policy (主权策略)*: The final report template is **not a sell-side marketing brochure, but a battlefield log of survived logic (存活逻辑的交锋战报)**. We reject cognitive fill-in-the-blank behaviors. 
+    *   *Graceful Collapse (优雅塌缩)*: If the adversarial loop yields no legitimate variant perception, the output gracefully collapses to a single, brutally honest **"No Edge Statement" (无套利机会宣告)**.
+    *   *Structure as Proof Ledger*: We only standardize the **mathematical proof ledger** (Dung accepted nodes, Kelly sizing factors, and physical kill switches) to guarantee risk discipline, while giving the core inductive reasoning and qualitative "ceiling" absolute free-form cognitive bandwidth.
 
 ---
 

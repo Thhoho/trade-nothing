@@ -1,4 +1,4 @@
-# Design Specification: Trade Nothing v9.0 — The Sovereign Investment Master
+# Design Specification: Trade Nothing v0.9.1 — The Sovereign Investment Master
 
 This specification outlines the architecture, prompts, and engine logic updates required to transition `trade-nothing` from a backward-looking "fundamental audit expert" into a forward-looking "sovereign investment master."
 

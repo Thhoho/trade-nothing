@@ -23,7 +23,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SKILL_DIR = os.path.dirname(SCRIPT_DIR)
 DEFAULT_EVOLUTION_PATH = os.path.join(SKILL_DIR, "Methodology_Evolution_Backup.md")
 REMINDERS_SCRIPT = os.path.join(os.path.expanduser("~"), ".gemini/skills/mac-reminders/scripts/manage_reminders.py")
-BASE_SCRATCH_DIR = "/Users/xiaweiqi/.gemini/.scratch/trade-nothing"
+BASE_SCRATCH_DIR = os.path.join(os.path.expanduser("~"), ".gemini/.scratch/trade-nothing")
 
 # Concept alias dictionary for semantic expansions
 ALIAS_MAP = {
@@ -549,7 +549,7 @@ def generate_next_round_prompts(topic: str, state_file: str):
         )
 
     # Detective next round prompt
-    detective_prompt = f"""Role: Trade Nothing v9.0 — The Detective (侦探智能体) [Round {next_round}]
+    detective_prompt = f"""Role: Trade Nothing v0.9.1 — The Detective (侦探智能体) [Round {next_round}]
 Topic: {topic}
 
 在上一轮辩论中，审问者（Inquisitor）针对你的 Bull Thesis 提出了致命攻击向量（Lethal Attack Vectors）。你目前的逻辑防线已经暴露出严重的漏洞。
@@ -565,6 +565,11 @@ Topic: {topic}
 
 {mode_instruction}
 
+【🎯 大师认知透镜 (Masters Cognitive Lenses)】:
+* **Benjamin Graham (安全边际)**: 必须夯实物理事实防线。你本轮的所有辩护、看多逻辑，必须严格锚定在下方【海关与微观供应链硬证据库】中，严禁无硬数据支撑的空洞吹水。
+* **George Soros (反身性作用)**: 阐释市场高估值溢价或强叙事预期如何反向助推标的企业融资扩产、降低负债成本以改变其物理基本面，顺应趋势。
+* **Philip Fisher (草根调研提纯)**: 深度三角校验海关、中标及现货价，揭示市场一致预期之外的边际定价错配。
+
 🚨🚨🚨【海关与微观供应链硬证据库（CRITICAL INPUT）】🚨🚨🚨:
 你本轮的所有辩护、看多逻辑及出货推演，必须严格锚定在以下【海关与微观供应链硬证据库】中。严禁进行任何无微观硬数据支撑的定性吹水或线性外推！
 {formatted_facts.strip()}
@@ -577,7 +582,7 @@ Topic: {topic}
 Claim_X (物理代理数据支撑) + 证据B (三方渠道校验) → 边际定价变化 → 逻辑硬化成立。"""
 
     # Inquisitor next round prompt
-    inquisitor_prompt = f"""Role: Trade Nothing v9.0 — The Inquisitor (审问者智能体) [Round {next_round}]
+    inquisitor_prompt = f"""Role: Trade Nothing v0.9.1 — The Inquisitor (审问者智能体) [Round {next_round}]
 Topic: {topic}
 
 在这一轮（Round {next_round}）中，侦探（Detective）将针对你上一轮提出的漏洞进行定向辩护。你的核心任务是执行【二级漏洞审计与反身性打击】。
@@ -589,6 +594,11 @@ Topic: {topic}
 {formatted_facts.strip()}
 
 {inquisitor_mode_instruction}
+
+【⚔️ 大师认知透镜 (Masters Cognitive Lenses)】:
+* **Charlie Munger (逆向思维)**: “反过来想，总是反过来想。”本轮的攻击发起必须无条件服从【逆向死亡路径公理】，反向推演其在 6 个月内暴跌 70% 的致命路径。
+* **Howard Marks (二阶思维)**: “大众相信什么，为什么这早已定价，我如何找到其期望破灭的非平庸破绽？”刺破侦探的 Narrative Hype 泡沫。
+* **Nassim Taleb (黑天鹅与反脆弱)**: 审计侦探的核心假设中是否存在重大脆弱性或尾部风险，包括工程物理学极限、供给链瓶颈、或边际利润率被辅料价格侵蚀的拐点。
 
 🚨🚨🚨【平庸共识禁区约束】🚨🚨🚨:
 你同样被绝对禁止使用以下任何平庸的、人云亦云的看空逻辑：
