@@ -32,7 +32,7 @@ ACTIVE_RESEARCH_SESSIONS: Dict[str, dict] = {}
 SESSIONS_LOCK = threading.Lock()
 
 
-def _simulate_debate_worker(symbol: str, target_price: float, fractional_kelly: float = 0.25):
+def _simulate_debate_worker(symbol: str, target_price: float, fractional_kelly: float = 0.25, company_cash_growth: bool = False):
     """
     Background worker simulating a 3-round adversarial debate
     and triggering automated Kelly execution upon convergence.
@@ -198,7 +198,11 @@ def _simulate_debate_worker(symbol: str, target_price: float, fractional_kelly: 
             target_price=target_price,
             current_price=curr_price,
             lfi=final_lfi,
-            fractional=fractional_kelly
+            fractional=fractional_kelly,
+            afi=r3_data.get("afi", 0.0),
+            es=r3_data.get("es", 1.0),
+            egi=r3_data.get("egi", 0.0),
+            company_cash_growth=company_cash_growth
         )
         
         with SESSIONS_LOCK:
@@ -294,6 +298,7 @@ class TradeNothingRequestHandler(BaseHTTPRequestHandler):
             symbol = data.get("symbol")
             target_price = data.get("target_price")
             fractional = data.get("fractional", 0.25)
+            company_cash_growth = data.get("company_cash_growth", False)
             
             if not symbol or target_price is None:
                 self._send_json(400, {"error": "Missing required parameters: symbol, target_price"})
@@ -306,7 +311,7 @@ class TradeNothingRequestHandler(BaseHTTPRequestHandler):
                 return
 
             # Start async background research debate
-            thread = threading.Thread(target=_simulate_debate_worker, args=(symbol, target_price, fractional))
+            thread = threading.Thread(target=_simulate_debate_worker, args=(symbol, target_price, fractional, company_cash_growth))
             thread.daemon = True
             thread.start()
 
@@ -324,6 +329,11 @@ class TradeNothingRequestHandler(BaseHTTPRequestHandler):
             current_price = data.get("current_price")
             lfi = data.get("lfi", 0.0)
             fractional = data.get("fractional", 0.25)
+            afi = data.get("afi", 0.0)
+            es = data.get("es", 1.0)
+            egi = data.get("egi", 0.0)
+            max_egi = data.get("max_egi", 10.0)
+            company_cash_growth = data.get("company_cash_growth", False)
 
             if not symbol or posterior is None or target_price is None or current_price is None:
                 self._send_json(400, {"error": "Missing required parameters: symbol, posterior, target_price, current_price"})
@@ -337,7 +347,12 @@ class TradeNothingRequestHandler(BaseHTTPRequestHandler):
                     target_price=float(target_price),
                     current_price=float(current_price),
                     lfi=float(lfi),
-                    fractional=float(fractional)
+                    fractional=float(fractional),
+                    afi=float(afi),
+                    es=float(es),
+                    egi=float(egi),
+                    max_egi=float(max_egi),
+                    company_cash_growth=bool(company_cash_growth)
                 )
                 self._send_json(200, trade_res)
             except Exception as e:
@@ -353,6 +368,11 @@ class TradeNothingRequestHandler(BaseHTTPRequestHandler):
             # Optional pre-calculated parameters
             posterior = data.get("posterior")
             lfi = data.get("lfi", 0.0)
+            afi = data.get("afi", 0.0)
+            es = data.get("es", 1.0)
+            egi = data.get("egi", 0.0)
+            max_egi = data.get("max_egi", 10.0)
+            company_cash_growth = data.get("company_cash_growth", False)
 
             if not ticker or price is None or target_price is None:
                 self._send_json(400, {"error": "Webhook missing critical parameters: ticker, price, target_price"})
@@ -374,7 +394,12 @@ class TradeNothingRequestHandler(BaseHTTPRequestHandler):
                         posterior=float(posterior),
                         target_price=target_price,
                         current_price=price,
-                        lfi=float(lfi)
+                        lfi=float(lfi),
+                        afi=float(afi),
+                        es=float(es),
+                        egi=float(egi),
+                        max_egi=float(max_egi),
+                        company_cash_growth=bool(company_cash_growth)
                     )
                     self._send_json(200, {
                         "webhook_status": "PROCESSED_IMMEDIATELY",
@@ -384,7 +409,7 @@ class TradeNothingRequestHandler(BaseHTTPRequestHandler):
                     self._send_json(500, {"error": f"Immediate execution failed: {str(e)}"})
             else:
                 # Spawn background research thread to check consensus expectations first
-                thread = threading.Thread(target=_simulate_debate_worker, args=(ticker, target_price))
+                thread = threading.Thread(target=_simulate_debate_worker, args=(ticker, target_price, 0.25, company_cash_growth))
                 thread.daemon = True
                 thread.start()
                 self._send_json(202, {

@@ -188,16 +188,22 @@ class PortfolioManager:
         target_price: float, 
         current_price: float, 
         fractional: float = 0.25,
-        lfi: float = 0.0
+        lfi: float = 0.0,
+        afi: float = 0.0,
+        es: float = 1.0,
+        egi: float = 0.0,
+        max_egi: float = 10.0,
+        company_cash_growth: bool = False
     ) -> float:
         """
-        Computes dynamic fractional Kelly allocation.
+        Computes dynamic fractional Kelly allocation under Entropy-Discounted Sizing model.
         Formula:
-            f* = fractional * (p * b - q) / b
+            f* = fractional * (p_discounted * b - q_discounted) / b
         Where:
-            p = posterior probability (Judge consensus win rate)
+            C = (1 - AFI) * es * (1 - |EGI|/max_egi)
+            p_discounted = C * posterior + (1 - C) * 0.5
             b = asymmetric risk-reward ratio: abs(target - current) / current
-            q = 1 - p
+            q_discounted = 1 - p_discounted
         """
         # 1. Capital Protection Circuit Breakers
         if lfi >= 0.15:
@@ -209,7 +215,18 @@ class PortfolioManager:
         if current_price <= 0:
             return 0.0
 
-        p = posterior
+        # Apply Entropy-Discounted Sizing to Win Probability
+        c_afi = max(0.0, min(1.0, afi))
+        c_es = max(0.0, min(1.0, es))
+        # EGI is normalized between [-1.0, 1.0], so c_egi_ratio is simply abs(egi)
+        c_egi_ratio = min(1.0, abs(egi))
+        
+        confidence = (1.0 - c_afi) * c_es * (1.0 - c_egi_ratio)
+        confidence = max(0.0, min(1.0, confidence))
+        
+        p = confidence * posterior + (1.0 - confidence) * 0.5
+        p = max(0.0, min(1.0, p))
+        
         b = abs(target_price - current_price) / current_price
         q = 1.0 - p
 
@@ -225,8 +242,19 @@ class PortfolioManager:
         # Apply fractional allocation multiplier (e.g. Quarter-Kelly) for capital conservation
         allocation = f_star * fractional
         
-        # Max cap allocation for single ticker is 50% to prevent over-leverage
-        return min(allocation, 0.50)
+        # Max cap allocation for single ticker is 50% by default, reduced under high Expectation Gap Index
+        base_cap = 0.50
+        if egi > 0:
+            if company_cash_growth:
+                # Reflexivity Bubble Exception: bypass Kelly bet cap reduction under Soros reflexivity
+                final_cap = base_cap
+            else:
+                # Standard risk reduction: cap reduced based on the size of the normalized expectation gap (scaled by 0.40)
+                final_cap = max(0.10, base_cap - 0.40 * egi)
+        else:
+            final_cap = base_cap
+            
+        return min(allocation, final_cap)
 
     # ─── Standard Order Sizing Rules ──────────────────────────────────────
 
@@ -265,10 +293,15 @@ class PortfolioManager:
         current_price: float,
         lfi: float = 0.0,
         fractional: float = 0.25,
-        connector: BaseTradeConnector = None
+        connector: BaseTradeConnector = None,
+        afi: float = 0.0,
+        es: float = 1.0,
+        egi: float = 0.0,
+        max_egi: float = 10.0,
+        company_cash_growth: bool = False
     ) -> dict:
         """
-        Evaluates current holdings, computes Kelly target position value,
+        Evaluates current holdings, computes Kelly target position value under Entropy-Discounted Sizing model,
         rounds quantities to standard asset lot sizes, and executes standard order.
         """
         if connector is None:
@@ -276,8 +309,19 @@ class PortfolioManager:
 
         symbol_type, currency = self.classify_symbol(symbol)
         
-        # Calculate target Kelly fraction
-        k_fraction = self.calculate_kelly_size(posterior, target_price, current_price, fractional, lfi)
+        # Calculate target Kelly fraction with Entropy-Discounted parameters and Reflexivity options
+        k_fraction = self.calculate_kelly_size(
+            posterior=posterior,
+            target_price=target_price,
+            current_price=current_price,
+            fractional=fractional,
+            lfi=lfi,
+            afi=afi,
+            es=es,
+            egi=egi,
+            max_egi=max_egi,
+            company_cash_growth=company_cash_growth
+        )
 
         with self._state_transaction(read_only=False) as state:
             cash_bal = state["cash"].get(currency, 0.0)

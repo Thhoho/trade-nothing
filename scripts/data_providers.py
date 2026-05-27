@@ -305,6 +305,133 @@ class TiingoCommercialProvider(BaseDataProvider):
         return None
 
 
+class AkShareProvider(BaseDataProvider):
+    @property
+    def name(self) -> str:
+        return "AkShare_Finance"
+
+    def fetch_quote(self, symbol: str) -> Optional[dict]:
+        # AkShare handles A-shares 6-digit symbols
+        if not re.match(r"^\d{6}$", symbol):
+            return None
+
+        try:
+            # Inline import for soft-fail portability
+            import akshare as ak
+            df = ak.stock_zh_a_spot_em()
+            if df is not None and not df.empty:
+                row = df[df['代码'] == symbol]
+                if not row.empty:
+                    r = row.iloc[0]
+                    price = safe_float(r.get("最新价"))
+                    if price is not None:
+                        market_cap_raw = safe_float(r.get("总市值"))
+                        return {
+                            "symbol": symbol,
+                            "name": r.get("名称", "Unknown"),
+                            "price": price,
+                            "pe_dynamic": safe_float(r.get("市盈率-动态")),
+                            "turnover_rate": safe_float(r.get("换手率")),
+                            "market_cap_billions": market_cap_raw / 1e8 if market_cap_raw is not None else None,
+                            "currency": "CNY",
+                            "source": self.name
+                        }
+        except Exception:
+            pass
+        return None
+
+    def fetch_fundamental(self, symbol: str) -> Optional[dict]:
+        if not re.match(r"^\d{6}$", symbol):
+            return None
+
+        # Build EastMoney style symbol (e.g. 300118.SZ or 600000.SH)
+        if symbol.startswith(("00", "30")):
+            em_symbol = f"{symbol}.SZ"
+        elif symbol.startswith(("60", "68")):
+            em_symbol = f"{symbol}.SH"
+        else:
+            em_symbol = f"{symbol}.SZ"
+
+        try:
+            import akshare as ak
+            df = ak.stock_financial_analysis_indicator_em(symbol=em_symbol, indicator="按报告期")
+            if df is not None and not df.empty and "REPORT_DATE" in df.columns:
+                df = df.sort_values("REPORT_DATE", ascending=False)
+                r = df.iloc[0]
+                
+                def _fmt_date(v):
+                    if v is None or str(v) == "nan":
+                        return None
+                    if hasattr(v, "strftime"):
+                        return v.strftime("%Y-%m-%d")
+                    return str(v)[:10]
+
+                return {
+                    "em_symbol": em_symbol,
+                    "report_date": _fmt_date(r.get("REPORT_DATE")),
+                    "notice_date": _fmt_date(r.get("NOTICE_DATE")),
+                    "parent_net_profit": safe_float(r.get("PARENTNETPROFIT")),
+                    "parent_net_profit_yoy_pct": safe_float(r.get("PARENTNETPROFITTZ")),
+                    "total_operating_revenue": safe_float(r.get("TOTALOPERATEREVE")),
+                    "revenue_yoy_pct": safe_float(r.get("TOTALOPERATEREVETZ")),
+                    "basic_eps": safe_float(r.get("EPSJB")),
+                    "roe_pct": safe_float(r.get("ROEJQ")),
+                    "debt_to_asset_pct": safe_float(r.get("ZCFZL")),
+                    "source": self.name
+                }
+        except Exception:
+            pass
+        return None
+
+
+class PolymarketProvider(BaseDataProvider):
+    @property
+    def name(self) -> str:
+        return "Polymarket_Prediction_Market"
+
+    def fetch_quote(self, symbol: str) -> Optional[dict]:
+        # Polymarket handles narrative/prediction markets. Bypass if A-share numeric symbol
+        if re.match(r"^\d{6}$", symbol):
+            return None
+
+        query = symbol.replace("_", " ").strip()
+        query_lower = query.lower()
+        url = "https://gamma-api.polymarket.com/events?active=true&closed=false&limit=100"
+        
+        try:
+            resp = requests.get(url, timeout=5)
+            if resp.status_code == 200:
+                events = resp.json()
+                for event in events:
+                    title = event.get('title', '')
+                    if query_lower in title.lower():
+                        markets = event.get('markets', [])
+                        for market in markets:
+                            if market.get('active'):
+                                raw_prices = market.get('outcomePrices', '[]')
+                                prices = json.loads(raw_prices) if isinstance(raw_prices, str) else raw_prices
+                                try:
+                                    prob = float(prices[0]) if prices else None
+                                except Exception:
+                                    prob = None
+                                    
+                                if prob is not None:
+                                    volume = safe_float(market.get('volume', 0.0))
+                                    return {
+                                        "symbol": symbol,
+                                        "name": title,
+                                        "price": prob,
+                                        "pe_dynamic": None,
+                                        "turnover_rate": None,
+                                        "market_cap_billions": volume / 1e9 if volume else None,
+                                        "currency": "USD",
+                                        "source": self.name
+                                    }
+        except Exception:
+            pass
+        return None
+
+
 class GenericRestApiProvider(BaseDataProvider):
     """
     Generic REST API Provider.
@@ -404,9 +531,11 @@ class DataProviderRegistry:
         self._providers.append(TencentAShareProvider())
         self._providers.append(SinaAShareProvider())
         self._providers.append(NetEaseAShareProvider())
+        self._providers.append(AkShareProvider())
         
         # 2. General free global fallback
         self._providers.append(YahooFinanceGlobalProvider())
+        self._providers.append(PolymarketProvider())
         
         # 3. Commercial sources (prepended, only executed if API keys are set)
         self._providers.insert(0, AlphaVantageCommercialProvider())
@@ -482,7 +611,11 @@ class DataProviderRegistry:
         is_a_share = re.match(r"^\d{6}$", symbol) is not None
         
         # Split custom vs built-in providers to ensure custom plugins always override defaults
-        builtin_names = {"Tencent_HQ", "Sina_Finance", "NetEase_Finance", "Yahoo_Finance", "Alpha_Vantage_Commercial", "Tiingo_Commercial"}
+        builtin_names = {
+            "Tencent_HQ", "Sina_Finance", "NetEase_Finance", "AkShare_Finance",
+            "Yahoo_Finance", "Polymarket_Prediction_Market",
+            "Alpha_Vantage_Commercial", "Tiingo_Commercial"
+        }
         custom_providers = [p for p in self._providers if p.name not in builtin_names]
         builtin_providers = [p for p in self._providers if p.name in builtin_names]
         
@@ -490,7 +623,7 @@ class DataProviderRegistry:
         
         if is_a_share:
             # For A-shares, execute local domestic built-in providers first
-            domestic = [p for p in builtin_providers if "Finance" in p.name or "Tencent" in p.name]
+            domestic = [p for p in builtin_providers if "Finance" in p.name or "Tencent" in p.name or "AkShare" in p.name]
             providers_to_execute.extend(domestic)
             # Then execute global / commercial built-in fallbacks
             providers_to_execute.extend([p for p in builtin_providers if p not in domestic])

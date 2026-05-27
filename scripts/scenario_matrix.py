@@ -21,11 +21,16 @@ from datetime import datetime
 class ScenarioMatrix:
     """Structured scenario matrix engine with Kelly sizing."""
 
-    def __init__(self, topic: str):
+    def __init__(self, topic: str, afi: float = 0.0, es: float = 1.0, egi: float = 0.0, max_egi: float = 10.0, company_cash_growth: bool = False):
         self.topic = topic
         self.scenarios = []
         self.current_price = None
         self.timestamp = datetime.now().isoformat()
+        self.afi = afi
+        self.es = es
+        self.egi = egi
+        self.max_egi = max_egi
+        self.company_cash_growth = company_cash_growth
 
     def add_scenario(self, name: str, probability: float, target_price: float,
                      trigger: str, key_assumptions: list, timeframe: str):
@@ -100,9 +105,37 @@ class ScenarioMatrix:
             return 0
 
         b = avg_win / avg_loss
-        kelly = (b * p - q) / b
+        
+        # Apply Entropy-Discounted Sizing
+        c_afi = max(0.0, min(1.0, self.afi))
+        c_es = max(0.0, min(1.0, self.es))
+        # EGI is normalized between [-1.0, 1.0], so c_egi_ratio is simply abs(self.egi)
+        c_egi_ratio = min(1.0, abs(self.egi))
+        
+        confidence = (1.0 - c_afi) * c_es * (1.0 - c_egi_ratio)
+        confidence = max(0.0, min(1.0, confidence))
+        
+        p_discounted = confidence * p + (1.0 - confidence) * 0.5
+        p_discounted = max(0.0, min(1.0, p_discounted))
+        
+        q_discounted = 1.0 - p_discounted
+        
+        kelly = (b * p_discounted - q_discounted) / b
         half_kelly = kelly / 2
-        return round(max(0, min(half_kelly, 0.25)), 4)
+        
+        # Dynamic Kelly cap scaling based on expectation gap
+        base_cap = 0.25  # Standard cap is 25% for half-kelly in scenario matrix
+        if self.egi > 0:
+            if self.company_cash_growth:
+                # Reflexivity Bubble Exception: bypass Kelly bet cap reduction under Soros reflexivity
+                final_cap = base_cap
+            else:
+                # Standard risk reduction: reduce position cap based on normalized EGI intensity (scaled by 0.20)
+                final_cap = max(0.05, base_cap - 0.20 * self.egi)
+        else:
+            final_cap = base_cap
+
+        return round(max(0, min(half_kelly, final_cap)), 4)
 
     def to_dict(self) -> dict:
         validation = self.validate()

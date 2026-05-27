@@ -35,7 +35,7 @@ def check_server_online(url: str) -> bool:
     return False
 
 
-def run_via_daemon(url: str, symbol: str, target_price: float, fractional: float):
+def run_via_daemon(url: str, symbol: str, target_price: float, fractional: float, company_cash_growth: bool = False):
     """Delegates research and execution tasks to the background server via REST"""
     print(f"📡 [Bridge] Standalone Autonomous Daemon detected at {url}.")
     print(f"📡 [Bridge] Initiating background research debate for symbol '{symbol}'...", flush=True)
@@ -45,7 +45,8 @@ def run_via_daemon(url: str, symbol: str, target_price: float, fractional: float
     payload = {
         "symbol": symbol,
         "target_price": target_price,
-        "fractional": fractional
+        "fractional": fractional,
+        "company_cash_growth": company_cash_growth
     }
     
     try:
@@ -91,7 +92,7 @@ def run_via_daemon(url: str, symbol: str, target_price: float, fractional: float
         time.sleep(1.0)
 
 
-def run_locally(symbol: str, target_price: float, fractional: float):
+def run_locally(symbol: str, target_price: float, fractional: float, company_cash_growth: bool = False):
     """Local Fallback execution: imports modules and executes logic directly in CLI"""
     print("⚠️  [Bridge] Autonomous Daemon is offline. Falling back to Local Execution Track...")
     print("⏳ [Local] Performing Cascading global price fetch and local Kelly calculation...")
@@ -193,7 +194,11 @@ def run_locally(symbol: str, target_price: float, fractional: float):
             target_price=target_price,
             current_price=curr_price,
             lfi=sim_lfi,
-            fractional=fractional
+            fractional=fractional,
+            afi=r3_data.get("afi", 0.0),
+            es=r3_data.get("es", 1.0),
+            egi=r3_data.get("egi", 0.0),
+            company_cash_growth=company_cash_growth
         )
         
         print(f"🎉 [Local] Transaction Complete:")
@@ -209,14 +214,15 @@ def main():
     parser.add_argument("--target", type=float, required=True, help="Target Price for asymmetric sizing")
     parser.add_argument("--fractional", type=float, default=0.25, help="Fractional Kelly Multiplier (e.g. 0.25 for Quarter-Kelly)")
     parser.add_argument("--server-url", default="http://localhost:8000", help="URL of the standing daemon server")
+    parser.add_argument("--company-cash-growth", action="store_true", help="Bypass Kelly bet cap reduction under reflexivity bubble conditions")
 
     args = parser.parse_args()
 
     # Dynamic auto-discovery
     if check_server_online(args.server_url):
-        run_via_daemon(args.server_url, args.code, args.target, args.fractional)
+        run_via_daemon(args.server_url, args.code, args.target, args.fractional, args.company_cash_growth)
     else:
-        run_locally(args.code, args.target, args.fractional)
+        run_locally(args.code, args.target, args.fractional, args.company_cash_growth)
 
 
 if __name__ == "__main__":

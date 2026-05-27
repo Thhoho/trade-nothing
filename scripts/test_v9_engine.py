@@ -76,6 +76,8 @@ def run_test_suite():
     # Check if the Vision Node was successfully defeated
     vision_defeated = any("[Vision Node" in node for node in ge) == False
     print(f"✅ Target Verification (Vision Node Defeated in Audit Mode): {vision_defeated}")
+    assert vision_defeated is True, "Error: Speculative Vision Node was NOT defeated in Audit Mode!"
+    assert "System:AuditHardenedPenalty" in ge, "Error: Audit hardened penalty node was not injected!"
 
 
     # ------------------------------------------------------------------
@@ -121,6 +123,7 @@ def run_test_suite():
     
     vision_accepted = any("[Vision Node" in node for node in ge_2)
     print(f"✅ Target Verification (Vision Node Allowed in Vision Mode): {vision_accepted}")
+    assert vision_accepted is True, "Error: Speculative Vision Node was incorrectly defeated in Vision Mode!"
     
     print("\n==================================================================")
     print("🎉 Test Suite Execution Complete!")
