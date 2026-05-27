@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Trade Nothing v6.0 — DeepThink Pipeline Orchestration Helper
+Trade Nothing v0.9.3 — DeepThink Pipeline Orchestration Helper
 
 Automates:
 1. Dynamic prior active memory extraction and injection (with semantic concept aliasing).
 2. Topic slugification for physical state and folder isolation.
-3. Harvesting unresolved attacks and converting them to nested Local Issues & macOS Reminders.
+3. Harvesting unresolved attacks and converting them to nested Local Issues & OS Reminders.
 4. Maintaining a structured JSON Research Index database.
 5. Dynamically generating academic-grade, edge-forcing subagent prompts (Forbidden Consensus, Proxy Anchoring, and Premortem Axiom).
 """
@@ -22,8 +22,19 @@ from datetime import datetime, timedelta
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SKILL_DIR = os.path.dirname(SCRIPT_DIR)
 DEFAULT_EVOLUTION_PATH = os.path.join(SKILL_DIR, "Methodology_Evolution_Backup.md")
-REMINDERS_SCRIPT = os.path.join(os.path.expanduser("~"), ".gemini/skills/mac-reminders/scripts/manage_reminders.py")
-BASE_SCRATCH_DIR = os.path.join(os.path.expanduser("~"), ".gemini/.scratch/trade-nothing")
+
+# Cross-platform path resolution (no hardcoded macOS paths)
+try:
+    from utils import get_scratch_dir
+    BASE_SCRATCH_DIR = os.path.join(get_scratch_dir(), "trade-nothing")
+except ImportError:
+    BASE_SCRATCH_DIR = os.path.join(os.path.expanduser("~"), ".trade-nothing/scratch")
+
+# Optional reminders script - auto-detected, not hardcoded
+REMINDERS_SCRIPT = os.environ.get(
+    "TRADE_NOTHING_REMINDERS_SCRIPT",
+    os.path.join(os.path.expanduser("~"), ".gemini/skills/mac-reminders/scripts/manage_reminders.py")
+)
 
 # Concept alias dictionary for semantic expansions
 ALIAS_MAP = {
@@ -163,7 +174,7 @@ def extract_active_memory(topic: str, evolution_path: str) -> str:
         return "ℹ️ Active memory scanned. No context-matching prior constraints found. Keep general vigilance."
 
     output = (
-        "### 🧠 Active Memory Injection (v6.0 Prior constraints)\n"
+        "### Active Memory Injection (Prior constraints)\n"
         "主 Agent 根据当前标的自动提取的历史记忆和负反馈约束。侦探与审问者子智能体在进行分析时**必须无条件遵守**：\n\n"
         + "\n\n".join(extracted_memory)
     )
@@ -219,7 +230,7 @@ def send_webhook_notification(webhook_url: str, topic: str, attack_text: str, re
                 "content": {
                     "post": {
                         "zh_cn": {
-                            "title": f"🚨 [Trade Nothing v6.0] 质证逻辑漏洞预警: {topic}",
+                            "title": f"🚨 [Trade Nothing v0.9.3] 质证逻辑漏洞预警: {topic}",
                             "content": [
                                 [
                                     {"tag": "text", "text": "未反驳致命攻击向量:\n"},
@@ -240,7 +251,7 @@ def send_webhook_notification(webhook_url: str, topic: str, attack_text: str, re
         else:
             payload = {
                 "text": (
-                    f"🚨 *[Trade Nothing v6.0] 质证逻辑漏洞预警: {topic}*\n\n"
+                    f"🚨 *[Trade Nothing v0.9.3] 质证逻辑漏洞预警: {topic}*\n\n"
                     f"*未反驳致命攻击向量*:\n> {attack_text}\n\n"
                     f"*未能推翻归因*:\n> {reason}\n\n"
                     f"*触发监控时间*: `{trigger_date_str}`\n"
@@ -330,7 +341,7 @@ target_date: {trigger_date_str}
 # [TODO] Trade Nothing: Unresolved Attack on {topic}
 
 ## Description
-This issue was dynamically harvested by the Trade Nothing v6.0 Pipeline due to an unresolved adversarial attack in Dung's graph.
+This issue was dynamically harvested by the Trade Nothing v0.9.3 Pipeline due to an unresolved adversarial attack in Dung's graph.
 
 **Attack Vector**:
 {attack_text}
@@ -464,45 +475,66 @@ def generate_next_round_prompts(topic: str, state_file: str):
     formatted_consensus = "\n".join(f"  * {c}" for c in forbidden_consensus[:6])
 
     # ─── MICRO SUPPLY CHAIN FACT CRAWLING & INJECTION ───
+    # Dynamic symbol extraction — NO hardcoded defaults
     codes = re.findall(r"\d{6}", topic)
-    symbol = codes[0] if codes else "300118"
-    
-    tech_keyword = "低温银浆"
+    symbol = codes[0] if codes else ""
+
+    # Dynamic tech keyword extraction from topic via ALIAS_MAP
+    tech_keyword = ""
     topic_lower = topic.lower()
     for category, synonyms in ALIAS_MAP.items():
         for syn in synonyms:
             if syn in topic_lower:
                 tech_keyword = syn
                 break
+        if tech_keyword:
+            break
+
+    # If no specific keyword matched, use a cleaned topic fragment
+    if not tech_keyword:
+        cjk_words = re.findall(r'[\u4e00-\u9fa5]{2,}', topic)
+        tech_keyword = cjk_words[0] if cjk_words else topic[:10]
 
     formatted_facts = ""
+    has_any_data = False
     try:
         from verified_crawler import VerifiedCrawler
         crawler = VerifiedCrawler()
-        micro_facts = crawler.synthesize_micro_facts(symbol, tech_keyword)
-        
-        if micro_facts:
+        crawl_symbol = symbol if symbol else tech_keyword
+        micro_facts = crawler.synthesize_micro_facts(crawl_symbol, tech_keyword)
+        availability = micro_facts.get("data_availability", {})
+
+        # Only inject sections where REAL data was obtained
+        if availability.get("tenders"):
+            has_any_data = True
             formatted_facts += "【1. 公开招标与中标公示 (Public Bids)】:\n"
             for t in micro_facts.get("micro_order_tenders", []):
-                formatted_facts += f"  * {t['title']} | 中标参数: {t['snippet']} ({t['date']})\n"
-            
+                formatted_facts += f"  * {t['title']} | {t['snippet']} ({t['date']})\n"
+
+        if availability.get("commodity_price"):
+            has_any_data = True
             c = micro_facts.get("raw_material_price_track", {})
             formatted_facts += f"\n【2. 供应链大宗原料高频价格 (Raw Material Price)】:\n"
-            formatted_facts += f"  * 辅料/材料: {c.get('material')} | 均价: {c.get('price')} {c.get('unit')} | 周变动: {c.get('trend_wow')} (来源: {c.get('source')})\n"
-            
+            formatted_facts += f"  * 材料: {c.get('material')} | 均价: {c.get('price')} {c.get('unit')} | 周变动: {c.get('trend_wow')} (来源: {c.get('source')})\n"
+
+        if availability.get("customs"):
+            has_any_data = True
             cust = micro_facts.get("customs_export_validation", {})
             formatted_facts += f"\n【3. 海关进出口出货核验 (Port & HS Code)】:\n"
-            formatted_facts += f"  * 海关HS编码: {cust.get('hs_code')} | 宁波海关月出货值: {cust.get('export_value_millions_usd')}百万美元 | 换算均价: {cust.get('implied_price_per_watt')} USD/W | 月环比: {cust.get('change_mom')}\n"
-            
-            formatted_facts += f"\n【4. 买方草根调研与专家纪要泄露 (Expert Minutes)】:\n"
+            formatted_facts += f"  * HS编码: {cust.get('hs_code')} | 月出货值: {cust.get('export_value_millions_usd')}百万美元 | 月环比: {cust.get('change_mom')}\n"
+
+        if availability.get("expert_minutes"):
+            has_any_data = True
+            formatted_facts += f"\n【4. 买方草根调研与专家纪要 (Expert Minutes)】:\n"
             for e in micro_facts.get("expert_minutes_leak", []):
                 formatted_facts += f"  * {e['title']}: {e['snippet']} ({e['date']})\n"
     except Exception as ex:
-        formatted_facts = f"⚠️ [CRAWLER ERROR] Micro supply chain intelligence temporarily offline: {ex}\n"
+        formatted_facts = ""
+        print(f"[PIPELINE WARN] Crawler offline: {ex}", file=sys.stderr)
 
     # Determine the topic mode
     topic_lower = topic.lower()
-    cyclical_keywords = ["solar", "光伏", "新能源", "hjt", "电池", "锂电", "topcon", "储能", "电池柜", "300118", "宁德时代", "隆基"]
+    cyclical_keywords = ["solar", "光伏", "新能源", "hjt", "电池", "锂电", "topcon", "储能", "电池柜", "宁德时代", "隆基"]
     mode = "audit"
     for kw in cyclical_keywords:
         if kw in topic_lower:
@@ -513,99 +545,99 @@ def generate_next_round_prompts(topic: str, state_file: str):
 
     if mode == "audit":
         mode_instruction = (
-            "⚠️⚠️⚠️【当前模态：审计硬化模态 (Audit-Hardened Mode)】⚠️⚠️⚠️\n"
-            "本分析标的属于传统周期或重资产制造股。法官运行在极其严苛的审计模式下！\n"
-            "所有提出的看多主张被绝对禁止空洞的定性描述或 speculative 推演。你所提交的每一个论点，"
-            "必须使用以下形式确立为 `[Audit Node]` 且必须标注 `[Proxy Data Anchor: ...]` 物理证据！\n"
-            "格式要求：`[Audit Node: <主张> | Proxy Data Anchor: <具体三方物理出货数据/招标/报价详情>]`\n"
-            "注意：任何未加锚点或试图使用 Vision/Speculative 属性的节点在 Dung 图谱中将直接被法官强制击毁（攻击致死）！"
+            "【当前模态：审计硬化模态 (Audit-Hardened Mode)】\n"
+            "本标的属于周期或重资产制造类。所有主张必须使用 [Audit Node] 格式并标注 [Proxy Data Anchor]。\n"
+            "格式：[Audit Node: <主张> | Proxy Data Anchor: <具体三方物理出货数据/招标/报价>]"
         )
         inquisitor_mode_instruction = (
-            "⚠️⚠️⚠️【当前模态：审计硬化模态 (Audit-Hardened Mode)】⚠️⚠️⚠️\n"
-            "你的任务是执行【最无情的物理数据审计】。\n"
-            "侦探的所有论点必须拥有极高纯度的海关、原材料报价三方印证。你必须使用 `[Audit Attack]` "
-            "攻击任何统计口径偏差、多重定货水分、辅料涨价吞噬利润或 ASP 下降风险。\n"
-            "格式要求：`[Audit Attack | Target: <被攻击侦探节点>]: <具体逻辑攻击内容>`"
+            "【当前模态：审计硬化模态 (Audit-Hardened Mode)】\n"
+            "执行物理数据审计。使用 [Audit Attack | Target: <节点>]: <攻击内容> 攻击统计口径偏差、多重定货水分等。"
         )
     else:
         mode_instruction = (
-            "✨✨✨【当前模态：主权远见模态 (Sovereign Vision Mode)】✨✨✨\n"
-            "本分析标的属于高成长、颠覆性创新的科技/AI/期权资产。法官已解锁远见释放权限！\n"
-            "你除了需要使用 `[Audit Node]` 夯实下行安全地板外，更应当大胆使用 `[Vision Node]` 勾勒上行空间，"
-            "阐释在宏观范式变化、技术爆发与反身性拐点处的早期信号！\n"
-            "三种节点格式要求：\n"
-            "1. `[Audit Node: <安全主张> | Proxy Data Anchor: <高频三方微观数据锚点>]` — 地板审计\n"
-            "2. `[Vision Node: <前瞻主张> | Catalyst/Optionality: <催化事件/非线性期权逻辑>]` — 天花板远见\n"
-            "3. `[Narrative Node: <叙事主张> | Sentiment Source: <Snowball/Futu/专家调研>]` — 预期差与反身性度量"
+            "【当前模态：主权远见模态 (Sovereign Vision Mode)】\n"
+            "本标的属于高成长/颠覆创新类。三种节点格式：\n"
+            "1. [Audit Node: <主张> | Proxy Data Anchor: <数据锚点>] — 安全边际审计\n"
+            "2. [Vision Node: <主张> | Catalyst: <催化事件>] — 前瞻远见\n"
+            "3. [Narrative Node: <主张> | Sentiment Source: <来源>] — 预期差度量"
         )
         inquisitor_mode_instruction = (
-            "✨✨✨【当前模态：主权远见模态 (Sovereign Vision Mode)】✨✨✨\n"
-            "侦探除了夯实地板，还提出了具有颠覆性期权可能性的 `[Vision Node]` 前瞻命题。\n"
-            "你的任务不是教条地喊“没有当季海关出货数据验证”，而是发起具有产业反思高度的【二级逻辑质询与反身性打击（Vision Audit）】！\n"
-            "你必须站在 6 个月后跌 70% 的逆向死亡视角，攻击其：物理/工程学不可能边界（如热力学极限、芯片散热瓶颈）、高研发带来的资金链断裂、扩产周期陷阱或反身性高估风险。\n"
-            "攻击格式：\n"
-            "- 对于侦探的 `[Audit Node]` 物理证据，使用 `[Audit Attack | Target: <节点>]: <攻击>`\n"
-            "- 对于侦探的 `[Vision Node]` 远见主张，使用 `[Vision Audit | Target: <节点>]: <逻辑漏洞/反身性陷阱/物理极限>`"
+            "【当前模态：主权远见模态 (Sovereign Vision Mode)】\n"
+            "侦探提出了 Vision Node 前瞻命题。发起二级逻辑质询：\n"
+            "- [Audit Attack | Target: <节点>]: <攻击> — 攻击物理证据\n"
+            "- [Vision Audit | Target: <节点>]: <逻辑漏洞/物理极限> — 攻击远见主张"
+        )
+
+    # Build supply chain evidence block (only if real data exists)
+    if has_any_data and formatted_facts.strip():
+        facts_block = (
+            "微观供应链实时证据库:\n"
+            + formatted_facts.strip()
+        )
+    else:
+        facts_block = (
+            "微观供应链数据暂不可用。你必须通过自行搜索获取相关数据。\n"
+            "严禁在缺乏数据的情况下编造具体数字！"
         )
 
     # Detective next round prompt
-    detective_prompt = f"""Role: Trade Nothing v0.9.1 — The Detective (侦探智能体) [Round {next_round}]
+    detective_prompt = f"""Role: Trade Nothing v0.9.3 - The Detective [Round {next_round}]
 Topic: {topic}
 
-在上一轮辩论中，审问者（Inquisitor）针对你的 Bull Thesis 提出了致命攻击向量（Lethal Attack Vectors）。你目前的逻辑防线已经暴露出严重的漏洞。
+## 核心任务
+审问者在上一轮发起了致命攻击。逐一正面回应，用新的确凿数据反驳或补强：
 
-在这一轮（Round {next_round}）中，你的核心任务是进行【定向反驳与物理数据重建】（Rebuttal & Data Reconstruction）：
-你必须针对以下每一个攻击向量，寻找新的、确凿的产业链交叉验证或宏观变量，打补丁或推翻审问者的质疑：
-
-【你需要正面击退的致命漏洞】:
 {formatted_attacks.strip()}
 
-【下一轮数据获取提示】:
+## 数据线索
 {next_action}
 
+## 模态
 {mode_instruction}
 
-【🎯 大师认知透镜 (Masters Cognitive Lenses)】:
-* **Benjamin Graham (安全边际)**: 必须夯实物理事实防线。你本轮的所有辩护、看多逻辑，必须严格锚定在下方【海关与微观供应链硬证据库】中，严禁无硬数据支撑的空洞吹水。
-* **George Soros (反身性作用)**: 阐释市场高估值溢价或强叙事预期如何反向助推标的企业融资扩产、降低负债成本以改变其物理基本面，顺应趋势。
-* **Philip Fisher (草根调研提纯)**: 深度三角校验海关、中标及现货价，揭示市场一致预期之外的边际定价错配。
+## 三问强制结构 (每轮必答)
+1. 市场一致预期是什么？ - 一句话概括当前市场主流共识。
+2. 你的 Variant Perception 是什么？ - 你看到了什么市场没有定价的信息？必须具体。
+3. 数据证据是什么？ - 支撑你 Variant Perception 的具体数据（来源、数字、时间）。
 
-🚨🚨🚨【海关与微观供应链硬证据库（CRITICAL INPUT）】🚨🚨🚨:
-你本轮的所有辩护、看多逻辑及出货推演，必须严格锚定在以下【海关与微观供应链硬证据库】中。严禁进行任何无微观硬数据支撑的定性吹水或线性外推！
-{formatted_facts.strip()}
+{facts_block}
 
-🚨🚨🚨【非共识与数据强迫护栏约束（CRITICAL）】🚨🚨🚨:
-1. **平庸共识禁区**：你被绝对禁止使用或复述以下任何平庸共识（Clichés），否则法官将在Jaccard语义检测中直接作废并打回你的论点：
+## 硬约束 (违反即判负)
+1. 平庸共识禁区 - 以下论点被禁止：
 {formatted_consensus}
+2. 反废话约束 - 严禁使用模糊措辞如"值得关注""有望实现""具有一定""或许"。每个论点必须可证伪、有具体数字、有明确时间窗口。
+3. 强制新增 - 本轮必须引入至少一个前一轮未出现的新数据源或新逻辑维度。
 
-你的输出格式必须包含更新后的 [核心可证伪证据链]：
-Claim_X (物理代理数据支撑) + 证据B (三方渠道校验) → 边际定价变化 → 逻辑硬化成立。"""
+## 输出格式
+JSON: evidence_chain, rebuttals, variant_perception。"""
 
     # Inquisitor next round prompt
-    inquisitor_prompt = f"""Role: Trade Nothing v0.9.1 — The Inquisitor (审问者智能体) [Round {next_round}]
+    inquisitor_prompt = f"""Role: Trade Nothing v0.9.3 - The Inquisitor [Round {next_round}]
 Topic: {topic}
 
-在这一轮（Round {next_round}）中，侦探（Detective）将针对你上一轮提出的漏洞进行定向辩护。你的核心任务是执行【二级漏洞审计与反身性打击】。
+## 核心任务
+侦探将针对你上一轮的攻击进行辩护。发起更深层的二级审计。
 
-💀💀💀【逆向死亡路径前提（Premortem Axiom）】💀💀💀:
-你本轮的攻击发起必须无条件服从【逆向死亡路径公理】：
-**“假设当前时间点向后推移 6 个月，该标的因某项微观物理/财务/供应链故障爆雷，导致股价暴跌了 70%。”**
-你必须以此为既定事实，结合以下【海关与微观供应链硬证据库】，反向推理并审计侦探所引用的“订单大增”、“出货顺畅”是否存在虚假逻辑：
-{formatted_facts.strip()}
+## 逆向死亡路径公理 (Premortem Axiom)
+假定：从现在起 6 个月后，该标的因某项故障爆雷，股价暴跌 70%。
+以此为既定事实：
+1. 构造一条具体死亡路径（触发事件 + 传导链条 + 崩塌机制），附带具体时间节点和价格目标
+2. 审计侦探引用的每一个利好数据是否存在统计口径偏差、幸存者偏差或时间错配
 
+{facts_block}
+
+## 模态
 {inquisitor_mode_instruction}
 
-【⚔️ 大师认知透镜 (Masters Cognitive Lenses)】:
-* **Charlie Munger (逆向思维)**: “反过来想，总是反过来想。”本轮的攻击发起必须无条件服从【逆向死亡路径公理】，反向推演其在 6 个月内暴跌 70% 的致命路径。
-* **Howard Marks (二阶思维)**: “大众相信什么，为什么这早已定价，我如何找到其期望破灭的非平庸破绽？”刺破侦探的 Narrative Hype 泡沫。
-* **Nassim Taleb (黑天鹅与反脆弱)**: 审计侦探的核心假设中是否存在重大脆弱性或尾部风险，包括工程物理学极限、供给链瓶颈、或边际利润率被辅料价格侵蚀的拐点。
-
-🚨🚨🚨【平庸共识禁区约束】🚨🚨🚨:
-你同样被绝对禁止使用以下任何平庸的、人云亦云的看空逻辑：
+## 硬约束 (违反即判负)
+1. 平庸共识禁区 - 以下看空逻辑被禁止：
 {formatted_consensus}
-你必须挖出市场一致预期（Consensus）之外的隐蔽致命漏洞。
+2. 反废话约束 - 每个攻击必须指明：具体攻击目标节点、具体数字反驳依据、具体失效触发条件（价格/时间/事件）。
+3. 强制新增 - 本轮必须引入至少一个前一轮未使用的攻击维度。
 
-请清晰列出你的 [Lethal Attack Vectors] 并指出侦探本轮犯下的 [Cognitive Bias]（认知偏差）。"""
+## 输出格式
+JSON: lethal_attack_vectors, cognitive_biases_detected, death_path。"""
+
 
     output = {
         "status": "success",
@@ -621,7 +653,7 @@ Topic: {topic}
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Trade Nothing v6.0 Pipeline Manager")
+    parser = argparse.ArgumentParser(description="Trade Nothing v0.9.3 Pipeline Manager")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--extract", action="store_true", help="Extract context-aware prior constraints from Evolution.md")
     group.add_argument("--harvest", action="store_true", help="Harvest unrefuted attacks and convert to issues/reminders")

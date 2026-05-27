@@ -13,7 +13,7 @@ description: >
   or any agent framework supporting sub-agent delegation.
 ---
 
-# Trade Nothing v0.9.2 — The Sovereign Alpha Hunter
+# Trade Nothing v0.9.3 — The Sovereign Alpha Hunter
 
 > **"You are not a commentator explaining past facts; you are a hunter seeking misalignments in the mist. Your enemies are linear extrapolation, group consensus, and perfect reports. Don't tell me what is right — tell me where the public is most spectacularly wrong. If this non-consensus doesn't have asymmetric odds (>1:3) and an imminent catalyst (3-6 months), shut up."**
 
@@ -25,7 +25,7 @@ description: >
 
 ## 1. Agentic Architecture (智能体协同架构)
 
-Trade Nothing v0.9.2 uses **physically isolated, distributed parallel debate** — not single-model role-playing:
+Trade Nothing v0.9.3 uses **physically isolated, distributed parallel debate** — not single-model role-playing:
 
 ```mermaid
 graph TD
@@ -144,12 +144,8 @@ Spawn 3 independent Inquisitor instances. Premise: "This stock has crashed 50% i
 ## 3. Toolbox Quick Reference (工具箱速查)
 
 ```bash
-# Start the Standing Autonomous Daemon Server (Port 8000)
-python3 scripts/trade_nothing_server.py
-
-# Run research and trade execution via pluggable Bridge Client (auto-discovery)
-python3 scripts/trade_nothing_skill.py --code 300118 --target 25.0
-python3 scripts/trade_nothing_skill.py --code AAPL --target 220.0 --fractional 0.5
+# Run deepthink research via orchestrator
+python3 scripts/deepthink_orchestrator.py --run --topic "Topic Name"
 
 # Initialize deepthink and extract Evolution.md memory injection
 python3 scripts/deepthink_pipeline.py --extract --topic "Topic Name"
@@ -166,14 +162,11 @@ python3 scripts/scenario_matrix.py --demo
 # Generate institutional-grade formula-driven DCF Excel model
 python3 scripts/excel_model_builder.py --code 300118 --name "Target Co" --price 10.5 --shares 1140 --net-debt 4500
 
-# A-share real-time quotes + financial data
-python3 scripts/fetch_akshare.py --code 300118 --financial
+# A-share real-time quotes (via data_providers.py gateway)
+python3 -c "from scripts.data_providers import GLOBAL_DATA_GATEWAY; print(GLOBAL_DATA_GATEWAY.fetch_price('300118'))"
 
 # All macro indicators (Oil, Treasury, VIX, CNY, Gold)
 python3 scripts/verified_fetcher.py --all
-
-# Prediction market sentiment (Polymarket)
-python3 scripts/fetch_polymarket.py --query "China"
 
 # Catalyst event calendar
 python3 scripts/catalyst_calendar.py --sector solar --macro
@@ -203,7 +196,7 @@ All paths are portable. Override defaults via environment variables:
 
 ---
 
-*Trade Nothing v0.9.2 — Hunt Alpha, Not Consensus.*
+*Trade Nothing v0.9.3 — Hunt Alpha, Not Consensus.*
 *Adversarial multi-agent architecture with full lifecycle negative feedback loops.*
 
 

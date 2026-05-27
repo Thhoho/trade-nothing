@@ -1,5 +1,5 @@
 """
-Trade Nothing v6.0 — DeepThink Engine (递归引擎)
+Trade Nothing v0.9.3 — DeepThink Engine
 
 统一控制器：状态追踪 + 收敛判定 + 12轮熔断 + 未反驳攻击向量 JSON 数据存储。
 已升级为工业级/顶刊水平：集成邓氏抽象论证框架、信息商衰减、确定性贝叶斯赔率更新与平庸共识过滤器。
@@ -71,7 +71,7 @@ def resolve_state_file(topic: str = "", state_file_override: str = ""):
 MIN_ROUNDS = 3
 MAX_ROUNDS = 12
 LFI_THRESHOLD = 0.15
-TIMER_DURATION = 15  # Upgraded to 15s in v6.0 to be snappy
+TIMER_DURATION = 15  # 15s interactive timer
 
 
 # ─── State ───
@@ -632,7 +632,7 @@ def cmd_status():
 # ─── CLI ───
 
 def main():
-    parser = argparse.ArgumentParser(description="DeepThink Engine v6.0")
+    parser = argparse.ArgumentParser(description="DeepThink Engine v0.9.3")
 
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--start", action="store_true", help="初始化新分析")

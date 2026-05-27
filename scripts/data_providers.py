@@ -1,5 +1,5 @@
 """
-Trade Nothing v6.0 — Pluggable Global Data Provider Gateway
+Trade Nothing v0.9.3 — Pluggable Global Data Provider Gateway
 
 Provides an Object-Oriented, Open-Closed Principle (OCP) compliant architecture
 allowing developers to easily plug in new domestic, global, or commercial data sources.

@@ -1,9 +1,13 @@
 """
-Trade Nothing v0.9.1 — Micro Industrial Trend & Order Crawler
+Trade Nothing v0.9.3 — Micro Industrial Trend & Order Crawler
 
 A targeted, grass-roots web information crawler. Resolves the quantitative data
-deficits by executing resilient Google Dorking queries against premium niche databases
+deficits by executing resilient DuckDuckGo queries against premium niche databases
 (Bidcenter, SMM, Customs, and Xueqiu). Extracts technological parameters and order growth.
+
+IMPORTANT: This crawler returns ONLY real web-scraped data. If scraping fails
+(rate-limited, offline, blocked), it returns an explicit UNAVAILABLE status —
+never hardcoded fake data.
 """
 
 import os
@@ -93,13 +97,13 @@ class VerifiedCrawler:
         """
         Queries China Public Procurement Bidding Network (Bidcenter/Tendering platforms)
         to extract actual public bid winnings, GW capacity, and bid prices per watt.
+        Returns empty list with UNAVAILABLE status if no real data is found.
         """
         query = f'site:bidcenter.com.cn "{keyword}" 中标公示'
         web_results = self._execute_search(query)
         
         tenders = []
         for r in web_results:
-            # We map the search result into a standardized tender node
             tenders.append({
                 "title": r["title"],
                 "snippet": r["snippet"],
@@ -107,37 +111,23 @@ class VerifiedCrawler:
                 "source": "Bidcenter_Live"
             })
             
-        # Self-healing fallback if scraping fails or returns nothing (e.g. offline/blocked)
         if not tenders:
-            print(f"[CRAWLER] No live tenders found for '{keyword}', using high-fidelity fallback.", file=sys.stderr)
-            tenders = [
-                {
-                    "title": f"2026年三峡集团 {keyword} 电池组件设备采购候选人公示",
-                    "snippet": "第一中标候选人：东方日升新能源股份有限公司，投标报价：820000000元，折合单价：0.820元/W，采购容量：1000MW (1GW)。技术规格：双面双玻异质结(HJT)电池组件。",
-                    "date": "2026-05-15",
-                    "source": "Bidcenter_Fallback"
-                },
-                {
-                    "title": f"国家电投 {keyword} GW级组件集中招标中标结果公示",
-                    "snippet": "第二标段中标人：东方日升，中标价格：0.815元/W，分配容量：500MW。规格：210mm超薄硅片HJT组件。",
-                    "date": "2026-04-20",
-                    "source": "Bidcenter_Fallback"
-                }
-            ]
+            print(f"[CRAWLER] No live tenders found for '{keyword}'. Returning empty.", file=sys.stderr)
+
         return tenders
 
     def crawl_commodity_price(self, material: str) -> Dict[str, Any]:
         """
         Queries Shanghai Nonferrous Metals Market (SMM) or commodity platforms
         to extract actual week-over-week pricing of raw materials.
+        Returns UNAVAILABLE status if no real data is found.
         """
         query = f'site:smm.cn "{material}" 价格 均价'
         web_results = self._execute_search(query)
         
         # Try to parse price and trend from real results using regular expressions
         parsed_price = None
-        parsed_trend = "0.0%"
-        parsed_source = "Shanghai_Metals_Market_SMM"
+        parsed_trend = None
         
         for r in web_results:
             snippet = r["snippet"]
@@ -151,7 +141,6 @@ class VerifiedCrawler:
                 parsed_trend = trend_match.group(1).replace(" ", "")
                 
             if parsed_price:
-                parsed_source = "SMM_Live_Scraped"
                 break
                 
         # If we successfully scraped a real price, construct the node dynamically
@@ -161,62 +150,30 @@ class VerifiedCrawler:
                 "material": f"{material} (Live)",
                 "price": parsed_price,
                 "unit": unit,
-                "trend_wow": parsed_trend,
-                "source": parsed_source
+                "trend_wow": parsed_trend or "N/A",
+                "source": "SMM_Live_Scraped"
             }
             
-        # Self-healing fallback mapping industrial commodity curves in 2026
-        print(f"[CRAWLER] No live commodity prices found for '{material}', using high-fidelity fallback.", file=sys.stderr)
-        mock_map = {
-            "低温银浆": {
-                "material": "HJT低温银浆",
-                "price": 7200.0,
-                "unit": "元/kg",
-                "trend_wow": "-1.2%",
-                "source": "SMM_Fallback"
-            },
-            "铟": {
-                "material": "精铟 (In99.99)",
-                "price": 2850.0,
-                "unit": "元/kg",
-                "trend_wow": "+4.5%",
-                "source": "SMM_Fallback"
-            },
-            "锂": {
-                "material": "电池级碳酸锂 (Li2CO3 99.5%)",
-                "price": 82000.0,
-                "unit": "元/吨",
-                "trend_wow": "-0.8%",
-                "source": "SMM_Fallback"
-            }
+        # No real data found — return explicit UNAVAILABLE marker
+        print(f"[CRAWLER] No live commodity prices found for '{material}'. Marking UNAVAILABLE.", file=sys.stderr)
+        return {
+            "material": material,
+            "price": None,
+            "unit": "N/A",
+            "trend_wow": "N/A",
+            "source": "UNAVAILABLE"
         }
-        
-        matched = None
-        for k, v in mock_map.items():
-            if k in material:
-                matched = v
-                break
-                
-        if not matched:
-            matched = {
-                "material": material,
-                "price": 125.0,
-                "unit": "元/kg",
-                "trend_wow": "0.0%",
-                "source": "Generic_Commodity_Fallback"
-            }
-            
-        return matched
 
     def crawl_customs_logs(self, hs_code: str) -> Dict[str, Any]:
         """
         Queries Port and Customs administrations to extract month-over-month export volume.
+        Returns UNAVAILABLE status if no real data is found.
         """
-        query = f'"{hs_code}" 出口额 宁波海关 环比'
+        query = f'"{hs_code}" 出口额 海关 环比'
         web_results = self._execute_search(query)
         
         parsed_value = None
-        parsed_change = "+8.2%"
+        parsed_change = None
         
         for r in web_results:
             snippet = r["snippet"]
@@ -235,31 +192,28 @@ class VerifiedCrawler:
         if parsed_value:
             return {
                 "hs_code": hs_code,
-                "port": "Ningbo_Customs_Live",
+                "port": "Customs_Live_Scraped",
                 "target_month": datetime.today().strftime('%Y-%m'),
                 "export_value_millions_usd": parsed_value,
-                "export_volume_mw": parsed_value * 13, # Approx capacity mapping
-                "implied_price_per_watt": 0.0768,
-                "change_mom": parsed_change,
+                "change_mom": parsed_change or "N/A",
                 "source": "China_Customs_Live_Scraped"
             }
             
-        # Standard HS logs fallback
-        print(f"[CRAWLER] No live customs data found for HS '{hs_code}', using high-fidelity fallback.", file=sys.stderr)
+        # No real data found
+        print(f"[CRAWLER] No live customs data found for HS '{hs_code}'. Marking UNAVAILABLE.", file=sys.stderr)
         return {
             "hs_code": hs_code,
-            "port": "Ningbo_Customs_Bureau",
-            "target_month": "2026-04",
-            "export_value_millions_usd": 245.8,
-            "export_volume_mw": 3200.0,
-            "implied_price_per_watt": 0.0768,
-            "change_mom": "+8.2%",
-            "source": "China_Customs_Fallback"
+            "port": "N/A",
+            "target_month": datetime.today().strftime('%Y-%m'),
+            "export_value_millions_usd": None,
+            "change_mom": "N/A",
+            "source": "UNAVAILABLE"
         }
 
     def crawl_expert_minutes(self, symbol: str) -> List[Dict[str, str]]:
         """
         Queries Xueqiu and buy-side forums for specialist consultation notes.
+        Returns empty list if no real data is found.
         """
         query = f'site:xueqiu.com "{symbol}" 专家 调研 纪要'
         web_results = self._execute_search(query)
@@ -274,27 +228,15 @@ class VerifiedCrawler:
             })
             
         if not minutes:
-            print(f"[CRAWLER] No live Snowball expert minutes found for '{symbol}', using high-fidelity fallback.", file=sys.stderr)
-            minutes = [
-                {
-                    "title": f"【买方独家】{symbol} 供应链及三季度出货深度草根调研纪要",
-                    "snippet": "专家透露：日升目前低温浆料的银耗量已经成功压降到 11.5mg/W，银包铜产业化测试顺利。三季度欧洲大客户德国代傲、西班牙绿电的中标订单已经锁定排产，目前开工率维持在 85% 以上，Backlog visibility 达4个月。",
-                    "date": "2026-05-18",
-                    "author": "Snowball_Expert_Network_Fallback"
-                },
-                {
-                    "title": f"关于 {symbol} 铟靶材供需与硅片薄片化进度的交流记录",
-                    "snippet": "专家访谈指出：110微米超薄硅片在HJT产线的碎片率已经降低至 1.1%，铟靶材通过回收工艺循环利用率达到 92%，铟价上涨对单瓦成本的冲击基本被抵消。下半年主要看中东GW级项目的实际签单进度。",
-                    "date": "2026-05-02",
-                    "author": "Quant_Macro_Consult_Fallback"
-                }
-            ]
+            print(f"[CRAWLER] No live Snowball expert minutes found for '{symbol}'. Returning empty.", file=sys.stderr)
+
         return minutes
 
     def synthesize_micro_facts(self, symbol: str, technology_keyword: str) -> dict:
         """
         Coordinates all crawling routes, parses returned snippets and parameters,
         and synthesizes a high-density structured CJK facts dictionary to inject into subagents.
+        Returns a dict with explicit availability flags for each data category.
         """
         print(f"[CRAWLER] Initiating micro-intelligence synthesis for '{symbol}' ({technology_keyword})...", file=sys.stderr)
         
@@ -305,6 +247,10 @@ class VerifiedCrawler:
         hs_code = "85414300"  # Default solar modules
         if "电池" in technology_keyword or "锂" in technology_keyword:
             hs_code = "85076000"
+        elif "半导体" in technology_keyword or "芯片" in technology_keyword or "晶圆" in technology_keyword:
+            hs_code = "85423900"  # Semiconductor devices
+        elif "封装" in technology_keyword:
+            hs_code = "85423100"
             
         customs = self.crawl_customs_logs(hs_code)
         expert = self.crawl_expert_minutes(symbol)
@@ -316,7 +262,13 @@ class VerifiedCrawler:
             "micro_order_tenders": tenders,
             "raw_material_price_track": commodity,
             "customs_export_validation": customs,
-            "expert_minutes_leak": expert
+            "expert_minutes_leak": expert,
+            "data_availability": {
+                "tenders": len(tenders) > 0,
+                "commodity_price": commodity.get("source") != "UNAVAILABLE",
+                "customs": customs.get("source") != "UNAVAILABLE",
+                "expert_minutes": len(expert) > 0
+            }
         }
         
         return synthesized
@@ -324,5 +276,5 @@ class VerifiedCrawler:
 
 if __name__ == "__main__":
     crawler = VerifiedCrawler()
-    res = crawler.synthesize_micro_facts("300118", "低温银浆")
+    res = crawler.synthesize_micro_facts("半导体", "芯片")
     print(json.dumps(res, ensure_ascii=False, indent=2))
