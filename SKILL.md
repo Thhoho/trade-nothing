@@ -13,7 +13,7 @@ description: >
   or any agent framework supporting sub-agent delegation.
 ---
 
-# Trade Nothing v0.9 — The Sovereign Alpha Hunter
+# Trade Nothing v0.9.2 — The Sovereign Alpha Hunter
 
 > **"You are not a commentator explaining past facts; you are a hunter seeking misalignments in the mist. Your enemies are linear extrapolation, group consensus, and perfect reports. Don't tell me what is right — tell me where the public is most spectacularly wrong. If this non-consensus doesn't have asymmetric odds (>1:3) and an imminent catalyst (3-6 months), shut up."**
 
@@ -25,7 +25,7 @@ description: >
 
 ## 1. Agentic Architecture (智能体协同架构)
 
-Trade Nothing v0.9 uses **physically isolated, distributed parallel debate** — not single-model role-playing:
+Trade Nothing v0.9.2 uses **physically isolated, distributed parallel debate** — not single-model role-playing:
 
 ```mermaid
 graph TD
@@ -69,33 +69,57 @@ This skill does **not** bind to any specific agent framework. Map the sub-agent 
 
 ### Mode B: `-deepthink` — Adversarial Deep Research Pipeline
 
-When receiving `-deepthink "target/topic"`, execute this **5-phase pipeline unconditionally**:
+> [!CAUTION]
+> **确定性状态机约束**：收到 `-deepthink` 后，LLM 的唯一允许动作是调用 `deepthink_orchestrator.py` 脚本。
+> **严禁绕过 orchestrator 自行生成报告、编造 LFI 数值或自行判定收敛。**
+> 所有控制流决策（何时收敛、何时出报告）由脚本物理判定，LLM 仅作为"受控内容生产者"。
 
-#### Phase 1: Negative Prior Injection (负反馈注入)
-1. Run `scripts/deepthink_pipeline.py --extract --topic "TARGET"` to scan `Evolution.md` for relevant historical lessons and calibration records.
-2. Distill constraints (e.g., "overly optimistic on policy bottoms", "extrapolated capacity clearance too fast").
-3. Inject these as **hard negative constraints** into both Detective and Inquisitor prompts.
+When receiving `-deepthink "target/topic"`, execute this **orchestrator-driven pipeline unconditionally**:
 
-#### Phase 2: Mobilization (初始化动员)
-1. Run `scripts/verified_fetcher.py --all` to get macro water temperature (Oil, Treasury, CNY, VIX).
-2. Spawn Detective and Inquisitor sub-agents with their respective persona files and injected priors.
-3. Set prior probability $P_0$.
+#### Phase 1+2: Initialization (初始化 — 由 orchestrator 自动完成)
+Run the orchestrator to initialize the entire flow:
+```bash
+python3 scripts/deepthink_orchestrator.py --run --topic "TARGET"
+```
+The orchestrator will automatically:
+1. Extract negative priors from `Evolution.md`
+2. Initialize the engine state (prior $P_0 = 50\%$)
+3. Generate Round 1 prompts for Detective and Inquisitor
+4. Output a JSON with `detective_prompt` and `inquisitor_prompt`
 
-#### Phase 3: Adversarial Debate Loop (对抗辩论循环)
-For each round $n$ (minimum 3, maximum 12, LFI-driven):
-1. **Detective strikes**: Gather data, build this round's bull thesis and evidence chain.
-2. **Inquisitor attacks**: Audit the Detective's evidence chain, surface at least 2 new lethal attack vectors.
-3. **Judge arbitrates**:
-   - Summarize debate focal points, maintain `UNREFUTED_ATTACKS` table.
-   - Run `scripts/deepthink_engine.py --checkpoint` to compute posterior $P_n$ and LFI:
-     $$LFI = 0.4 \times (1 - EvidenceSaturation) + 0.3 \times FlipRate + 0.3 \times HardConflicts$$
-   - **Convergence**: If $n \ge 3$ AND $LFI < 0.15$ AND `len(UNREFUTED_ATTACKS) == 0` → Phase 4. Else continue.
+#### Phase 3: Adversarial Debate Loop (对抗辩论循环 — 由 orchestrator 驱动)
+For each round (minimum 3, maximum 12, LFI-driven):
+1. **Dispatch**: Use the orchestrator's output prompts to spawn **physically isolated** Detective and Inquisitor sub-agents.
+2. **Collect**: Wait for both sub-agents to return their JSON outputs.
+3. **Submit**: Feed both outputs to the orchestrator for engine checkpoint:
+   ```bash
+   python3 scripts/deepthink_orchestrator.py --submit-round \
+     --topic "TARGET" \
+     --detective-json '<detective_json>' \
+     --inquisitor-json '<inquisitor_json>'
+   ```
+4. **Orchestrator decides next step**:
+   - Output `"status": "dispatch_subagents"` → Loop back to step 1 with new prompts
+   - Output `"status": "ready_for_report"` → Proceed to Phase 3.5
 
-#### Phase 4: Quantitative Synthesis (定量硬化)
-1. Run `scripts/scenario_matrix.py` for 4-scenario expected return and Kelly sizing.
-2. Run `scripts/consensus_distance.py` to lock consensus deviation.
-3. Run `scripts/excel_model_builder.py` to build a formula-driven DCF Excel model with 5×5 WACC/g sensitivity matrix.
-4. Generate report per `assets/templates/stock-report.md`.
+> [!IMPORTANT]
+> LLM **无权决定**何时收敛。只有 orchestrator 的 `--submit-round` 输出 `"ready_for_report"` 时，才允许进入报告阶段。
+
+#### Phase 3.5: Pre-flight Gate (强制预检门)
+Before generating any report, **must unconditionally run**:
+```bash
+python3 scripts/deepthink_orchestrator.py --preflight --topic "TARGET"
+```
+- Exit code 0 + `"status": "PASSED"` → Proceed to Phase 4
+- Exit code 2 + `"status": "BLOCKED"` → **禁止生成报告，必须继续辩论**
+
+#### Phase 4: Report Compilation (报告编译 — 数值由脚本填入)
+```bash
+python3 scripts/deepthink_orchestrator.py --compile-report --topic "TARGET"
+```
+The orchestrator outputs all numerical values (LFI, rounds, posterior, Bayesian trace) from `state.json`.
+LLM only provides **qualitative content** (variant perception, scenario descriptions, catalyst analysis).
+**LLM 严禁修改、四舍五入或替换 orchestrator 输出的任何数值。**
 
 #### Phase 5: Task Harvesting (待办转化)
 1. For all unresolved attacks in `UNREFUTED_ATTACKS` (pending data like upcoming earnings):
@@ -179,6 +203,16 @@ All paths are portable. Override defaults via environment variables:
 
 ---
 
-*Trade Nothing v7.0 — Hunt Alpha, Not Consensus.*
+*Trade Nothing v0.9.2 — Hunt Alpha, Not Consensus.*
 *Adversarial multi-agent architecture with full lifecycle negative feedback loops.*
+
+
+## 5. Core Safety Guardrails & LFI Integrity (核心安全护栏与逻辑红线)
+
+> [!IMPORTANT]
+> **【逻辑诚实与数学一致性公理】**：
+> 1. **LFI（逻辑摩擦指数）、AFI、EGI、以及贝叶斯后验概率 $P_n$ 的计算必须 100% 物理读取自底层 `deepthink_engine.py` 运行输出并写入的 JSON 状态文件，严禁大模型以任何定性幻想、猜测或直接生成任何数值。**
+> 2. **任何没有物理运行底层 Python 引擎而输出包含具体数值研报的行为，均视为严重违背“第一性原理”的欺骗性幻觉，应当被无条件熔断。**
+> 3. **如果物理引擎在计算中因存在悬空攻击节点（未收敛）而发出 `"继续质证"` (continue) 的指令，大模型必须老老实实向用户呈报未收敛事实，严禁为了强行给出一份“格式精美、得出买入建议”的完美研报而粉饰太平、伪造收敛。**
+
 

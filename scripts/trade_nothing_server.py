@@ -26,6 +26,7 @@ sys.path.insert(0, SCRIPTS_DIR)
 from portfolio_manager import PortfolioManager, PaperTradingConnector
 from data_providers import GLOBAL_DATA_GATEWAY
 from utils import get_state_dir, generate_topic_slug, save_json
+from version import __version__
 
 # Global task cache (in-memory tracking of background research runs)
 ACTIVE_RESEARCH_SESSIONS: Dict[str, dict] = {}
@@ -191,24 +192,32 @@ def _simulate_debate_worker(symbol: str, target_price: float, fractional_kelly: 
         save_json(state_file_path, state_data)
 
         # 2. Automated trade execution based on convergent Kelly
-        pm = PortfolioManager()
-        trade_res = pm.execute_kelly_sizing_trade(
-            symbol=symbol,
-            posterior=final_posterior,
-            target_price=target_price,
-            current_price=curr_price,
-            lfi=final_lfi,
-            fractional=fractional_kelly,
-            afi=r3_data.get("afi", 0.0),
-            es=r3_data.get("es", 1.0),
-            egi=r3_data.get("egi", 0.0),
-            company_cash_growth=company_cash_growth
-        )
+        allow_trading = os.environ.get("TRADE_NOTHING_ALLOW_TRADING", "false").lower() == "true"
+        if allow_trading:
+            pm = PortfolioManager()
+            trade_res = pm.execute_kelly_sizing_trade(
+                symbol=symbol,
+                posterior=final_posterior,
+                target_price=target_price,
+                current_price=curr_price,
+                lfi=final_lfi,
+                fractional=fractional_kelly,
+                afi=r3_data.get("afi", 0.0),
+                es=r3_data.get("es", 1.0),
+                egi=r3_data.get("egi", 0.0),
+                company_cash_growth=company_cash_growth
+            )
+        else:
+            trade_res = {
+                "action": "HOLD",
+                "size": 0,
+                "note": "Automated trading is disabled by default. Set TRADE_NOTHING_ALLOW_TRADING=true to enable."
+            }
         
         with SESSIONS_LOCK:
             ACTIVE_RESEARCH_SESSIONS[symbol]["trade_execution"] = trade_res
             ACTIVE_RESEARCH_SESSIONS[symbol]["status"] = "COMPLETED"
-            ACTIVE_RESEARCH_SESSIONS[symbol]["log"].append(f"Automated Sizing Triggered: {trade_res.get('action')} - {trade_res.get('note', '')}")
+            ACTIVE_RESEARCH_SESSIONS[symbol]["log"].append(f"Automated Sizing Result: {trade_res.get('action')} - {trade_res.get('note', '')}")
 
     except Exception as e:
         with SESSIONS_LOCK:
@@ -224,6 +233,24 @@ class TradeNothingRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         # Override to suppress default console clutter unless desired
         pass
+
+    def check_auth(self) -> bool:
+        configured_token = os.environ.get("TRADE_NOTHING_API_TOKEN", "")
+        if not configured_token:
+            global SESSION_API_TOKEN
+            if not globals().get("SESSION_API_TOKEN"):
+                import secrets
+                globals()["SESSION_API_TOKEN"] = secrets.token_hex(16)
+                print(f"⚠️ [SECURITY] No TRADE_NOTHING_API_TOKEN environment variable set!", file=sys.stderr)
+                print(f"⚠️ [SECURITY] Generated a secure session token: {globals()['SESSION_API_TOKEN']}", file=sys.stderr)
+                print(f"⚠️ [SECURITY] Please include header 'X-API-Key: {globals()['SESSION_API_TOKEN']}' in your requests.", file=sys.stderr)
+            configured_token = globals()["SESSION_API_TOKEN"]
+            
+        request_token = self.headers.get("X-API-Key")
+        if request_token != configured_token:
+            self._send_json(401, {"error": "Unauthorized. Missing or invalid X-API-Key header."})
+            return False
+        return True
 
     def _send_json(self, status_code: int, data: dict):
         self.send_response(status_code)
@@ -244,6 +271,8 @@ class TradeNothingRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        if not self.check_auth():
+            return
         parsed_url = urllib.parse.urlparse(self.path)
         path = parsed_url.path
         query = urllib.parse.parse_qs(parsed_url.query)
@@ -282,6 +311,8 @@ class TradeNothingRequestHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": "Endpoint not found"})
 
     def do_POST(self):
+        if not self.check_auth():
+            return
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length).decode("utf-8") if content_length > 0 else ""
         
@@ -323,6 +354,12 @@ class TradeNothingRequestHandler(BaseHTTPRequestHandler):
 
         # ─── POST /api/trade/execute ───
         elif path == "/api/trade/execute":
+            allow_trading = os.environ.get("TRADE_NOTHING_ALLOW_TRADING", "false").lower() == "true"
+            if not allow_trading:
+                self._send_json(403, {
+                    "error": "Forbidden. Execution endpoints are disabled by default. Set TRADE_NOTHING_ALLOW_TRADING=true to enable."
+                })
+                return
             symbol = data.get("symbol")
             posterior = data.get("posterior")
             target_price = data.get("target_price")
@@ -387,6 +424,12 @@ class TradeNothingRequestHandler(BaseHTTPRequestHandler):
 
             # If pre-calculated posterior exists, execute Kelly Sizing trade immediately
             if posterior is not None:
+                allow_trading = os.environ.get("TRADE_NOTHING_ALLOW_TRADING", "false").lower() == "true"
+                if not allow_trading:
+                    self._send_json(403, {
+                        "error": "Forbidden. Webhook immediate execution is disabled by default. Set TRADE_NOTHING_ALLOW_TRADING=true to enable."
+                    })
+                    return
                 try:
                     pm = PortfolioManager()
                     trade_res = pm.execute_kelly_sizing_trade(
@@ -425,11 +468,12 @@ class TradeNothingRequestHandler(BaseHTTPRequestHandler):
 # ─── Daemon Server Launch ──────────────────────────────────────────────────
 
 def run_server(port: int = 8000):
-    server_address = ("", port)
+    host = os.environ.get("TRADE_NOTHING_HOST", "127.0.0.1")
+    server_address = (host, port)
     httpd = HTTPServer(server_address, TradeNothingRequestHandler)
     print(f"==================================================================", file=sys.stderr)
-    print(f"🚀 Trade Nothing v7.0 Standing Autonomous Daemon Server Online", file=sys.stderr)
-    print(f"   Listening on: http://localhost:{port}", file=sys.stderr)
+    print(f"🚀 Trade Nothing v{__version__} Standing Autonomous Daemon Server Online", file=sys.stderr)
+    print(f"   Listening on: http://{host}:{port}", file=sys.stderr)
     print(f"   Endpoints:", file=sys.stderr)
     print(f"     - GET  /api/status", file=sys.stderr)
     print(f"     - GET  /api/research/status?symbol=...", file=sys.stderr)

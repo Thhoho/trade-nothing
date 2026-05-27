@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Trade Nothing v10.0 — Kelly Sizing & Reflexivity Exception Verification Suite
+Trade Nothing v0.9.2 — Kelly Sizing & Reflexivity Exception Verification Suite
 """
 import os
 import sys
 
-SCRIPT_DIR = r"C:\Users\Administrator\Documents\trade-nothing\trade-nothing\scripts"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(SCRIPT_DIR)
 
 from portfolio_manager import PortfolioManager
@@ -13,7 +13,7 @@ from scenario_matrix import ScenarioMatrix
 
 def run_verifications():
     print("================================================================")
-    print("🧪 Verifying Entropy-Discounted Kelly Sizing (v10.0 Specs)")
+    print("🧪 Verifying Entropy-Discounted Kelly Sizing (v0.9.2 Specs)")
     print("================================================================")
 
     pm = PortfolioManager()

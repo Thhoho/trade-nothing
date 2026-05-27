@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Trade Nothing v9.0 — Sovereign Investment Master Test Suite
+Trade Nothing v0.9.1 — Sovereign Investment Master Test Suite
 """
 import os
 import sys
@@ -28,7 +28,7 @@ class DummyArgs:
 
 def run_test_suite():
     print("==================================================================")
-    print("🧪 Starting Trade Nothing v9.0 Sovereign Investment Master Test Suite")
+    print("🧪 Starting Trade Nothing v0.9.1 Sovereign Investment Master Test Suite")
     print("==================================================================")
 
     # ------------------------------------------------------------------

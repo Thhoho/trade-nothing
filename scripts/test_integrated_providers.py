@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Trade Nothing v10.0 — Unified Pluggable Data Gateway Verification Suite
+Trade Nothing v0.9.2 — Unified Pluggable Data Gateway Verification Suite
 """
 import os
 import sys
@@ -13,7 +13,7 @@ from data_providers import GLOBAL_DATA_GATEWAY, AkShareProvider, PolymarketProvi
 
 def run_verifications():
     print("==================================================================")
-    print("🧪 Verifying Integrated Data Providers Gateway (v10.0 Specs)")
+    print("🧪 Verifying Integrated Data Providers Gateway (v0.9.2 Specs)")
     print("==================================================================")
 
     # 1. Verify AkShare Quote Fetching
