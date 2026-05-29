@@ -190,6 +190,63 @@ def _extract_evidence(detective_json: dict) -> list:
     return evidence
 
 
+def _classify_evidence_category(text: str) -> str:
+    """Classify evidence category from attack text content."""
+    text_lower = text.lower()
+    if any(kw in text_lower for kw in ["数据", "出口", "出货", "海关", "招标", "产能",
+                                        "产量", "价格", "库存", "export", "customs",
+                                        "data", "proxy", "出货量", "装机"]):
+        return "Hard Proxy Data"
+    elif any(kw in text_lower for kw in ["财报", "毛利", "营收", "eps", "利润", "现金流",
+                                          "负债", "revenue", "margin", "earnings",
+                                          "capex", "fcf", "pe", "估值"]):
+        return "Factual Disclosed"
+    elif any(kw in text_lower for kw in ["调研", "纪要", "渠道", "草根", "channel",
+                                          "expert", "scuttlebutt", "草根调研"]):
+        return "Channel Checks"
+    return "Narrative"
+
+
+def _extract_evidence_from_inquisitor(inquisitor_json: dict) -> list:
+    """Extract Bear-direction evidence from Inquisitor's lethal attack vectors."""
+    evidence = []
+    for vec in inquisitor_json.get("lethal_attack_vectors", []):
+        attack_text = vec.get("attack", "")
+        if not attack_text:
+            continue
+
+        # Determine strength from severity or confidence
+        severity = vec.get("severity", vec.get("confidence", "medium"))
+        strength = "Strong" if severity in ("critical", "high") else "Weak"
+
+        cat = _classify_evidence_category(attack_text)
+
+        evidence.append({
+            "category": cat,
+            "direction": "Bear",
+            "strength": strength
+        })
+
+    # Cognitive biases detected → weak Bear narrative evidence
+    for bias in inquisitor_json.get("cognitive_biases_detected", []):
+        if isinstance(bias, (str, dict)):
+            evidence.append({
+                "category": "Narrative",
+                "direction": "Bear",
+                "strength": "Weak"
+            })
+
+    # Death path → strong Bear channel evidence
+    if inquisitor_json.get("death_path"):
+        evidence.append({
+            "category": "Channel Checks",
+            "direction": "Bear",
+            "strength": "Strong"
+        })
+
+    return evidence
+
+
 def cmd_submit_round(topic: str, detective_json_str: str, inquisitor_json_str: str):
     """
     Phase 3: Submit a completed round's subagent outputs to the engine.
@@ -219,7 +276,10 @@ def cmd_submit_round(topic: str, detective_json_str: str, inquisitor_json_str: s
     attacks = _extract_attacks_from_inquisitor(inquisitor_data)
     rebuttal_attacks = _extract_rebuttals_as_attacks(detective_data)
     attacks.extend(rebuttal_attacks)
-    evidence = _extract_evidence(detective_data)
+    # Fix 1: Bidirectional Bayesian — extract both Bull and Bear evidence
+    evidence_bull = _extract_evidence(detective_data)
+    evidence_bear = _extract_evidence_from_inquisitor(inquisitor_data)
+    evidence = evidence_bull + evidence_bear
 
     # Call engine checkpoint
     engine_result = _run_script([
@@ -229,6 +289,8 @@ def cmd_submit_round(topic: str, detective_json_str: str, inquisitor_json_str: s
         "--arguments-json", json.dumps(arguments),
         "--attacks-json", json.dumps(attacks),
         "--evidence-json", json.dumps(evidence),
+        "--detective-raw-json", detective_json_str,
+        "--inquisitor-raw-json", inquisitor_json_str,
         "--no-timer"
     ])
 
@@ -314,7 +376,9 @@ def cmd_preflight(topic: str):
     # Check convergence using engine's own logic
     from deepthink_engine import check_convergence, get_topic_mode
     mode = get_topic_mode(topic)
-    convergence = check_convergence(last_round["round"], lfi, open_attacks, mode=mode)
+    posterior_trace = [r.get("posterior", 50.0) for r in rounds]
+    convergence = check_convergence(last_round["round"], lfi, open_attacks, mode=mode,
+                                    posterior_trace=posterior_trace)
 
     if convergence["decision"] not in ("converge", "fuse_break"):
         print(json.dumps({
@@ -378,8 +442,30 @@ def cmd_compile_report(topic: str):
     # Convergence status
     from deepthink_engine import check_convergence, get_topic_mode
     real_mode = get_topic_mode(topic)
+    posterior_trace = [r.get("posterior", 50.0) for r in rounds]
     convergence = check_convergence(last_round["round"], last_round["lfi"],
-                                    last_round.get("open_attacks", 0), mode=real_mode)
+                                    last_round.get("open_attacks", 0), mode=real_mode,
+                                    posterior_trace=posterior_trace)
+
+    # Build full debate log from all rounds
+    full_debate_log = []
+    for r in rounds:
+        full_debate_log.append({
+            "round": r["round"],
+            "detective_output": r.get("detective_raw_output", {}),
+            "inquisitor_output": r.get("inquisitor_raw_output", {}),
+            "engine_metrics": {
+                "lfi": round(r["lfi"], 4),
+                "afi": round(r.get("afi", 0), 4),
+                "es": round(r.get("es", 0), 4),
+                "posterior": r["posterior"],
+                "egi": round(r.get("egi", 0), 2),
+                "open_attacks": r.get("open_attacks", 0),
+                "entropy": round(r.get("entropy", 0), 4),
+                "novelty": round(r.get("novelty", 0), 4)
+            },
+            "timestamp": r.get("timestamp", "")
+        })
 
     output = {
         "status": "report_data_ready",
@@ -396,6 +482,7 @@ def cmd_compile_report(topic: str):
             "open_attacks_count": last_round.get("open_attacks", 0),
             "unrefuted_attacks": unrefuted
         },
+        "full_debate_log": full_debate_log,
         "instruction": (
             "以下数值字段已由物理引擎确定，请原封不动地填入报告模板中：\n"
             f"  - 博弈深度: {total_rounds} 轮\n"

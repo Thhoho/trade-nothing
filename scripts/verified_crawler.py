@@ -1,5 +1,5 @@
 """
-Trade Nothing v0.9.3 — Micro Industrial Trend & Order Crawler
+Trade Nothing v0.9.4 — Micro Industrial Trend & Order Crawler
 
 A targeted, grass-roots web information crawler. Resolves the quantitative data
 deficits by executing resilient DuckDuckGo queries against premium niche databases

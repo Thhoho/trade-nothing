@@ -13,7 +13,7 @@ description: >
   or any agent framework supporting sub-agent delegation.
 ---
 
-# Trade Nothing v0.9.3 — The Sovereign Alpha Hunter
+# Trade Nothing v0.9.4 — The Sovereign Alpha Hunter
 
 > **"You are not a commentator explaining past facts; you are a hunter seeking misalignments in the mist. Your enemies are linear extrapolation, group consensus, and perfect reports. Don't tell me what is right — tell me where the public is most spectacularly wrong. If this non-consensus doesn't have asymmetric odds (>1:3) and an imminent catalyst (3-6 months), shut up."**
 
@@ -25,7 +25,7 @@ description: >
 
 ## 1. Agentic Architecture (智能体协同架构)
 
-Trade Nothing v0.9.3 uses **physically isolated, distributed parallel debate** — not single-model role-playing:
+Trade Nothing v0.9.4 uses **physically isolated, distributed parallel debate** — not single-model role-playing:
 
 ```mermaid
 graph TD
@@ -196,7 +196,7 @@ All paths are portable. Override defaults via environment variables:
 
 ---
 
-*Trade Nothing v0.9.3 — Hunt Alpha, Not Consensus.*
+*Trade Nothing v0.9.4 — Hunt Alpha, Not Consensus.*
 *Adversarial multi-agent architecture with full lifecycle negative feedback loops.*
 
 

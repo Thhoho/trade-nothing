@@ -1,5 +1,5 @@
 """
-Trade Nothing v0.9.3 — DeepThink Engine
+Trade Nothing v0.9.4 — DeepThink Engine
 
 统一控制器：状态追踪 + 收敛判定 + 12轮熔断 + 未反驳攻击向量 JSON 数据存储。
 已升级为工业级/顶刊水平：集成邓氏抽象论证框架、信息商衰减、确定性贝叶斯赔率更新与平庸共识过滤器。
@@ -142,7 +142,8 @@ def classify_argument(arg: str) -> str:
     else:
         return "legacy"
 
-def check_convergence(round_num: int, lfi: float, open_attacks: int, mode: str = "audit") -> dict:
+def check_convergence(round_num: int, lfi: float, open_attacks: int, mode: str = "audit",
+                      posterior_trace: list = None) -> dict:
     lfi_threshold = LFI_THRESHOLD if mode == "audit" else 0.25
     
     if round_num >= MAX_ROUNDS:
@@ -155,7 +156,21 @@ def check_convergence(round_num: int, lfi: float, open_attacks: int, mode: str =
 
     if open_attacks > 0:
         return {"decision": "continue",
-                "reason": f"存在 {open_attacks} 个未完全反驳的攻击向量（Dung图中非Accepted节点），必须继续。"}
+                "reason": f"存在 {open_attacks} 个未完全反驳的攻击向量（Dung图中残余摩擦节点），必须继续。"}
+
+    # Fix 5: Extreme bias detection — posterior >95% or <5% requires ≥5 rounds
+    if posterior_trace and len(posterior_trace) >= 1:
+        latest_p = posterior_trace[-1]
+        if (latest_p > 95.0 or latest_p < 5.0) and round_num < 5:
+            return {"decision": "continue",
+                    "reason": f"后验概率 {latest_p:.1f}% 处于极端偏置区（>95% 或 <5%），需要至少 5 轮充分质证。"}
+
+    # Fix 5: Bayesian stability — posterior must stabilize (Δ < 5% in last 2 rounds)
+    if posterior_trace and len(posterior_trace) >= 2:
+        recent_delta = abs(posterior_trace[-1] - posterior_trace[-2])
+        if recent_delta > 5.0:
+            return {"decision": "continue",
+                    "reason": f"后验概率仍在大幅波动 (Δ={recent_delta:.1f}%)，需要继续质证直至稳定。"}
 
     if lfi >= lfi_threshold:
         return {"decision": "continue",
@@ -421,16 +436,21 @@ def cmd_checkpoint(args):
                     all_attacks.add((penalty_node, arg))
 
     solver = DungSolver(list(all_arguments), list(all_attacks))
-    ge = solver.compute_grounded_extension()
-    afi = solver.get_grounded_friction()
+    # Fix 4: Compute fuzzy valuations once, derive GE and AFI from it
+    fuzzy_V = solver.compute_fuzzy_valuations()
+    ge = {arg for arg, val in fuzzy_V.items() if val >= 0.5}
+    afi = sum(1.0 - val for val in fuzzy_V.values()) / max(1, len(fuzzy_V))
     
-    # Active attacks that are undefeated or unresolved
+    # Fix 4: Use fuzzy belief threshold 0.3 (not binary GE ≥ 0.5)
+    # Attacks with residual belief 0.3-0.5 still represent unresolved friction
     unrefuted_attacks_list = []
     for attacker, target in all_attacks:
-        if attacker in ge:
+        belief = fuzzy_V.get(attacker, 0)
+        if belief > 0.3:
             unrefuted_attacks_list.append({
                 "attack": f"{attacker} -> {target}",
-                "reason": f"论点 {attacker} 未被有效证伪，其攻击关系依然悬挂。"
+                "fuzzy_belief": round(belief, 4),
+                "reason": f"论点 {attacker} 信念值 {belief:.4f}，攻击关系仍有残余摩擦。"
             })
 
     # Expectation Gap Index (EGI) calculation normalized to [-1.0, 1.0]
@@ -464,11 +484,14 @@ def cmd_checkpoint(args):
     delta_h = (entropy - prev_entropy) + novelty
     
     round_num = args.round
-    gamma = 0.5
+    # Fix 2: Dampened ES saturation — prevents premature convergence
+    # gamma reduced 0.5→0.15; +1.0 in denominator stabilizes early rounds
+    gamma = 0.15
     if delta_h > 0:
-        es = 1.0 - math.exp(-gamma * round_num / delta_h)
+        es = 1.0 - math.exp(-gamma * round_num / (delta_h + 1.0))
     else:
-        es = 1.0
+        # No new information, but don't instant-saturate — gradual cap at 0.7
+        es = min(0.7, 0.1 * round_num)
 
     lfi = 0.6 * afi + 0.4 * (1.0 - es)
 
@@ -478,16 +501,41 @@ def cmd_checkpoint(args):
         bf = get_bayes_factor(e.get("category", "Narrative"), e.get("direction", "Bull"), e.get("strength", "Weak"))
         odds *= bf
         
-    # Sovereign Vision Mode optionality premium injection
+    # Fix 3: Vision optionality premium — capped, first-appearance only
     if mode == "vision":
-        for arg in ge:
-            if classify_argument(arg) == "vision":
-                odds *= 1.5  # Asymmetric optionality factor for validated vision nodes
+        prev_vision_nodes = set()
+        for r in state.get("rounds", []):
+            for node in r.get("grounded_extension", []):
+                if classify_argument(node) == "vision":
+                    prev_vision_nodes.add(node)
+        
+        new_vision_count = sum(
+            1 for arg in ge
+            if classify_argument(arg) == "vision" and arg not in prev_vision_nodes
+        )
+        # Cap at 2 new Vision Nodes per round, dampened factor 1.3 (was 1.5 uncapped)
+        capped = min(new_vision_count, 2)
+        odds *= 1.3 ** capped
                 
     posterior = (odds / (1.0 + odds)) * 100.0
     
     state["odds"] = odds
     state["posterior"] = posterior
+
+    # Parse raw sub-agent outputs if provided
+    detective_raw = {}
+    if hasattr(args, 'detective_raw_json') and args.detective_raw_json:
+        try:
+            detective_raw = json.loads(args.detective_raw_json)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    inquisitor_raw = {}
+    if hasattr(args, 'inquisitor_raw_json') and args.inquisitor_raw_json:
+        try:
+            inquisitor_raw = json.loads(args.inquisitor_raw_json)
+        except (json.JSONDecodeError, TypeError):
+            pass
 
     round_data = {
         "round": round_num,
@@ -505,13 +553,18 @@ def cmd_checkpoint(args):
         "timestamp": datetime.now().isoformat(),
         "egi": egi,
         "mode": mode,
-        "grounded_extension": list(ge)
+        "grounded_extension": list(ge),
+        "detective_raw_output": detective_raw,
+        "inquisitor_raw_output": inquisitor_raw
     }
     state["rounds"].append(round_data)
     state["unrefuted_attacks"] = unrefuted_attacks_list
     save_state(state)
 
-    convergence = check_convergence(round_num, lfi, len(unrefuted_attacks_list), mode=mode)
+    # Fix 5b: Pass posterior trace for stability and extreme bias checks
+    posterior_trace = [r.get("posterior", 50.0) for r in state["rounds"]]
+    convergence = check_convergence(round_num, lfi, len(unrefuted_attacks_list), mode=mode,
+                                    posterior_trace=posterior_trace)
     bayesian_trace = " → ".join(
         f"R{r['round']}:{r['posterior']}%" for r in state["rounds"]
     )
@@ -606,8 +659,10 @@ def cmd_status():
 
     latest = state["rounds"][-1]
     mode = get_topic_mode(state.get("topic", ""))
+    posterior_trace = [r.get("posterior", 50.0) for r in state["rounds"]]
     convergence = check_convergence(
-        latest["round"], latest["lfi"], latest.get("open_attacks", 0), mode=mode)
+        latest["round"], latest["lfi"], latest.get("open_attacks", 0), mode=mode,
+        posterior_trace=posterior_trace)
     bayesian_trace = " → ".join(
         f"R{r['round']}:{r['posterior']}%" for r in state["rounds"])
 
@@ -632,7 +687,7 @@ def cmd_status():
 # ─── CLI ───
 
 def main():
-    parser = argparse.ArgumentParser(description="DeepThink Engine v0.9.3")
+    parser = argparse.ArgumentParser(description="DeepThink Engine v0.9.4")
 
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--start", action="store_true", help="初始化新分析")
@@ -649,6 +704,8 @@ def main():
     parser.add_argument("--attacks-json", type=str, default="", help="论点有向图攻击关系对列表 (JSON format)")
     parser.add_argument("--evidence-json", type=str, default="", help="当前轮次新引入的证据详情 (JSON format)")
     parser.add_argument("--forbidden-consensus-json", type=str, default="", help="被禁止的平庸共识逻辑 (JSON format)")
+    parser.add_argument("--detective-raw-json", type=str, default="", help="Detective 子智能体的完整原始 JSON 输出 (用于完整博弈日志)")
+    parser.add_argument("--inquisitor-raw-json", type=str, default="", help="Inquisitor 子智能体的完整原始 JSON 输出 (用于完整博弈日志)")
     
     parser.add_argument("--no-timer", action="store_true", help="跳过 timer（调试用）")
 

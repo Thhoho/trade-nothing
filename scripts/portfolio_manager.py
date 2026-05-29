@@ -1,5 +1,5 @@
 """
-Trade Nothing v0.9.3 — Quantitative Portfolio & Trade Gateway
+Trade Nothing v0.9.4 — Quantitative Portfolio & Trade Gateway
 
 Provides a thread-safe, process-safe portfolio ledger ('portfolio_state.json'),
 implements the dynamic fractional Kelly sizing engine, and dispatches orders
