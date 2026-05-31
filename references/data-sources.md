@@ -95,9 +95,9 @@ If a P1-level script fails (Exit Code != 0), **must** cascade:
 | Insider Activity | `[code] 高管增减持 大股东质押 site:cninfo.com.cn` |
 
 
-## 6. Pluggable Global Data Provider Gateway (v6.0)
+## 6. Pluggable Global Data Provider Gateway (v0.9)
 
-Trade Nothing v6.0 integrates an object-oriented, Open-Closed Principle (OCP) compliant global data gateway in [data_providers.py](file:///Users/xiaweiqi/Documents/trade-nothing/scripts/data_providers.py). This gateway dynamically routes queries to standard free sources (Yahoo Finance, Tencent, Sina, NetEase) or commercial APIs, and provides two highly convenient ways to plug in new custom data feeds.
+Trade Nothing v0.9 integrates an object-oriented, Open-Closed Principle (OCP) compliant global data gateway in [data_providers.py](file:///Users/xiaweiqi/Documents/trade-nothing/scripts/data_providers.py). This gateway dynamically routes queries to standard free sources (Yahoo Finance, Tencent, Sina, NetEase) or commercial APIs, and provides two highly convenient ways to plug in new custom data feeds.
 
 ### 6.1 Unified Data Interface (`BaseDataProvider`)
 All data providers inherit from `BaseDataProvider` and return a standardized dictionary format:
@@ -166,9 +166,9 @@ class ProprietaryApiProvider(BaseDataProvider):
 ```
 
 
-## 7. Autonomous Daemon REST API Specifications (v7.0)
+## 7. Autonomous Daemon REST API Specifications (v0.9)
 
-Trade Nothing v7.0 introduces a standing, zero-dependency REST API daemon server running on port `8000`. This enables cloud deployment and automated TradingView webhook triggers.
+Trade Nothing v0.9 introduces a standing, zero-dependency REST API daemon server running on port `8000`. This enables cloud deployment and automated TradingView webhook triggers.
 
 ### 7.1 GET `/api/status`
 Returns server health status, current cash balances (CNY and USD), and all active or completed background research debate processes.
