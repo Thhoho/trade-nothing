@@ -1,4 +1,4 @@
-# Project Philosophy & Positioning - Trade Nothing v8.0
+# Project Philosophy & Positioning - Trade Nothing v0.9
 
 This document serves as the absolute conceptual anchor for the `trade-nothing` project. It summarizes the core investment philosophy, positioning, and elite buy-side workflow scenarios designed to shape the future of AI-augmented investment research.
 
