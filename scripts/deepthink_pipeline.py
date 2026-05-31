@@ -459,7 +459,15 @@ def generate_next_round_prompts(topic: str, state_file: str):
         next_round = last_round_data.get("round", 1) + 1
         # Convert engine structured attack format to text
         engine_attacks = state.get("unrefuted_attacks", [])
-        attacks = [{"attack": a.get("attack", ""), "reason": a.get("reason", "")} for a in engine_attacks]
+        # Sort by fuzzy_belief descending (default to 0.0 if missing)
+        engine_attacks_sorted = sorted(
+            engine_attacks,
+            key=lambda x: x.get("fuzzy_belief", 0.0),
+            reverse=True
+        )
+        # Cap at top 5 to focus subagent attention and prevent prompt bloat
+        engine_attacks_capped = engine_attacks_sorted[:5]
+        attacks = [{"attack": a.get("attack", ""), "reason": a.get("reason", "")} for a in engine_attacks_capped]
         next_action = last_round_data.get("next_action", "寻找更深层的供应链交叉佐证。")
 
     # Format attacks
@@ -467,6 +475,8 @@ def generate_next_round_prompts(topic: str, state_file: str):
     if attacks:
         for idx, att in enumerate(attacks):
             formatted_attacks += f"{idx + 1}. 攻击点: {att.get('attack', '')}\n   为什么未解决: {att.get('reason', '')}\n\n"
+        if len(engine_attacks) > 5:
+            formatted_attacks += f"⚠️ (注意: 当前图谱共有 {len(engine_attacks)} 个未完全反驳的活跃攻击，以上仅展示信念度最高的前 5 个最致命的攻击以进行靶向攻防。)\n"
     else:
         formatted_attacks = "（上一轮暂无未反驳的致命漏洞。继续加固图谱逻辑，寻找深层物理死角。）\n"
 

@@ -154,9 +154,9 @@ def check_convergence(round_num: int, lfi: float, open_attacks: int, mode: str =
         return {"decision": "continue",
                 "reason": f"轮次 {round_num} < 最低要求 {MIN_ROUNDS}，必须继续进行质证硬化。"}
 
-    if open_attacks > 0:
+    if open_attacks > 0 and lfi >= lfi_threshold:
         return {"decision": "continue",
-                "reason": f"存在 {open_attacks} 个未完全反驳的攻击向量（Dung图中残余摩擦节点），必须继续。"}
+                "reason": f"存在 {open_attacks} 个未完全反驳的攻击向量，且逻辑摩擦力指数 LFI={lfi:.4f} >= {lfi_threshold} ({mode}模式)，必须继续。"}
 
     # Fix 5: Extreme bias detection — posterior >95% or <5% requires ≥5 rounds
     if posterior_trace and len(posterior_trace) >= 1:

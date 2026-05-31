@@ -117,7 +117,7 @@ The debate ends only when:
 
 ## Quick Start
 
-### Install
+### 1. Install & Setup
 
 ```bash
 git clone https://github.com/Thhoho/trade-nothing.git
@@ -125,55 +125,37 @@ cd trade-nothing
 pip install -r requirements.txt
 ```
 
-### Wire It to Your Agent
+### 2. 🤖 Load as Agent Skill (For AI Agents / Claude / Antigravity)
 
-This is an **agent skill**, not a standalone app. Drop it into your AI agent's skill directory:
+If you are an AI agent or using an agent runtime (like Claude Code, Antigravity, OpenHands, etc.):
+*   **Direct Instruction**: Act by reading [SKILL.md](SKILL.md) in full first. It contains complete run instructions and prompt definitions.
+*   **Activate Skill**: Symlink this repository to your global skills directory (e.g., `~/.gemini/skills/trade-nothing/`).
+*   **Prompt to AI**: Simply type: *“Activate trade-nothing skill and deepthink ByteDance Pre-IPO Valuation”* or use the shorthand `-deepthink "ByteDance Pre-IPO Valuation"`.
 
-| Agent Runtime | How to Install |
-|---------------|---------------|
-| **Antigravity** | Symlink to `~/.gemini/skills/trade-nothing/` |
-| **Claude Code** | Add `SKILL.md` to your project context or CLAUDE.md |
-| **Gemini CLI** | Pass `SKILL.md` as system instruction |
-| **Hermes / OpenHands** | Register as skill directory |
-| **Any other agent** | Feed `SKILL.md` as system prompt — it's self-contained |
+---
 
-### Use It
+### 3. Usage Examples & Commands
 
+#### 🤺 Run Multi-Agent Adversarial DeepThink (Main Event)
+Orchestrates an isolated, structured debate between the **Detective** (Bull case) and the **Inquisitor** (Bear case attacks), moderated by the **Orchestrator** (Judge) using Bayesian updates until logic convergence, automatically outputting a 3-part institutional-grade investment decision dashboard:
 ```bash
-# Full adversarial deep research (the main event)
-> -deepthink "ByteDance Pre-IPO Valuation"
-
-# Quick opportunity scan
-> -scan
-
-# Audit your past predictions
-> -calibrate
-
-# "If this trade fails, why?" simulation
-> -premortem
+# Start adversarial debate on any stock or core investment thesis
+python3 scripts/deepthink_orchestrator.py --run --topic "ByteDance Pre-IPO Valuation"
 ```
 
-### Or Run the Tools Standalone
-
-Every script works independently, no agent required:
-
+#### 📊 Standalone Quantitative & Sizing Tools (No Agent Required)
+If you want to run calculations or query specific data feeds standalone:
 ```bash
-# AI Infrastructure scenario matrix with Kelly sizing
+# Calculate 4-scenario payoff matrix & entropy-discounted Kelly position sizing
 python3 scripts/scenario_matrix.py --demo
 
-# Global macro water temperature (oil, rates, VIX, FX, gold)
+# Get global macro water temperature dashboard (US10Y yield, Brent crude, VIX, FX, Gold)
 python3 scripts/verified_fetcher.py --all
 
-# A-share real-time data + financials
+# Fetch quotes, valuation metrics, and core financials for A-share companies
 python3 scripts/fetch_akshare.py --code 300118 --financial
 
-# Polymarket prediction market odds
-python3 scripts/fetch_polymarket.py --query "Fed rate cut"
-
-# Macro/sector catalyst calendar
-python3 scripts/catalyst_calendar.py --sector ai
-
-# Institutional DCF model → .xlsx
+# Build and compile an institutional-grade, formula-driven DCF valuation model in Excel
 python3 scripts/excel_model_builder.py --help
 ```
 

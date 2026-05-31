@@ -337,6 +337,22 @@ def run_tests():
     assert_true(result_legacy["decision"] == "converge",
                 f"Legacy call without posterior_trace → converge (got {result_legacy['decision']})")
 
+    # 5f. Open attacks but low LFI and stable posterior should converge
+    result_open_attacks_converge = check_convergence(
+        round_num=3, lfi=0.10, open_attacks=2, mode="vision",
+        posterior_trace=[50.0, 60.0, 62.0]
+    )
+    assert_true(result_open_attacks_converge["decision"] == "converge",
+                f"Open attacks with low LFI and stable posterior → converge (got {result_open_attacks_converge['decision']})")
+
+    # 5g. Open attacks with HIGH LFI should NOT converge
+    result_open_attacks_high_lfi = check_convergence(
+        round_num=3, lfi=0.30, open_attacks=2, mode="vision",
+        posterior_trace=[50.0, 60.0, 62.0]
+    )
+    assert_true(result_open_attacks_high_lfi["decision"] == "continue",
+                f"Open attacks with high LFI → continue (got {result_open_attacks_high_lfi['decision']})")
+
     # ── Integration: Multi-round simulation ──────────────────────────────
 
     print("\n--- Integration: Multi-round Convergence Timing ---")
