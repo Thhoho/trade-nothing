@@ -11,6 +11,10 @@ Antigravity、Claude Code、OpenHands 等 agent runtime。
 多头/空头 agent 分别找证据和攻击，再由 Judge 只按有来源的证据评分，最后由确定性
 Python engine 判断是否收敛。
 
+<p align="center">
+  <img src="assets/images/philosophy.jpg" alt="Trade Nothing 哲学：共识与现实的错配" width="640" />
+</p>
+
 ## v0.10.2 改了什么
 
 `-deepthink2` 现在是主路径。
@@ -34,6 +38,10 @@ Python engine 判断是否收敛。
 - 已解决的 crux 会退休，后续轮次只打未解决问题。
 - 只有 engine 判定收敛，才允许生成正式报告。
 - `fuse_break` 代表达到最大轮次，不代表收敛。
+
+<p align="center">
+  <img src="assets/images/architecture.jpg" alt="Trade Nothing 对抗式架构" width="680" />
+</p>
 
 ## 安装
 
@@ -146,6 +154,10 @@ python3 scripts/validate_report_v2.py \
 这不是吹毛求疵。投资报告宁可阻断，也不能把无来源数字包装成结论。
 
 ## v2 流程怎么跑
+
+<p align="center">
+  <img src="assets/images/pipeline.jpg" alt="Trade Nothing deepthink 流程" width="720" />
+</p>
 
 1. **Framer**：定义决策问题和 2-5 条 crux。
 2. **Detective**：寻找最强多头证据。

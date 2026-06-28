@@ -13,6 +13,10 @@ an investment question into several load-bearing claims, sends isolated bull and
 agents to attack those claims, lets a Judge score only sourced evidence, and lets a
 deterministic engine decide whether the debate has converged.
 
+<p align="center">
+  <img src="assets/images/philosophy.jpg" alt="Trade Nothing philosophy: consensus versus reality" width="640" />
+</p>
+
 ## What Changed In v0.10.2
 
 `-deepthink2` is now the main path.
@@ -37,6 +41,10 @@ runs, but it tends to push one global probability toward extremes and can burn a
 - Finished claims retire, so later rounds focus on unresolved claims.
 - A final report is allowed only when the engine says the cruxes are resolved or monitorable.
 - `fuse_break` is treated as blocked, not as convergence.
+
+<p align="center">
+  <img src="assets/images/architecture.jpg" alt="Trade Nothing adversarial architecture" width="680" />
+</p>
 
 ## Install
 
@@ -151,6 +159,10 @@ This is intentional. The report should stop rather than silently present unsuppo
 numbers.
 
 ## How The v2 Pipeline Works
+
+<p align="center">
+  <img src="assets/images/pipeline.jpg" alt="Trade Nothing deepthink pipeline" width="720" />
+</p>
 
 1. **Framer** defines the decision question and 2-5 cruxes.
 2. **Detective** searches for the strongest sourced bull case.
