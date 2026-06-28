@@ -13,7 +13,7 @@ description: >
   or any agent framework supporting sub-agent delegation.
 ---
 
-# Trade Nothing v0.9.4 — The Sovereign Alpha Hunter
+# Trade Nothing v0.10.2 — The Sovereign Alpha Hunter
 
 > **"You are not a commentator explaining past facts; you are a hunter seeking misalignments in the mist. Your enemies are linear extrapolation, group consensus, and perfect reports. Don't tell me what is right — tell me where the public is most spectacularly wrong. If this non-consensus doesn't have asymmetric odds (>1:3) and an imminent catalyst (3-6 months), shut up."**
 
@@ -25,7 +25,7 @@ description: >
 
 ## 1. Agentic Architecture (智能体协同架构)
 
-Trade Nothing v0.9.4 uses **physically isolated, distributed parallel debate** — not single-model role-playing:
+Trade Nothing v0.10.2 uses **physically isolated, distributed parallel debate** — not single-model role-playing:
 
 ```mermaid
 graph TD
@@ -49,8 +49,9 @@ This skill does **not** bind to any specific agent framework. Map the sub-agent 
 
 | Runtime | Detective Dispatch | Inquisitor Dispatch | Notes |
 |---------|-------------------|---------------------|-------|
+| **Codex** | Use this `SKILL.md` + available sub-agent/task delegation, or isolated prompt runs | Same | Install under `~/.codex/skills/trade-nothing` |
 | **Antigravity (agy)** | `define_subagent` + `invoke_subagent` | Same | Native sub-agent support |
-| **Claude Code** | `Task` tool (parallel spawn) | Same | Use `agents/detective.md` as task instruction |
+| **Claude Code** | `Task` tool (parallel spawn) | Same | Point project `CLAUDE.md` at this `SKILL.md`; use `agents/detective.md` as task instruction |
 | **Gemini CLI** | Context fork or shell sub-process | Same | Pass persona via system prompt |
 | **Hermes / OpenHands** | `AgentDelegateAction` | Same | Delegate with persona file |
 | **Single Model (Fallback)** | Role-switch prompt injection | Same | Pseudo-isolation mode (weaker) |
@@ -141,6 +142,54 @@ Spawn 3 independent Inquisitor instances. Premise: "This stock has crashed 50% i
 
 ---
 
+### Mode F: `-deepthink2` — Crux-Based Adversarial Pipeline (v0.10.2, recommended)
+
+> Replaces the single-posterior + LFI layer (which railroaded every run to 0%/100% and always
+> burned 12 rounds) with a **per-crux ledger**: bounded two-sided probability per load-bearing
+> claim, decision-readiness convergence, crux-scoping (only debate OPEN cruxes), captured
+> citations, and a two-layer report. Control flow is deterministic; the LLM only produces content.
+
+**Model tiering** (`scripts/model_tiers.py`): Detective / Inquisitor / Framer / battle-log synthesis
+use the **DEEP** model (quality unchanged); only the per-round **Judge scoring** uses the **FAST**
+model. Override via `TRADE_NOTHING_MODEL_DEEP` / `TRADE_NOTHING_MODEL_FAST`.
+
+When receiving `-deepthink2 "target/topic"`, run this orchestrator-driven loop:
+
+```bash
+# 1. Framing gate (DEEP, runs once) — decision question + 2-5 candidate cruxes + No-Edge precheck
+python3 scripts/deepthink_orchestrator_v2.py --frame --topic "TARGET"
+#    → run agents/framer.md with framer_prompt. If no_edge_precheck.is_researchable=false → emit
+#      No-Edge statement and STOP (spawn nothing).
+
+# 2. Init from frame → Round-1 dispatch prompts (Detective+Inquisitor scoped to all cruxes)
+python3 scripts/deepthink_orchestrator_v2.py --init --topic "TARGET" --frame-json '<framer_output>'
+
+# 3. Each round: spawn isolated Detective (detective.md) + Inquisitor (inquisitor.md) on the
+#    OPEN cruxes only (+ Inquisitor's free-roam slot to re-open a resolved crux). Then score with
+#    the FAST Judge (agents/judge.md) and submit:
+python3 scripts/deepthink_orchestrator_v2.py --submit --topic "TARGET" \
+    --det '<detective_json>' --inq '<inquisitor_json>' --judge '<judge_json>'
+#    → status=dispatch_subagents (loop, only OPEN cruxes), blocked_max_rounds, OR status=ready_for_report.
+
+# 4. Report: Layer A (proof ledger + numbered citations) is rendered by the script; the DEEP
+#    model fills Layer B (battle log) between the BATTLE_LOG markers.
+python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET"
+```
+
+> **Integrity:** all probabilities/statuses are computed by `crux_engine.py` from Judge signals;
+> the LLM must not write or alter any number. Convergence (every crux RESOLVED or MONITORABLE +
+> decision stable + adversary dry) is decided by the script, not the LLM. The Judge's signal is
+> bounded `[-1,1]`; any number it logs must carry a real source URL or it is capped at narrative weight.
+> `fuse_break` is not convergence: if max rounds are hit while any crux is OPEN/PENDING, the
+> orchestrator returns `blocked_max_rounds` and `--report` refuses to generate a formal report.
+
+**Data tiers (取数分层):** Tier-2 = WebSearch (the sub-agents' primary qualitative engine — broad,
+robust, carries URLs that flow into the ledger/References). Tier-1 = `scripts/tier1_providers.py`
+(no-key, citable hard anchors): `--fred DGS10` (macro), `--edgar NVDA --form 10-K` (US filings),
+`--comtrade 156 0 854143 2023` (trade by HS). The dead DDG-regex `verified_crawler` is superseded.
+
+---
+
 ## 3. Toolbox Quick Reference (工具箱速查)
 
 ```bash
@@ -196,7 +245,7 @@ All paths are portable. Override defaults via environment variables:
 
 ---
 
-*Trade Nothing v0.9.4 — Hunt Alpha, Not Consensus.*
+*Trade Nothing v0.10.2 — Hunt Alpha, Not Consensus.*
 *Adversarial multi-agent architecture with full lifecycle negative feedback loops.*
 
 
@@ -207,5 +256,3 @@ All paths are portable. Override defaults via environment variables:
 > 1. **LFI（逻辑摩擦指数）、AFI、EGI、以及贝叶斯后验概率 $P_n$ 的计算必须 100% 物理读取自底层 `deepthink_engine.py` 运行输出并写入的 JSON 状态文件，严禁大模型以任何定性幻想、猜测或直接生成任何数值。**
 > 2. **任何没有物理运行底层 Python 引擎而输出包含具体数值研报的行为，均视为严重违背“第一性原理”的欺骗性幻觉，应当被无条件熔断。**
 > 3. **如果物理引擎在计算中因存在悬空攻击节点（未收敛）而发出 `"继续质证"` (continue) 的指令，大模型必须老老实实向用户呈报未收敛事实，严禁为了强行给出一份“格式精美、得出买入建议”的完美研报而粉饰太平、伪造收敛。**
-
-

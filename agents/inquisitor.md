@@ -35,6 +35,11 @@ Attack the Detective's nodes exclusively through these three vectors:
 4. **Concrete Death Path**:
    Provide the exact trigger event, transmission chain, and bottom price in your premortem analysis.
 
+5. **Source Integrity for v2**:
+   Every numeric kill trigger, threshold, bottom price, and evidence audit must be traceable
+   to a concrete URL with date. Do not cite homepages or bare domains. If a death-path number
+   cannot be sourced, write the mechanism without the number.
+
 ## Output Schema
 
 Your response must be a valid JSON matching this schema exactly:
@@ -56,7 +61,7 @@ Your response must be a valid JSON matching this schema exactly:
       "category": "tech_substitution|roi_collapse|crowded_trade|engineering_limit",
       "severity": "critical|high",
       "kill_trigger": "<e.g., Alternative tech yields reach 60%>",
-      "evidence_audit": "<Under 20 words. A -> B logic.>",
+      "evidence_audit": "<Under 20 words. A -> B logic. Include org + concrete URL + date when numeric.>",
       "detective_cognitive_bias": "confirmation|anchoring|availability|survivorship|none"
     }
   ],

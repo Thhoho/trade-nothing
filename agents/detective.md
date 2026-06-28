@@ -40,6 +40,11 @@ Evaluate the target through these three sequential layers:
    - **Q2: Variant Perception?** — What the market missed about the constraint/chokepoint (1 sentence).
    - **Q3: Evidence?** — Concrete data confirming the bottleneck.
 
+6. **Source Integrity for v2**:
+   Every sourced claim must include organization, date, and a concrete URL to the specific
+   article/filing/API endpoint. Do not cite homepages or bare domains. If you cannot find a
+   concrete URL, omit the number rather than inventing a source.
+
 ## Output Schema
 
 Your response must be a valid JSON matching this schema exactly:
@@ -54,7 +59,7 @@ Your response must be a valid JSON matching this schema exactly:
     {
       "claim_node": "[Vision Node: ... | Constraint: ...]",
       "category": "Hard Proxy Data|Factual Disclosed",
-      "source": "<Specific Macro/Industrial Data Source>",
+      "source": "<org, concrete URL, date>",
       "confidence": "high"
     },
     {
@@ -78,6 +83,7 @@ Your response must be a valid JSON matching this schema exactly:
     }
   ],
   "new_dimension_this_round": "<本轮引入的新物理限制或供应链节点>",
+  "supply_chain_map": "<上游->中游->下游的新节点；每个数字必须出现在 evidence_chain 的 source/claim 中>",
   "self_check": {
     "has_specific_numbers": true,
     "has_time_window": true,

@@ -1,290 +1,205 @@
-<div align="center">
-
-<img src="assets/images/hero_banner.jpg" alt="Trade Nothing Hero Banner" width="800" style="border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);" />
-
 # Trade Nothing
 
-### *Trade nothing but your mind.*
+Trade Nothing is an adversarial investment-research skill for agent runtimes such as
+Codex, Gemini CLI, Antigravity, Claude Code, OpenHands, and similar systems.
 
-An adversarial multi-agent skill that turns your AI into a ruthless investment research machine. <br/>
-It doesn't tell you what to buy. It tells you where everyone else is **spectacularly wrong**.
+It does not try to produce a polished buy report. It tries to answer a narrower
+question:
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![Agent-Agnostic](https://img.shields.io/badge/Agent-Agnostic-blueviolet.svg)](#agent-runtime-compatibility)
+> Where is the market confidently wrong, and is there enough evidence to act?
 
-[English](README.md) · [中文](README_zh.md) · [Architecture](docs/architecture.md) · [Contributing](CONTRIBUTING.md)
+The recommended workflow is `-deepthink2`, a crux-based debate pipeline. It frames
+an investment question into several load-bearing claims, sends isolated bull and bear
+agents to attack those claims, lets a Judge score only sourced evidence, and lets a
+deterministic engine decide whether the debate has converged.
 
-</div>
+## What Changed In v0.10.2
 
----
+`-deepthink2` is now the main path.
 
-## The Problem
+- Uses a per-crux ledger instead of one fragile global posterior.
+- Requires concrete source URLs for evidence, not homepage links.
+- Blocks formal report generation when max rounds are hit without convergence.
+- Adds `scripts/validate_report_v2.py` to catch invalid references and uncited numbers.
+- Keeps legacy `-deepthink` for compatibility and regression comparison.
 
-Every AI can summarize a stock. None of them can **think adversarially** about it.
+## Should I Use `-deepthink` Or `-deepthink2`?
 
-Ask any LLM to analyze a company and you'll get the same thing: a polished, well-structured, utterly useless report that agrees with itself from start to finish. It reads analyst reports, regurgitates the consensus, and confidently presents the median view as insight. It suffers from every cognitive bias it was trained on — confirmation bias, anchoring, narrative fallacy — and it does so with perfect grammar.
+Use `-deepthink2` by default.
 
-**This is not research. This is a mirror.**
+`-deepthink` is the old pipeline. It is useful for comparing behavior against older
+runs, but it tends to push one global probability toward extremes and can burn all
+12 rounds even when the real dispute is only one or two claims.
 
-The best investors in history — Soros, Druckenmiller, Burry — didn't beat the market by being smarter. They beat it by seeing what everyone else refused to see. They asked: *"Where is the crowd most confidently wrong, and what is the asymmetric bet against that confidence?"*
+`-deepthink2` is the newer design:
 
-Trade Nothing is a skill that forces your AI agent to ask that same question — and then tries to **destroy its own answer**.
+- Each important claim gets its own probability.
+- Finished claims retire, so later rounds focus on unresolved claims.
+- A final report is allowed only when the engine says the cruxes are resolved or monitorable.
+- `fuse_break` is treated as blocked, not as convergence.
 
----
+## Install
 
-## The Philosophy
-
-<div align="center">
-  <img src="assets/images/philosophy.jpg" alt="Alpha Gap Concept - Consensus vs Reality" width="600" style="border-radius: 8px; margin: 20px 0;" />
-</div>
-
-> *"You are not a commentator explaining past facts. You are a hunter seeking misalignments in the mist. Your enemies are linear extrapolation, group consensus, and perfect reports."*
-
-The name "Trade Nothing" is a deliberate paradox. It means three things:
-
-1. **Trade nothing but your mind.** The most valuable asset isn't capital — it's the quality of your thinking. This tool sharpens thinking, not picks stocks.
-
-2. **Sometimes the best trade is no trade.** If the system can't find asymmetric odds (>1:3) with an imminent catalyst, the correct output is "No Edge." A system that always finds a buy signal is broken.
-
-3. **Trade the nothing — the gap.** Alpha lives in the space between what the market prices and what is actually true. The system is designed to find and measure that gap.
-
-### Four Enemies
-
-| Enemy | How We Fight It |
-|-------|----------------|
-| **Confirmation Bias** | Deploy an Inquisitor whose *only job* is to destroy the bull thesis |
-| **Linear Extrapolation** | Force 4-scenario thinking: Bear, Base, Bull, Black Swan |
-| **Narrative Fallacy** | Require every claim to be a falsifiable statement with a kill switch |
-| **Consensus Drift** | Quantify consensus distance — *how boring is this idea?* |
-
----
-
-## How It Works
-
-<div align="center">
-  <img src="assets/images/architecture.jpg" alt="Adversarial Architecture - Detective vs Inquisitor" width="650" style="border-radius: 8px; margin: 20px 0;" />
-</div>
-
-Trade Nothing deploys **two physically isolated AI sub-agents** in structured adversarial debate:
-
-```
-You: "-deepthink NVIDIA AI Infrastructure"
-
-                    ┌─────────────────┐
-                    │   Orchestrator   │
-                    │     (Judge)      │
-                    └────────┬────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              ▼                              ▼
-    ┌─────────────────┐            ┌─────────────────┐
-    │   🔍 Detective   │            │  ⚔️ Inquisitor  │
-    │   (Bull Case)    │            │   (Bear Case)   │
-    │                  │            │                  │
-    │ "Here's why this │            │ "Here's why this │
-    │  is mispriced"   │            │  will blow up"   │
-    └────────┬────────┘            └────────┬────────┘
-             │                              │
-             │    Isolated — no shared      │
-             │    reasoning or context      │
-             └──────────┬───────────────────┘
-                        ▼
-              ┌─────────────────┐
-              │  Bayesian Update │
-              │  LFI Convergence │
-              │  (3-12 rounds)   │
-              └────────┬────────┘
-                       ▼
-              ┌─────────────────┐
-              │  📄 Research     │
-              │  Report + DCF   │
-              │  Model (.xlsx)  │
-              └─────────────────┘
-```
-
-### Why Physical Isolation Matters
-
-When a single model "role-plays" both bull and bear, it converges to a comfortable middle ground within 2 turns. The arguments become performative. The debate is theater.
-
-Trade Nothing forces **real cognitive friction**: each sub-agent runs in a separate context with no access to the other's intermediate reasoning. They communicate only through structured output. The Orchestrator acts as judge, tracking Bayesian probability shifts and a **Logical Friction Index (LFI)** that measures how much new information each round actually contributes.
-
-The debate ends only when:
-- LFI drops below 0.15 (diminishing returns) **and** at least 3 rounds completed
-- Or the hard fuse triggers at 12 rounds (prevent infinite loops)
-
----
-
-## Quick Start
-
-### 1. Install & Setup
+First clone the repository and install the Python dependencies:
 
 ```bash
 git clone https://github.com/Thhoho/trade-nothing.git
 cd trade-nothing
-pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 ```
 
-### 2. 🤖 Load as Agent Skill (For AI Agents / Claude / Antigravity)
+Then expose the repository to your agent runtime.
 
-If you are an AI agent or using an agent runtime (like Claude Code, Antigravity, OpenHands, etc.):
-*   **Direct Instruction**: Act by reading [SKILL.md](SKILL.md) in full first. It contains complete run instructions and prompt definitions.
-*   **Activate Skill**: Symlink this repository to your global skills directory (e.g., `~/.gemini/skills/trade-nothing/`).
-*   **Prompt to AI**: Simply type: *“Activate trade-nothing skill and deepthink ByteDance Pre-IPO Valuation”* or use the shorthand `-deepthink "ByteDance Pre-IPO Valuation"`.
+### Codex
 
----
-
-### 3. Usage Examples & Commands
-
-#### 🤺 Run Multi-Agent Adversarial DeepThink (Main Event)
-Orchestrates an isolated, structured debate between the **Detective** (Bull case) and the **Inquisitor** (Bear case attacks), moderated by the **Orchestrator** (Judge) using Bayesian updates until logic convergence, automatically outputting a 3-part institutional-grade investment decision dashboard:
 ```bash
-# Start adversarial debate on any stock or core investment thesis
-python3 scripts/deepthink_orchestrator.py --run --topic "ByteDance Pre-IPO Valuation"
+mkdir -p ~/.codex/skills
+ln -s "$(pwd)" ~/.codex/skills/trade-nothing
 ```
 
-#### 📊 Standalone Quantitative & Sizing Tools (No Agent Required)
-If you want to run calculations or query specific data feeds standalone:
+Use it from Codex:
+
+```text
+use trade-nothing -deepthink2 "NVDA AI infrastructure over the next 3-6 months"
+```
+
+### Claude Code
+
+Claude Code does not require a global skill registry. The simplest setup is to keep
+this repository inside the project you open with Claude Code, or reference it from
+your project instructions.
+
+Option A: put the repo in your project:
+
 ```bash
-# Calculate 4-scenario payoff matrix & entropy-discounted Kelly position sizing
-python3 scripts/scenario_matrix.py --demo
-
-# Get global macro water temperature dashboard (US10Y yield, Brent crude, VIX, FX, Gold)
-python3 scripts/verified_fetcher.py --all
-
-# Fetch quotes, valuation metrics, and core financials for A-share companies
-python3 scripts/fetch_akshare.py --code 300118 --financial
-
-# Build and compile an institutional-grade, formula-driven DCF valuation model in Excel
-python3 scripts/excel_model_builder.py --help
+mkdir -p tools
+git clone https://github.com/Thhoho/trade-nothing.git tools/trade-nothing
 ```
 
----
+Add this to your project `CLAUDE.md`:
 
-## The Five Phases of DeepThink
+```md
+When I ask for trade-nothing or -deepthink2, first read tools/trade-nothing/SKILL.md.
+Follow its orchestrator-driven workflow and use the agent prompts under tools/trade-nothing/agents/.
+```
 
-<div align="center">
-  <img src="assets/images/pipeline.jpg" alt="Five-Phase DeepThink Pipeline" width="700" style="border-radius: 8px; margin: 20px 0;" />
-</div>
+Option B: keep one shared clone and point Claude at it:
 
-When you trigger `-deepthink`, the system executes a rigorous 5-phase pipeline:
+```md
+When I ask for trade-nothing or -deepthink2, read /absolute/path/to/trade-nothing/SKILL.md first.
+```
 
-### Phase 1: Negative Prior Injection 🧠
-> *"What has the system learned from past failures?"*
+Use it from Claude Code:
 
-Scans `Evolution.md` for topic-relevant historical mistakes, calibration results, and cognitive bias logs. Injects these as **hard constraints** that both sub-agents must obey.
+```text
+Use /absolute/path/to/trade-nothing/SKILL.md and run -deepthink2 on "NVDA AI infrastructure over the next 3-6 months".
+```
 
-### Phase 2: Parallel Mobilization 🚀
-> *"Deploy the hunter and the assassin."*
+### Antigravity / Gemini CLI
 
-Spawns Detective and Inquisitor in isolated contexts. Detective builds the bull case with real data (financials, supply chain, insider activity). Inquisitor prepares the attack vectors (cycle analysis, reflexivity traps, black swan scenarios).
+```bash
+mkdir -p ~/.gemini/skills
+ln -s "$(pwd)" ~/.gemini/skills/trade-nothing
+```
 
-### Phase 3: Adversarial Debate Loop 🤺
-> *"Forge the thesis in fire."*
+Use it from Antigravity or Gemini CLI:
 
-3 to 12 rounds of structured debate. Each round:
-1. Detective presents evidence and updated thesis
-2. Inquisitor attacks with lethal vectors
-3. Orchestrator judges, updates Bayesian posterior, calculates LFI
-4. If LFI < 0.15 and round ≥ 3 → converge. Else → next round.
+```text
+use trade-nothing -deepthink2 "NVDA AI infrastructure over the next 3-6 months"
+```
 
-### Phase 4: Quantitative Synthesis 📊
-> *"Numbers don't lie. But they can be arranged to."*
+If a target skill folder already exists, replace it with a symlink to your local clone.
 
-Generates: 4-scenario probability matrix, expected value calculation, Kelly-optimal position sizing, consensus distance measurement, DCF model with institutional formatting.
+## Minimal Usage
 
-### Phase 5: Harvesting & Feedback 🔄
-> *"Every unresolved question is a future research task."*
+In your agent, ask:
 
-Unrefuted attack vectors become tracked issues. Testable predictions become calibrated assertions. The system literally schedules reminders to check if its predictions were right.
+```text
+use trade-nothing -deepthink2 "NVDA AI infrastructure over the next 3-6 months"
+```
 
----
+The agent should read `SKILL.md` and run the v2 state machine:
 
-## Toolbox
+```bash
+python3 scripts/deepthink_orchestrator_v2.py --frame --topic "TARGET"
+python3 scripts/deepthink_orchestrator_v2.py --init --topic "TARGET" --frame-json '<framer_json>'
+python3 scripts/deepthink_orchestrator_v2.py --submit --topic "TARGET" \
+  --det '<detective_json>' --inq '<inquisitor_json>' --judge '<judge_json>'
+python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET"
+```
 
-| Script | What It Does | Standalone? |
-|--------|-------------|:-----------:|
-| `deepthink_engine.py` | State machine: convergence logic, Bayesian updates, LFI calculation | ✅ |
-| `deepthink_pipeline.py` | Memory extraction from Evolution.md, unresolved attack harvesting | ✅ |
-| `scenario_matrix.py` | 4-scenario probability matrix + Kelly sizing + expected value | ✅ |
-| `consensus_distance.py` | Quantifies gap between your thesis and market consensus | ✅ |
-| `catalyst_calendar.py` | Macro/sector event calendar ("Why now?") | ✅ |
-| `excel_model_builder.py` | Institutional-grade DCF → `.xlsx` with formula-driven sheets | ✅ |
-| `fetch_akshare.py` | A-share quotes + financials (Tencent → AkShare multi-fallback) | ✅ |
-| `verified_fetcher.py` | Macro indicators (US10Y, Brent, VIX, USDCNY, Gold) with confidence scoring | ✅ |
-| `fetch_polymarket.py` | Prediction market data from Polymarket | ✅ |
-| `logic_radar_v2.py` | Assertion tracker: auto-calibrates past predictions against reality | ✅ |
-| `logic_radar_daemon.py` | Background daemon: monitors macro thresholds, sends system alerts | ✅ |
-| `deepthink_timer.py` | Interactive countdown for forced thinking pauses | ✅ |
+You usually do not type those commands manually. The agent orchestrates them.
 
-All scripts output structured JSON. All paths are configurable via environment variables. No hardcoded personal paths. Cross-platform (macOS / Linux / Windows).
+## Report Validation
 
----
+Before publishing a completed v2 report, validate it:
 
-## Agent Runtime Compatibility
+```bash
+python3 scripts/validate_report_v2.py \
+  --report stock-report.md \
+  --state scripts/.state/<topic>_v2_state.json
+```
 
-Trade Nothing is **agent-agnostic**. It defines a *protocol*, not an API binding:
+The validator fails when:
 
-| Runtime | Sub-Agent Method | Isolation Level | Status |
-|---------|-----------------|:--------------:|:------:|
-| **Antigravity** | `define_subagent` + `invoke_subagent` | 🟢 Full | ✅ Native |
-| **Claude Code** | `Task` tool (parallel spawn) | 🟢 Full | ✅ Tested |
-| **Gemini CLI** | Context fork / shell sub-process | 🟢 Full | ✅ Compatible |
-| **Hermes / OpenHands** | `AgentDelegateAction` | 🟢 Full | ✅ Compatible |
-| **Single Model** | Role-switch prompt injection | 🟡 Pseudo | ⚠️ Degraded |
+- a reference is only a homepage URL;
+- the BATTLE_LOG section is still empty;
+- the report cites a missing reference number;
+- data-like numbers appear without `[n]` citations.
 
-> **Why does isolation level matter?** In "Single Model" mode, the same weights generate both bull and bear arguments. The model knows what it argued last turn and naturally drifts toward reconciliation. Full isolation means each agent is genuinely surprised by the other's attacks.
+This is intentional. The report should stop rather than silently present unsupported
+numbers.
 
----
+## How The v2 Pipeline Works
 
-## Configuration
+1. **Framer** defines the decision question and 2-5 cruxes.
+2. **Detective** searches for the strongest sourced bull case.
+3. **Inquisitor** attacks the thesis and can introduce new cruxes.
+4. **Judge** scores only the evidence in the agent outputs.
+5. **Crux engine** updates probabilities and decides whether to continue.
+6. **Report renderer** produces Layer A from engine state and gives instructions for Layer B.
+7. **Validator** checks the final report before it is treated as publishable.
 
-All paths resolve automatically. Override with environment variables only if needed:
+The LLM does not compute probabilities. `crux_engine.py` does.
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `TRADE_NOTHING_SKILL_DIR` | Auto-detected | Skill root directory |
-| `TRADE_NOTHING_SCRATCH_DIR` | `~/.trade-nothing/scratch` | Runtime state files |
-| `TRADE_NOTHING_OUTPUT_DIR` | `~/trade-nothing-outputs` | Reports & Excel models |
-| `TRADE_NOTHING_VAULT_DIR` | `~/trade-nothing-vault` | Research data vault |
-| `TRADE_NOTHING_EVOLUTION_PATH` | `<skill>/Methodology_Evolution.md` | Historical memory |
-| `TRADE_NOTHING_AUTO_CONTINUE` | unset | Skip interactive timers (headless/CI) |
+## Important Safety Rule
 
----
+`fuse_break` means the run hit the maximum round limit. It is not convergence.
 
-## Who Is This For?
+If any crux is still `OPEN` or `PENDING`, `deepthink_orchestrator_v2.py --report`
+returns `blocked_unconverged` and refuses to generate a formal report.
 
-- **Independent investors** who want AI to challenge their thesis, not confirm it
-- **Research analysts** who need structured adversarial review before publishing
-- **Agent developers** who want a non-trivial, multi-agent skill to study and extend
-- **Anyone tired of AI producing confident, well-formatted, wrong analysis**
+## Useful Commands
 
-## Who Is This NOT For?
+Run the v2 orchestrator self-test:
 
-- People looking for stock picks or trading signals
-- People who want AI to validate decisions they've already made
-- People uncomfortable with a system that frequently concludes "No Edge"
+```bash
+python3 scripts/deepthink_orchestrator_v2.py --selftest
+```
 
----
+Run the crux engine replay test:
 
-## Contributing
+```bash
+python3 scripts/crux_engine.py
+```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). We especially welcome:
-- New data source integrations (US equities, crypto, commodities)
-- Agent runtime adapters (Langchain, CrewAI, AutoGen)
-- Alternative convergence algorithms
-- Translations
+Check version consistency:
+
+```bash
+python3 scripts/version.py
+```
+
+## Repository Layout
+
+```text
+agents/       Agent prompts: framer, detective, inquisitor, judge
+scripts/      Orchestrators, engines, validators, data helpers
+docs/         Architecture and design notes
+examples/     Demo state and scenario files
+references/   Data source and vault rules
+SKILL.md      Main runtime instructions for agents
+```
 
 ## License
 
-[MIT](LICENSE) — Use it, fork it, make it better.
-
----
-
-<div align="center">
-
-*The best trade is often no trade at all.*
-
-*But when you do trade — trade with the conviction that comes from surviving your own worst critic.*
-
-</div>
+MIT.

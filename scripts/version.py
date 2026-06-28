@@ -1,6 +1,6 @@
 # Centralized version management for Trade Nothing
 
-__version__ = "0.9.4"
+__version__ = "0.10.2"
 
 def check_version_consistency():
     """Verify that all files in the repository contain consistent version numbers.

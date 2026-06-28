@@ -37,7 +37,7 @@ pip install -r requirements.txt
 
 - **No hardcoded personal paths**. All paths must use `utils.py` helpers or environment variables.
 - **No secrets or credentials** in code or commit history.
-- **Version consistency**: Use `v0.9.4` across all files.
+- **Version consistency**: Use `v0.10.2` across all files.
 - **Bilingual support**: Keep Chinese comments/terms where they add domain-specific clarity.
 - **Test before submitting**: Run the verification commands from the README.
 
