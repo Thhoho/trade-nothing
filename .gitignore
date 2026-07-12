@@ -1,0 +1,56 @@
+# Runtime state files (contain personal research data)
+scripts/.deepthink_state.json
+scripts/.state/
+scripts/.research_index.json
+scripts/__pycache__/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+.obsidian/
+*.swp
+*.swo
+*~
+
+# Environment & secrets
+.env
+.env.local
+*.key
+
+# Generated outputs
+*.xlsx
+outputs/
+snapshots*.json
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Local adversarial-run payloads and generated research artifacts
+/det*.json
+/inq*.json
+/stock-report.md
+/dfd_analysis_article.md
+/dfd_desk_narrative.md
+/Trade_Nothing_完整运行记录_线上服务架构参考.md
