@@ -141,6 +141,27 @@ class OrchestratorTests(unittest.TestCase):
         self.assertEqual(result["artifact_policy"]["mode"], "inline_only")
         self.assertIn("禁止创建 Markdown", result["framer_prompt"])
 
+    def test_frame_command_physically_forbids_subagent_dispatch(self):
+        result = orchestrator.cmd_frame("test")
+        contract = result["execution_contract"]
+        self.assertEqual(contract["dispatch_mode"], "INLINE_PARENT")
+        self.assertFalse(contract["subagent_dispatch_allowed"])
+        self.assertFalse(contract["tool_calls_allowed"])
+        self.assertFalse(contract["isolation_required"])
+        self.assertIn("Do not call define_subagent", result["framer_prompt"])
+
+    def test_preinit_runtime_failure_is_nonformal_and_bounded(self):
+        result = orchestrator.cmd_runtime_failure(
+            "failed-frame", "framing", "timeout " + ("x" * 2000)
+        )
+        self.assertEqual(result["status"], "blocked_runtime_failure")
+        self.assertFalse(result["formal_report_allowed"])
+        self.assertFalse(result["state_initialized"])
+        memo = result["runtime_failure_memo_markdown"]
+        self.assertIn("非研究结论", memo)
+        self.assertIn("framing", memo)
+        self.assertLess(len(memo), 1200)
+
     def test_init_rejects_legacy_unaudited_frame(self):
         result = orchestrator.cmd_init("legacy-frame", {
             "decision_question": "test", "horizon": "3-6M", "thesis_seed": "asserted fact",

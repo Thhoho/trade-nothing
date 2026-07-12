@@ -12,6 +12,7 @@ import opportunity_engine
 
 SCHEMA_RESOLUTION = "trade-nothing.resolution.v1"
 SCHEMA_CONTINUATION = "trade-nothing.continuation.v1"
+SCHEMA_RUNTIME_FAILURE = "trade-nothing.runtime-failure.v1"
 FORBIDDEN_PACKET_KEYS = {
     "detective_raw", "inquisitor_raw", "judge_raw", "evidence_chain",
     "crux_attacks", "lethal_attack_vectors", "opportunity_harvest",
@@ -20,6 +21,25 @@ FORBIDDEN_PACKET_KEYS = {
 
 def _text(value):
     return " ".join(str(value or "").split())
+
+
+def render_runtime_failure_memo(topic, stage, reason, state_initialized=False):
+    """Render a small failure receipt; never treat runtime failure as research evidence."""
+    safe_topic = _text(topic)[:240] or "未命名主题"
+    safe_stage = _text(stage)[:80] or "unknown"
+    safe_reason = _text(reason)[:500] or "运行时未返回结构化失败原因"
+    state_note = "已初始化；现有 state 不得被缺失输出污染。" if state_initialized else "尚未初始化；没有研究结论可保留。"
+    return "\n".join([
+        f"# Trade Nothing 运行失败备忘录 — {safe_topic}",
+        "",
+        f"> schema: `{SCHEMA_RUNTIME_FAILURE}`",
+        "> **非研究结论。** 本备忘录只记录宿主运行故障，不能替代正式报告、Resolution Memo 或投资判断。",
+        "",
+        f"- 失败阶段: `{safe_stage}`",
+        f"- 状态: {state_note}",
+        f"- 原因: {safe_reason}",
+        "- 处理: 禁止伪造代理输出、禁止自动重试；修复运行时后由用户显式授权重跑。",
+    ])
 
 
 def _valid_sources(cx):

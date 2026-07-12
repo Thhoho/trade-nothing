@@ -31,6 +31,8 @@ description: >
 ## 1. Agentic Architecture (智能体协同架构)
 
 Trade Nothing requires **host-enforced isolated contexts** for the Detective and Inquisitor.
+Framer is deliberately different: it must execute **inline in the parent context**, without search
+or sub-agent dispatch. It creates hypotheses and research structure, not evidence.
 The skill itself cannot guarantee physical isolation; the host must record how agents were
 dispatched. Single-model role switching is allowed only as an explicitly labelled `degraded` run.
 
@@ -61,6 +63,10 @@ This skill does **not** bind to any specific agent framework. Map the sub-agent 
 | **Gemini CLI** | Context fork or shell sub-process | Same | Pass persona via system prompt |
 | **Hermes / OpenHands** | `AgentDelegateAction` | Same | Delegate with persona file |
 | **Single Model (Fallback)** | Role-switch prompt injection | Same | Must be marked `degraded`; no isolation claim |
+
+Framer is never dispatched through the mechanisms in this table. On every runtime—including
+Antigravity/`agy`—the parent reads `agents/framer.md`, produces its strict JSON inline, and submits
+that JSON to `--init`. See `references/runtime-protocol.md` for bounded waits and failure handling.
 
 > **Critical Constraint**: Detective and Inquisitor must run in isolated contexts with no shared
 > intermediate reasoning and communicate only through structured JSON. If the host cannot enforce
@@ -185,7 +191,8 @@ When receiving `-deepthink2 "target/topic"`, run this orchestrator-driven loop:
 ```bash
 # 1. Framing gate (DEEP, runs once) — decision question + 2-5 candidate cruxes + No-Edge precheck
 python3 scripts/deepthink_orchestrator_v2.py --frame --topic "TARGET"
-#    → run agents/framer.md with framer_prompt. If no_edge_precheck.is_researchable=false → emit
+#    → execute agents/framer.md INLINE IN THE PARENT. Never define/invoke a Framer sub-agent and
+#      never browse during framing. If no_edge_precheck.is_researchable=false → emit
 #      No-Edge statement and STOP (spawn nothing).
 #    → Framer must return inline JSON only. It must not create Markdown, Google Drive/cloud files,
 #      or choose an output path. Persistence requires explicit user opt-in and an approved output root.
@@ -194,6 +201,10 @@ python3 scripts/deepthink_orchestrator_v2.py --frame --topic "TARGET"
 python3 scripts/deepthink_orchestrator_v2.py --init --topic "TARGET" --frame-json '<framer_output>'
 #    → status=frame_rejected when premise_audit, unit_of_analysis, falsifiers, concrete catalyst
 #      windows, or No-Edge basis are missing. Never repair or bypass this gate by hand.
+
+# Runtime failure receipt (non-formal; use after a bounded stage timeout, never as a report)
+python3 scripts/deepthink_orchestrator_v2.py --runtime-failure --topic "TARGET" \
+    --stage framing --reason "host timeout before init"
 
 # 3. Each round: spawn isolated Detective (detective.md) + Inquisitor (inquisitor.md) on the
 #    OPEN cruxes only (+ Inquisitor's free-roam slot to re-open a resolved crux). Both may emit
@@ -251,6 +262,8 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > OPEN crux. Stop after 2 searches without new primary evidence and return `UNKNOWN`. When untested
 > cruxes exist, disable free-roam and do not redispatch resolved cruxes. Parent/orchestrator contexts
 > consume structured JSON, compact packets, and final artifacts only—never raw transcripts or search logs.
+> Every delegated stage must use the bounded waits in `references/runtime-protocol.md`. A timeout
+> must emit `--runtime-failure`; never fabricate missing JSON, wait indefinitely, or retry automatically.
 
 > **Framing integrity:** every factual seed must appear in `premise_audit` as `HYPOTHESIS` or
 > `URL_CLAIMED_UNVERIFIED`; `SOURCED` is forbidden before snapshot-bound verification. A candidate
@@ -384,3 +397,4 @@ copied with the skill.
 > 8. **Framer 只能内联返回 JSON；未经用户明确授权不得写入 Google Drive、云文档或自选路径。缺少前提审计、反证条件或催化窗口时，`--init` 必须返回 `frame_rejected`。**
 > 9. **默认用户报告不得包含 Detective/Inquisitor/Judge 原始输出、搜索日志或写作占位符；这些只留在 state 审计层。**
 > 10. **`fuse_break` 禁止正式报告和自动续跑，但必须提供非正式 Resolution Memo；扩展轮次必须由用户显式授权。**
+> 11. **Framer 必须由父上下文内联执行，禁止派生子代理和搜索；任何阶段超时必须输出非正式 runtime failure memo，禁止无界等待、伪造输出或自动重试。**

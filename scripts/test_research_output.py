@@ -47,6 +47,15 @@ def blocked_state():
 
 
 class ResearchOutputTests(unittest.TestCase):
+    def test_runtime_failure_memo_is_compact_and_not_a_report(self):
+        memo = research_output.render_runtime_failure_memo(
+            "topic", "framing", "host timed out", state_initialized=False
+        )
+        self.assertIn(research_output.SCHEMA_RUNTIME_FAILURE, memo)
+        self.assertIn("非研究结论", memo)
+        self.assertIn("尚未初始化", memo)
+        self.assertNotIn("正式研究报告", memo)
+
     def test_resolution_is_deterministic_and_exposes_real_gaps(self):
         st = blocked_state()
         first = research_output.render_resolution_memo(st)

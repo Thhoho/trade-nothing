@@ -6,7 +6,7 @@ Trade Nothing v0.10 — Crux Orchestrator  (-deepthink2; parallel to deepthink_o
 Deterministic state machine. Control flow lives in code; the LLM only produces content.
 
 Flow:
-  --frame  TOPIC                       -> emit Framer prompt (DEEP). Host runs framer.md.
+  --frame  TOPIC                       -> emit Framer prompt (DEEP). Parent runs framer.md inline.
   --init   TOPIC --frame-json J        -> ingest frame; No-Edge early-exit OR create crux state
                                           + emit Round-1 dispatch (Detective+Inquisitor on all cruxes).
   --submit TOPIC --det J --inq J --judge J
@@ -20,6 +20,7 @@ Flow:
   --verification-plan TOPIC            -> list source snapshots required for thesis candidates.
   --verify-claims TOPIC                 -> emit snapshot-bound Claim Verifier prompt.
   --submit-verification TOPIC           -> validate exact spans and update promotion gate.
+  --runtime-failure TOPIC               -> emit a bounded non-formal host failure receipt.
 
 Model tiering (see model_tiers.py): research, adversarial, screening, Judge, and synthesis = DEEP.
 Detective & Inquisitor each round are scoped to OPEN cruxes only
@@ -463,7 +464,11 @@ def _enforce_round_scope(judge, state, policy, admitted_ids):
     return sorted(allowed)
 
 def frame_prompt(topic):
-    return (f"[Framer · framer.md] Topic: {topic}\n"
+    return ("[HOST EXECUTION CONTRACT — MANDATORY]\n"
+            "Execute the Framer inline in the current parent context. Do not call "
+            "define_subagent, invoke_subagent, Task, delegate, context-fork, or any equivalent "
+            "sub-agent mechanism. Do not browse or call tools during framing.\n"
+            f"[Framer · framer.md] Topic: {topic}\n"
             "立题：输出 decision_question / horizon / as_of_date / unit_of_analysis / thesis_seed / premise_audit / "
             "2–5 candidate_cruxes(每条带 monitor_anchor、falsifier、catalyst_window) / "
             "forbidden_consensus / no_edge_precheck / suggested_max_rounds。严格按 framer.md 的 JSON 输出。"
@@ -609,9 +614,40 @@ def candidate_screen_prompts(state, seeds, as_of_date):
 # ── commands ─────────────────────────────────────────────────────────────────
 def cmd_frame(topic):
     return {"status": "need_framing", "topic": topic, "model": model_for("crux_extraction"),
+            "execution_contract": {
+                "dispatch_mode": "INLINE_PARENT",
+                "subagent_dispatch_allowed": False,
+                "tool_calls_allowed": False,
+                "isolation_required": False,
+                "stage_timeout_seconds": 120,
+                "on_timeout": "call --runtime-failure --stage framing --reason '<brief reason>'",
+            },
             "framer_prompt": frame_prompt(topic),
             "artifact_policy": _frame_artifact_policy(),
-            "instruction": "运行 framer，然后调用 --init --frame-json '<framer输出>'。"}
+            "instruction": (
+                "在父上下文内联执行 framer；严禁派生 Framer 子代理或调用搜索工具。"
+                "完成后调用 --init --frame-json '<framer输出>'。若 120 秒内未完成，"
+                "调用 --runtime-failure 收口，禁止无界等待或自动重试。"
+            )}
+
+
+def cmd_runtime_failure(topic, stage, reason):
+    """Return a bounded, non-formal failure artifact without inventing research state."""
+    state = _load(topic) if topic else None
+    return {
+        "status": "blocked_runtime_failure",
+        "topic": topic,
+        "stage": stage or "unknown",
+        "formal_report_allowed": False,
+        "state_initialized": bool(state),
+        "runtime_failure_memo_markdown": research_output.render_runtime_failure_memo(
+            topic, stage, reason, state_initialized=bool(state)
+        ),
+        "instruction": (
+            "保存 runtime_failure_memo_markdown（如用户要求产物）；禁止伪造缺失代理输出、"
+            "生成正式报告或自动重试。修复运行时后由用户显式授权重跑。"
+        ),
+    }
 
 def cmd_init(topic, frame):
     issues = _validate_frame(frame)
@@ -1038,6 +1074,7 @@ def main():
     g.add_argument("--verification-plan", action="store_true")
     g.add_argument("--verify-claims", action="store_true")
     g.add_argument("--submit-verification", action="store_true")
+    g.add_argument("--runtime-failure", action="store_true")
     g.add_argument("--selftest", action="store_true")
     ap.add_argument("--topic", default="")
     ap.add_argument("--frame-json", default="")
@@ -1049,6 +1086,8 @@ def main():
     ap.add_argument("--snapshots", default=""); ap.add_argument("--verifier", default="")
     ap.add_argument("--claim-id", default="")
     ap.add_argument("--extra-rounds", type=int, default=0)
+    ap.add_argument("--stage", default="")
+    ap.add_argument("--reason", default="")
     ap.add_argument("--verifier-isolation", default="unverified",
                     choices=["verified", "degraded", "unverified"])
     a = ap.parse_args()
@@ -1072,6 +1111,7 @@ def main():
         a.topic, _jload(a.snapshots), _jload(a.verifier), a.seed_id, a.claim_id,
         a.verifier_isolation
     )
+    elif a.runtime_failure: out = cmd_runtime_failure(a.topic, a.stage, a.reason)
     print(json.dumps(out, ensure_ascii=False, indent=2))
 
 
