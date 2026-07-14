@@ -9,12 +9,20 @@ import re
 import uuid
 from datetime import datetime, timezone
 
+import artifact_envelope
 from utils import get_scratch_dir, load_json_safe, save_json
 
 
 SCHEMA = "trade-nothing.run-manifest.v1"
 ENVELOPE_SCHEMA = "trade-nothing.stage-envelope.v1"
 RUN_ID_RE = re.compile(r"^RUN-[0-9]{8}-[A-F0-9]{12}$")
+CONTROL_RESULT_KEYS = (
+    "status", "topic", "stage_id", "round", "round_completed", "as_of_date",
+    "formal_report_allowed", "instruction", "reason", "missing_roles", "issues",
+    "blockers", "unresolved_cruxes", "candidate_state", "screening_state",
+    "verification_state", "available_report_views", "report_view",
+    "state_path", "rounds_completed", "last_convergence", "execution_summary",
+)
 
 
 def _now():
@@ -43,6 +51,11 @@ def checkpoint_dir(run_id):
 def checkpoint_path(run_id, stage_id):
     safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(stage_id or "unknown"))[:120]
     return os.path.join(checkpoint_dir(run_id), f"{safe}.json")
+
+
+def artifact_dir(run_id):
+    manifest_path(run_id)
+    return os.path.join(runs_dir(), run_id, "artifacts")
 
 
 def _validated_state_path(path):
@@ -185,6 +198,110 @@ def _stage_for_status(status):
     return "control"
 
 
+def _bounded_control_value(value, depth=0):
+    if depth > 4:
+        return "[nested control detail omitted]"
+    if isinstance(value, str):
+        return value[:2000]
+    if isinstance(value, list):
+        return [_bounded_control_value(item, depth + 1) for item in value[:20]]
+    if isinstance(value, dict):
+        return {
+            str(key)[:120]: _bounded_control_value(child, depth + 1)
+            for key, child in list(value.items())[:40]
+        }
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return str(value)[:500]
+
+
+def _control_result(result):
+    """Keep only fields needed to branch or resume; never embed research bodies."""
+    control = {
+        key: result[key]
+        for key in CONTROL_RESULT_KEYS
+        if key in result and result[key] not in (None, "", [], {})
+    }
+    control.setdefault("status", str(result.get("status") or "unknown"))
+    view_model = result.get("report_view_model")
+    if isinstance(view_model, dict):
+        control["decision_brief"] = {
+            key: view_model[key]
+            for key in (
+                "schema_version", "topic", "decision_question", "horizon",
+                "question_type", "verdict", "candidate_counts", "next_action",
+                "change_trigger", "runtime",
+            )
+            if key in view_model
+        }
+    counts = {}
+    for key, value in result.items():
+        if isinstance(value, (int, float)) and (
+            key.endswith("_count") or key.startswith("n_")
+        ):
+            counts[key] = value
+        elif isinstance(value, list):
+            counts[f"{key}_count"] = len(value)
+        elif isinstance(value, dict) and key.endswith(("_states", "_results", "_receipts")):
+            counts[f"{key}_count"] = len(value)
+    if counts:
+        control["counts"] = counts
+    return _bounded_control_value(control)
+
+
+def _artifact_name(stage, status, digest, suffix):
+    safe_stage = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(stage or "control"))[:80]
+    safe_status = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(status or "unknown"))[:80]
+    return f"{safe_stage}-{safe_status}-{digest[:16]}.{suffix}"
+
+
+def _persist_result_artifacts(result, *, context, stage, status, budget):
+    run_id = context["run_id"]
+    root = artifact_dir(run_id)
+    control = _control_result(result)
+    digest = canonical_json_hash(result)
+    common = {
+        "producer": "trade-nothing",
+        "status": "FAILED" if status.startswith(("blocked_", "paused_")) else "READY",
+        "summary": {
+            "status": status,
+            "counts": control.get("counts", {}),
+            "next_action": str(result.get("instruction") or "")[:1000],
+        },
+        "warnings": list(result.get("issues") or result.get("blockers") or [])[:8],
+        "next_action": str(result.get("instruction") or ""),
+        "as_of": str(result.get("as_of_date") or context.get("as_of_date") or ""),
+        "usage": budget or {},
+    }
+    artifacts = {
+        "result": artifact_envelope.create_json_artifact(
+            result,
+            artifact_path=os.path.join(
+                root, _artifact_name(stage, status, digest, "result.json")
+            ),
+            artifact_kind="stage-result",
+            **common,
+        )
+    }
+    for field, label in (
+        ("report_markdown", "formal-report"),
+        ("resolution_memo_markdown", "resolution-memo"),
+    ):
+        if not result.get(field):
+            continue
+        text = str(result[field])
+        text_digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        artifacts[label.replace("-", "_")] = artifact_envelope.create_text_artifact(
+            text,
+            artifact_path=os.path.join(
+                root, _artifact_name(stage, status, text_digest, f"{label}.md")
+            ),
+            artifact_kind=label,
+            **common,
+        )
+    return control, artifacts
+
+
 def stage_envelope(result, *, context=None, budget=None, persist=True):
     result = dict(result or {})
     context = context or {}
@@ -202,6 +319,23 @@ def stage_envelope(result, *, context=None, budget=None, persist=True):
     ):
         if result.get(key):
             artifact_paths[key] = result[key]
+    artifacts = {}
+    public_result = result
+    if context.get("run_id") and persist:
+        public_result, artifacts = _persist_result_artifacts(
+            result,
+            context=context,
+            stage=_stage_for_status(status),
+            status=status,
+            budget=budget or {},
+        )
+        artifact_paths["result_path"] = artifacts["result"]["artifact_path"]
+        if artifacts.get("formal_report"):
+            artifact_paths["report_path"] = artifacts["formal_report"]["artifact_path"]
+        if artifacts.get("resolution_memo"):
+            artifact_paths["resolution_memo_path"] = artifacts["resolution_memo"]["artifact_path"]
+    elif context.get("run_id"):
+        public_result = _control_result(result)
     envelope = {
         "schema": ENVELOPE_SCHEMA,
         "run_id": context.get("run_id", ""),
@@ -211,9 +345,12 @@ def stage_envelope(result, *, context=None, budget=None, persist=True):
         "next_action": result.get("instruction", ""),
         "blockers": list(dict.fromkeys(blockers)),
         "artifact_paths": artifact_paths,
+        "artifacts": artifacts,
         "budget": budget or {},
-        "result": result,
+        "result": public_result,
     }
+    if len(json.dumps(envelope, ensure_ascii=False).encode("utf-8")) > artifact_envelope.MAX_ENVELOPE_BYTES:
+        raise ValueError("stage_envelope_too_large")
     run_id = context.get("run_id")
     if run_id and persist:
         manifest = load_manifest(run_id)
@@ -223,13 +360,22 @@ def stage_envelope(result, *, context=None, budget=None, persist=True):
             key: envelope[key]
             for key in (
                 "schema", "run_id", "stage", "status", "next_action", "blockers",
-                "artifact_paths", "budget",
+                "artifact_paths", "artifacts", "budget",
             )
         }
         if status.startswith("paused_") or status.startswith("blocked_runtime"):
             manifest["failure_count"] = int(manifest.get("failure_count", 0)) + 1
         save_json(manifest_path(run_id), manifest)
     return envelope
+
+
+def load_result_artifact(envelope):
+    descriptor = (envelope.get("artifacts") or {}).get("result")
+    if not descriptor:
+        raise ValueError("result_artifact_missing")
+    return artifact_envelope.load_json(
+        descriptor, allowed_root=get_scratch_dir(), explicit=True
+    )
 
 
 def execution_summary(run_id):

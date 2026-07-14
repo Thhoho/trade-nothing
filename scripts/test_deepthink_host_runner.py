@@ -159,7 +159,7 @@ class HostRunnerTests(unittest.TestCase):
 
         self.assertEqual(
             run_registry.load_checkpoint(self.context["run_id"], "round-1")["submit_result"],
-            resumed["result"],
+            run_registry.load_result_artifact(resumed),
         )
 
     def test_prompt_drift_discards_only_failed_payload_free_checkpoint(self):

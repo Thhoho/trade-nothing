@@ -14,6 +14,10 @@ words.
   runtime details.
 - `full`: `brief -> cards -> collapsed audit`. This is the default persisted Markdown artifact.
 
+For a registered run, the stage envelope persists the selected Markdown view and returns its
+content-addressed `report_path`; it does not inline the report into the parent context. Only open the
+full artifact when the user asks to read/audit it. Otherwise return the brief projection and path.
+
 Select a view with:
 
 ```bash

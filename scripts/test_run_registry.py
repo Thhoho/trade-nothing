@@ -69,6 +69,58 @@ class RunRegistryTests(unittest.TestCase):
         self.assertEqual(stored["failure_count"], 1)
         self.assertLess(len(json.dumps(envelope)), 10000)
 
+    def test_large_result_and_report_are_content_addressed_not_inlined(self):
+        manifest = run_registry.create_manifest("Artifact topic")
+        report = "# Report\n\n" + ("decision evidence\n" * 2000)
+        result = {
+            "status": "ready_for_report",
+            "topic": manifest["topic"],
+            "instruction": "consume the report path, not raw result",
+            "report_markdown": report,
+            "report_view_model": {
+                "schema_version": "trade-nothing.report-view-model.v1",
+                "topic": manifest["topic"],
+                "verdict": {"edge_state": "NO_EDGE"},
+                "candidate_counts": {"lead_count": 0},
+                "candidate_cards": [{"large": "y" * 20000}],
+                "next_action": {"code": "STOP_NO_PROMOTABLE_CANDIDATE"},
+            },
+            "synthesis_packet": {"raw": "x" * 50000},
+        }
+        envelope = run_registry.stage_envelope(result, context=manifest)
+        serialized = json.dumps(envelope)
+        self.assertNotIn("decision evidence", serialized)
+        self.assertNotIn("x" * 100, serialized)
+        self.assertLess(len(serialized), 10000)
+        self.assertEqual(run_registry.load_result_artifact(envelope), result)
+        self.assertEqual(
+            envelope["result"]["decision_brief"]["verdict"]["edge_state"],
+            "NO_EDGE",
+        )
+        self.assertNotIn("candidate_cards", envelope["result"]["decision_brief"])
+        with open(envelope["artifact_paths"]["report_path"], encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), report)
+        self.assertEqual(
+            envelope["artifacts"]["result"]["read_policy"]["parent_context"],
+            "ENVELOPE_ONLY",
+        )
+
+    def test_read_only_status_projection_does_not_write_artifacts(self):
+        manifest = run_registry.create_manifest("Read status")
+        envelope = run_registry.stage_envelope(
+            {
+                "status": "run_status",
+                "topic": manifest["topic"],
+                "rounds_completed": 2,
+                "execution_summary": {"role_attempts": 4},
+            },
+            context=manifest,
+            persist=False,
+        )
+        self.assertEqual(envelope["result"]["rounds_completed"], 2)
+        self.assertEqual(envelope["result"]["execution_summary"]["role_attempts"], 4)
+        self.assertFalse(os.path.exists(run_registry.artifact_dir(manifest["run_id"])))
+
     def test_manifest_read_does_not_attempt_advisory_write_lock(self):
         manifest = run_registry.create_manifest("Read-only status")
         with mock.patch.object(

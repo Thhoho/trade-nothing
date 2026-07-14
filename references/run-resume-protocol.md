@@ -31,13 +31,22 @@ Every registered CLI result uses `trade-nothing.stage-envelope.v1`:
   "status": "paused_runtime_failure",
   "next_action": "...",
   "blockers": ["inquisitor", "resource_exhausted_429"],
-  "artifact_paths": {"state_path": "..."},
+  "artifact_paths": {"state_path": "...", "result_path": "..."},
+  "artifacts": {
+    "result": {
+      "schema": "trade-nothing.artifact-envelope.v1",
+      "artifact_sha256": "...",
+      "read_policy": {"parent_context": "ENVELOPE_ONLY"}
+    }
+  },
   "budget": {"round_budget": 1, "rounds_used": 0},
-  "result": {}
+  "result": {"status": "paused_runtime_failure", "reason": "resource_exhausted_429"}
 }
 ```
 
-Consumers should branch on top-level `status` and treat `result` as stage-specific detail. A
+For a registered run, the complete stage result is content-addressed on disk and `result` contains
+only routing/control fields. Read `references/artifact-envelope-protocol.md` before loading a full
+result artifact. Consumers should branch on top-level `status`. A
 failure envelope is not a report and cannot authorize CandidateScreen, claim verification, thesis
 creation, or a trade.
 

@@ -204,7 +204,10 @@ python3 scripts/deepthink_host_runner.py adopt --state-path "/.../v2_state.json"
 Use `--allow-agent-tools` only after explicit authorization. The default one-round budget is
 intentional. A 429, timeout, invalid JSON, or one-sided failure returns a stage envelope and retains
 the successful role payload; resume reruns only the missing role. Read
-`references/run-resume-protocol.md` before adopting or recovering a run. The manual commands below
+`references/run-resume-protocol.md` before adopting or recovering a run. Registered stage results
+are content-addressed artifacts: the public envelope contains control fields and verified paths,
+not the full result/report body. Read `references/artifact-envelope-protocol.md` before explicitly
+loading one. The manual commands below
 remain a runtime-agnostic fallback; once a run has an id, do not mix topic-based and run-id-based
 addressing.
 
@@ -299,7 +302,8 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > research agent gets at most 2 searches per dispatched crux. Stop after 2 searches without new
 > primary evidence and return `UNKNOWN`. When untested cruxes exist, disable free-roam and do not
 > redispatch resolved cruxes. Parent/orchestrator contexts
-> consume structured JSON, compact packets, and final artifacts only—never raw transcripts or search logs.
+> consume artifact envelopes, compact packets, and final artifact paths only—never raw transcripts,
+> search logs, full external-agent payloads, or a report body duplicated from disk.
 > Every delegated stage must use the bounded waits in `references/runtime-protocol.md`. A timeout
 > must emit `--runtime-failure`; never fabricate missing JSON, wait indefinitely, or retry automatically.
 
