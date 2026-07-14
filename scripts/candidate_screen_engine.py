@@ -54,7 +54,17 @@ MIN_TOTAL_URLS = 6
 MIN_PRIMARY_URLS = 2
 MIN_SOURCE_ORGS = 4
 MIN_URLS_PER_AGENT = 3
-MAX_BATCH = 5
+MAX_BATCH = 3
+
+RELATION_DIRECTNESS = {
+    "DIRECT_WINNER": 3,
+    "BOTTLENECK_OWNER": 3,
+    "INFRA_ASSET_OWNER": 3,
+    "SUBSTITUTE_WINNER": 2,
+    "COMPETITOR_WINNER": 2,
+    "SHORT_CANDIDATE": 2,
+    "SECOND_ORDER": 1,
+}
 
 
 def _text(value):
@@ -259,6 +269,53 @@ def latest_by_seed(state):
     return out
 
 
+def selection_features(seed):
+    """Deterministic research-priority features, never an expected-return score."""
+    evidence = [
+        item for item in seed.get("evidence", [])
+        if crux_engine.valid_citation(item)
+    ]
+    source_urls = {
+        crux_engine.citation_source_identity(item) for item in evidence
+    }
+    source_orgs = {_source_org(item) for item in evidence if _source_org(item)}
+    primary_urls = {
+        crux_engine.citation_source_identity(item) for item in evidence if _primary(item)
+    }
+    anchor = seed.get("pricing_anchor") if isinstance(seed.get("pricing_anchor"), dict) else {}
+    anchor_fields = (
+        "as_of_date", "anchor_type", "metric", "current_value",
+        "comparison_value", "source", "source_url", "source_claim",
+    )
+    window = seed.get("catalyst_window") if isinstance(seed.get("catalyst_window"), dict) else {}
+    return {
+        "independent_source_orgs": len(source_orgs),
+        "unique_source_urls": len(source_urls),
+        "primary_source_urls": len(primary_urls),
+        "causal_directness": RELATION_DIRECTNESS.get(_text(seed.get("relation_type")).upper(), 0),
+        "pricing_anchor_fields": sum(bool(_text(anchor.get(field))) for field in anchor_fields),
+        "observable_catalyst": int(bool(
+            _text(window.get("event")) and _parse_date(window.get("expected_by"))
+        )),
+    }
+
+
+def selection_audit(seeds):
+    return [
+        {
+            "rank": index,
+            "seed_id": seed.get("seed_id"),
+            "candidate": seed.get("candidate"),
+            "features": selection_features(seed),
+            "selection_basis": (
+                "evidence breadth, causal directness, structured pricing anchor, "
+                "and observable catalyst; not return or conviction"
+            ),
+        }
+        for index, seed in enumerate(seeds, 1)
+    ]
+
+
 def screenable_seeds(state, seed_id=None):
     latest = latest_by_seed(state)
     seeds = [s for s in state.get("opportunity_seeds", []) if isinstance(s, dict)]
@@ -282,11 +339,20 @@ def screenable_seeds(state, seed_id=None):
         if entity["entity_identity"] in screened_entities:
             continue
         out.append(entity["representative_seed"])
+    out.sort(key=lambda seed: (
+        -selection_features(seed)["independent_source_orgs"],
+        -selection_features(seed)["primary_source_urls"],
+        -selection_features(seed)["causal_directness"],
+        -selection_features(seed)["pricing_anchor_fields"],
+        -selection_features(seed)["observable_catalyst"],
+        -selection_features(seed)["unique_source_urls"],
+        _text(seed.get("seed_id")),
+    ))
     return out[:MAX_BATCH]
 
 
 def evaluate_batch(state, analyst_payload, skeptic_payload, as_of_date=None, isolation_status="unverified"):
-    """Evaluate up to five paired candidate screens and persist idempotently."""
+    """Evaluate up to three paired candidate screens and persist idempotently."""
     as_of_date = normalize_as_of(as_of_date)
     as_of = _parse_date(as_of_date)
     isolation_status = _text(isolation_status).lower()

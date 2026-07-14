@@ -212,12 +212,17 @@ python3 scripts/deepthink_orchestrator_v2.py --runtime-failure --topic "TARGET" 
 #    the DEEP Judge (agents/judge.md) and submit:
 python3 scripts/deepthink_orchestrator_v2.py --submit --topic "TARGET" \
     --det '<detective_json>' --inq '<inquisitor_json>' --judge '<judge_json>'
-#    → status=dispatch_subagents (loop), blocked_max_rounds, OR status=ready_for_report.
+#    → status=dispatch_subagents (loop), blocked_max_rounds, ready_for_report, OR for
+#      UNIVERSE_SEARCH/COMPARATIVE with screenable leads: dispatch_candidate_screeners.
 
-# 4. Report: only converged states may render a formal report. The default report is a compact,
-#    deterministic user view and never embeds raw agent payloads. Optional narrative enhancement
-#    may consume only the returned synthesis_packet, not transcripts.
+# 4. Report: only converged states may render a formal report. Opportunity questions with an
+#    unscreened READY_FOR_SCREENING seed default to the bounded CandidateScreen continuation below;
+#    report rendering is deferred until that batch completes. Use --challenge-only only when the
+#    user explicitly requests thesis critique without opportunity screening. The default report is
+#    compact, deterministic, and never embeds raw agent payloads.
 python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET"
+# Explicit thesis-critique-only escape hatch:
+python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET" --challenge-only
 
 # 4a. Fuse-break: formal report remains blocked, but always render a non-formal Resolution Memo
 #     plus a compact continuation packet. Persist the memo when the user requested an artifact.
@@ -226,8 +231,11 @@ python3 scripts/deepthink_orchestrator_v2.py --resolution-memo --topic "TARGET"
 # 4b. Resume only after explicit user authorization because this consumes more research budget.
 python3 scripts/deepthink_orchestrator_v2.py --resume-blocked --topic "TARGET" --extra-rounds 3
 
-# 5. CandidateScreen (optional after convergence): dispatch isolated Analyst + Skeptic on
-#    READY_FOR_SCREENING seeds. Omit --seed-id to screen the next unscreened batch (max 5).
+# 5. CandidateScreen: for opportunity questions this is the default post-convergence continuation.
+#    The deterministic engine selects at most 3 de-duplicated READY_FOR_SCREENING seeds using
+#    evidence breadth, causal directness, structured pricing-anchor completeness, and observable
+#    catalyst. This is research priority, not expected return, conviction, or a ranking signal.
+#    Omit --seed-id to screen the next unscreened batch (max 3).
 python3 scripts/deepthink_orchestrator_v2.py --screen --topic "TARGET" --as-of "YYYY-MM-DD"
 
 # 6. Submit both isolated JSON payloads. The deterministic engine emits WATCHLIST,
@@ -300,6 +308,10 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > claim verification it may become `DRAFT_REQUIRES_HUMAN`. A human must start a fresh
 > `-deepthink2` topic, which inherits no support score or verdict. Read
 > `references/candidate-screen-protocol.md` before screening.
+> For `UNIVERSE_SEARCH` and `COMPARATIVE`, the first unscreened deterministic Top-3 batch is the
+> default continuation, not an optional appendix. Zero screenable candidates is a valid result.
+> Additional batches require an explicit `--screen`; do not inflate the batch merely to produce
+> more names.
 
 > **Source-content integrity:** capture each decisive URL with `scripts/evidence_snapshot.py`
 > or an equivalent host fetcher, then run `agents/claim_verifier.md` independently. SUPPORTS and

@@ -70,7 +70,11 @@ of YES; use UNKNOWN.
 ~~~
 
 Each candidate must contain all eight dimensions exactly once. Each runtime may
-screen at most five candidates per batch.
+screen at most three candidates per batch. For `UNIVERSE_SEARCH` and `COMPARATIVE`, the first
+post-convergence batch is selected deterministically from de-duplicated READY seeds using evidence
+breadth, causal directness, structured pricing-anchor completeness, and an observable catalyst.
+These are research-priority features, not expected return, conviction, position size, or a trade
+ranking. Zero selected candidates is valid; do not fill the batch with lower-state leads.
 
 ## Deterministic combination
 

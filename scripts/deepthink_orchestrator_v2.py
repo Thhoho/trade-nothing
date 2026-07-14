@@ -717,6 +717,7 @@ def dispatch_prompts(state, round_num):
 
 
 def candidate_screen_prompts(state, seeds, as_of_date):
+    selection = candidate_screen_engine.selection_audit(seeds)
     packet = [{
         "seed_id": seed.get("seed_id"),
         "candidate": seed.get("candidate"),
@@ -727,6 +728,7 @@ def candidate_screen_prompts(state, seeds, as_of_date):
         "causal_path": seed.get("causal_path"),
         "economic_exposure": seed.get("economic_exposure"),
         "why_market_may_miss": seed.get("why_market_may_miss"),
+        "pricing_anchor": seed.get("pricing_anchor", {}),
         "catalyst": seed.get("catalyst"),
         "catalyst_window": seed.get("catalyst_window", {}),
         "falsifier": seed.get("falsifier"),
@@ -751,6 +753,7 @@ def candidate_screen_prompts(state, seeds, as_of_date):
         "严格按 candidate-screen-protocol.md 输出 JSON。"
     )
     return {"candidate_seed_ids": [s.get("seed_id") for s in seeds],
+            "selection_audit": selection,
             "analyst_prompt": analyst, "skeptic_prompt": skeptic}
 
 
@@ -903,8 +906,26 @@ def cmd_submit(topic, detective, inquisitor, judge):
             "admitted_new_cruxes": admitted_new_cruxes,
             "deferred_new_cruxes": deferred_new_cruxes}
     if conv["decision"] == "converge":
-        base["status"] = "ready_for_report"
-        base["instruction"] = f"引擎判定 {conv['decision']}。调用 --report --topic \"{topic}\"。"
+        opportunity_question = state.get("question_type") in {"UNIVERSE_SEARCH", "COMPARATIVE"}
+        if opportunity_question and not state.get("candidate_screens"):
+            dispatch = cmd_screen(
+                topic,
+                state.get("frame_contract", {}).get("as_of_date", ""),
+            )
+        else:
+            dispatch = {"status": "no_default_candidate_screen"}
+        if dispatch.get("status") == "dispatch_candidate_screeners":
+            base.update(dispatch)
+            base["research_converged"] = True
+            base["formal_report_deferred"] = True
+            base["instruction"] = (
+                "根研究已收敛。机会型任务默认继续双边筛选确定性 Top 3；"
+                "隔离运行 Analyst/Skeptic 后调用 --submit-screen。"
+                "若用户只要求命题质证，可显式调用 --report --challenge-only。"
+            )
+        else:
+            base["status"] = "ready_for_report"
+            base["instruction"] = f"引擎判定 {conv['decision']}。调用 --report --topic \"{topic}\"。"
     elif conv["decision"] == "fuse_break":
         base["status"] = "blocked_max_rounds"
         base["formal_report_allowed"] = False
@@ -940,10 +961,32 @@ def cmd_screen(topic, as_of_date="", seed_id=""):
         return {"status": "no_screenable_candidates", "topic": topic,
                 "seed_id": seed_id or None,
                 "instruction": "没有未筛选的 READY_FOR_SCREENING 候选；指定 --seed-id 可重筛已有候选。"}
+    prompts = candidate_screen_prompts(state, seeds, as_of_date)
+    dispatch_id = "CSD-" + hashlib.sha256(
+        f"{as_of_date}|{'|'.join(prompts['candidate_seed_ids'])}".encode("utf-8")
+    ).hexdigest()[:10].upper()
+    record = {
+        "dispatch_id": dispatch_id,
+        "as_of_date": as_of_date,
+        "candidate_seed_ids": prompts["candidate_seed_ids"],
+        "selection_audit": prompts["selection_audit"],
+        "max_batch": candidate_screen_engine.MAX_BATCH,
+    }
+    history = state.setdefault("candidate_screen_dispatches", [])
+    if not isinstance(history, list):
+        history = state["candidate_screen_dispatches"] = []
+    history[:] = [
+        item for item in history
+        if not isinstance(item, dict) or item.get("dispatch_id") != dispatch_id
+    ]
+    history.append(record)
+    _save(topic, state)
     out = {
         "status": "dispatch_candidate_screeners",
         "topic": topic,
         "as_of_date": as_of_date,
+        "dispatch_id": dispatch_id,
+        "max_batch": candidate_screen_engine.MAX_BATCH,
         "model": model_for("candidate_analyst"),
         "isolation_required": True,
         "instruction": (
@@ -951,7 +994,7 @@ def cmd_screen(topic, as_of_date="", seed_id=""):
             "收集 JSON 后调用 --submit-screen，并传回同一 --as-of。"
         ),
     }
-    out.update(candidate_screen_prompts(state, seeds, as_of_date))
+    out.update(prompts)
     return out
 
 
@@ -1159,7 +1202,7 @@ def cmd_resume_blocked(topic, extra_rounds=0):
     )
     return out
 
-def cmd_report(topic):
+def cmd_report(topic, challenge_only=False):
     state = _load(topic)
     if not state:
         return {"status": "error", "reason": "状态不存在。"}
@@ -1183,6 +1226,24 @@ def cmd_report(topic):
                 "cruxes_below_source_minimum": weak_evidence,
                 "minimum_unique_sources_per_crux": crux_engine.MIN_VALID_CITATIONS,
                 "instruction": "禁止生成正式报告：至少一条 crux 缺少两个独立、可复核的具体来源。"}
+    opportunity_question = state.get("question_type") in {"UNIVERSE_SEARCH", "COMPARATIVE"}
+    if opportunity_question and not challenge_only and not state.get("candidate_screens"):
+        dispatch = cmd_screen(
+            topic,
+            state.get("frame_contract", {}).get("as_of_date", ""),
+        )
+        if dispatch.get("status") == "dispatch_candidate_screeners":
+            dispatch.update({
+                "formal_report_allowed": False,
+                "formal_report_deferred": True,
+                "report_deferred_reason": "default_candidate_screen_pending",
+                "instruction": (
+                    "机会型研究存在 READY_FOR_SCREENING 候选，正式报告默认延后。"
+                    "隔离运行 Analyst/Skeptic 后调用 --submit-screen；"
+                    "若用户只要求原命题质证，可显式重试 --report --challenge-only。"
+                ),
+            })
+            return dispatch
     import report_v2
     opportunity_counts = opportunity_engine.summary(state)
     candidate_counts = candidate_screen_engine.summary(state)
@@ -1239,6 +1300,8 @@ def main():
                     choices=["verified", "degraded", "unverified"])
     ap.add_argument("--snapshots", default=""); ap.add_argument("--verifier", default="")
     ap.add_argument("--claim-id", default="")
+    ap.add_argument("--challenge-only", action="store_true",
+                    help="render root-thesis report without default opportunity CandidateScreen")
     ap.add_argument("--extra-rounds", type=int, default=0)
     ap.add_argument("--stage", default="")
     ap.add_argument("--reason", default="")
@@ -1250,7 +1313,7 @@ def main():
     if a.frame:  out = cmd_frame(a.topic)
     elif a.init: out = cmd_init(a.topic, _jload(a.frame_json))
     elif a.submit: out = cmd_submit(a.topic, _jload(a.det), _jload(a.inq), _jload(a.judge))
-    elif a.report: out = cmd_report(a.topic)
+    elif a.report: out = cmd_report(a.topic, challenge_only=a.challenge_only)
     elif a.resolution_memo: out = cmd_resolution_memo(a.topic)
     elif a.resume_blocked: out = cmd_resume_blocked(a.topic, a.extra_rounds)
     elif a.screen: out = cmd_screen(a.topic, a.as_of, a.seed_id)

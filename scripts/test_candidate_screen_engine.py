@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Offline regression tests for the two-sided CandidateScreen gate."""
+import copy
 import os
 import tempfile
 import unittest
@@ -114,6 +115,40 @@ class CandidateScreenEngineTests(unittest.TestCase):
         })
         self.assertEqual(screen_engine.screenable_seeds(st), [])
 
+    def test_default_batch_is_deterministic_top_three_not_five(self):
+        st = state_with_seed()
+        base = st["opportunity_seeds"][0]
+        seeds = []
+        specs = [
+            ("OS-A", "A", "DIRECT_WINNER", 4),
+            ("OS-B", "B", "BOTTLENECK_OWNER", 3),
+            ("OS-C", "C", "DIRECT_WINNER", 2),
+            ("OS-D", "D", "SECOND_ORDER", 2),
+        ]
+        for seed_id, ticker, relation, source_count in specs:
+            seed = copy.deepcopy(base)
+            evidence = [citation(f"{ticker.lower()}-{index}") for index in range(source_count)]
+            seed.update({
+                "seed_id": seed_id,
+                "candidate": f"Candidate {ticker}",
+                "ticker": ticker,
+                "relation_type": relation,
+                "evidence": evidence,
+            })
+            seed["pricing_anchor"].update({
+                "source": evidence[0]["source"],
+                "source_url": evidence[0]["url"],
+                "source_claim": evidence[0]["claim"],
+            })
+            seeds.append(seed)
+        st["opportunity_seeds"] = list(reversed(seeds))
+        selected = screen_engine.screenable_seeds(st)
+        self.assertEqual(screen_engine.MAX_BATCH, 3)
+        self.assertEqual([item["seed_id"] for item in selected], ["OS-A", "OS-B", "OS-C"])
+        audit = screen_engine.selection_audit(selected)
+        self.assertEqual([item["rank"] for item in audit], [1, 2, 3])
+        self.assertIn("not return", audit[0]["selection_basis"])
+
     def test_two_sided_fresh_independent_evidence_creates_thesis_candidate(self):
         st = state_with_seed()
         audit = screen_engine.evaluate_batch(
@@ -212,6 +247,10 @@ class CandidateScreenOrchestratorTests(unittest.TestCase):
         dispatch = orchestrator.cmd_screen(topic, AS_OF)
         self.assertEqual(dispatch["status"], "dispatch_candidate_screeners")
         self.assertIn("OS-TEST", dispatch["analyst_prompt"])
+        self.assertIn("pricing_anchor", dispatch["analyst_prompt"])
+        self.assertNotIn("selection_rank", dispatch["analyst_prompt"])
+        self.assertEqual(dispatch["max_batch"], 3)
+        self.assertEqual(dispatch["selection_audit"][0]["seed_id"], "OS-TEST")
         result = orchestrator.cmd_submit_screen(
             topic, payload("Analyst"), payload("Skeptic"), AS_OF, isolation_status="verified"
         )
@@ -225,6 +264,47 @@ class CandidateScreenOrchestratorTests(unittest.TestCase):
         st["last_convergence"] = {"decision": "continue"}
         orchestrator._save(topic, st)
         self.assertEqual(orchestrator.cmd_screen(topic, AS_OF)["status"], "blocked_unconverged")
+
+    def test_opportunity_report_physically_defers_to_default_screen_batch(self):
+        topic = "candidate screen default continuation"
+        st = state_with_seed()
+        st["question_type"] = "UNIVERSE_SEARCH"
+        orchestrator._save(topic, st)
+        result = orchestrator.cmd_report(topic)
+        self.assertEqual(result["status"], "dispatch_candidate_screeners")
+        self.assertFalse(result["formal_report_allowed"])
+        self.assertTrue(result["formal_report_deferred"])
+        self.assertEqual(result["report_deferred_reason"], "default_candidate_screen_pending")
+        stored = orchestrator._load(topic)
+        self.assertEqual(stored["candidate_screen_dispatches"][0]["max_batch"], 3)
+
+    def test_final_research_submit_immediately_dispatches_default_screeners(self):
+        topic = "candidate screen direct continuation"
+        st = state_with_seed()
+        st["question_type"] = "UNIVERSE_SEARCH"
+        st["cruxes"]["C1"]["logic_role"] = "OPPORTUNITY_PATH"
+        verdict = crux_engine.research_verdict(st)
+        st["rounds"] = [{"round": 1}, {"round": 2}]
+        st["decision_trace"] = [{
+            "round": 2,
+            "weakest": "C1",
+            "p_weakest": st["cruxes"]["C1"]["p_history"][-1],
+            "p_mean": st["cruxes"]["C1"]["p_history"][-1],
+            "decision": crux_engine._legacy_decision(verdict),
+            "research_verdict": verdict,
+        }]
+        st["last_convergence"] = {"decision": "continue"}
+        orchestrator._save(topic, st)
+        result = orchestrator.cmd_submit(
+            topic,
+            {"crux_evidence": [], "opportunity_seeds": []},
+            {"crux_attacks": [], "opportunity_seeds": []},
+            {"crux_signals": {}, "new_cruxes": []},
+        )
+        self.assertEqual(result["status"], "dispatch_candidate_screeners")
+        self.assertTrue(result["research_converged"])
+        self.assertTrue(result["formal_report_deferred"])
+        self.assertEqual(result["candidate_seed_ids"], ["OS-TEST"])
 
 
 class CandidateScreenReportTests(unittest.TestCase):
