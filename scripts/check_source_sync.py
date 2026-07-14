@@ -17,6 +17,7 @@ def controlled_files(root: Path):
     files.extend(sorted((root / "references").glob("*")))
     files.extend(sorted((root / "docs").glob("*.md")))
     files.extend(sorted((root / "scripts").glob("*.py")))
+    files.extend(sorted((root / "benchmarks").glob("**/*")))
     return [path for path in files if path.is_file()]
 
 

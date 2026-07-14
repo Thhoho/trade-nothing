@@ -31,6 +31,10 @@ The command refuses to write inside this suite directory and refuses to overwrit
 packet. The resulting file binds the suite contract hash, exactly one case, and only that case's
 frozen evidence. The evaluator answer key remains physically separate.
 
+Installed skill copies also contain this benchmark for reproducibility. A benchmark research arm
+must run without filesystem/tool access and receive only the generated dispatch file; merely telling
+an agent not to open `assessor/` is not blind isolation.
+
 The suite deliberately contains traps that a useful method should expose: demand is not necessarily
 mispricing; proposed regulation is not final law; a higher freight rate is not automatically higher
 equity value; one bank's governance and threshold effects do not prove sector-wide insolvency; and

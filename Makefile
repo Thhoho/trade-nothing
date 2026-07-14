@@ -29,11 +29,12 @@ help:
 install:
 	@echo "🚀 Syncing controlled source files to Gemini and Codex..."
 	@for dst in $(SKILL_DIRS); do \
-		mkdir -p $$dst/scripts $$dst/agents $$dst/references $$dst/docs; \
+		mkdir -p $$dst/scripts $$dst/agents $$dst/references $$dst/docs $$dst/benchmarks; \
 		rsync -a --include='*.py' --exclude='*' $(DEV_DIR)/scripts/ $$dst/scripts/; \
 		rsync -a $(DEV_DIR)/agents/ $$dst/agents/; \
 		rsync -a $(DEV_DIR)/references/ $$dst/references/; \
 		rsync -a --include='*.md' --exclude='*' $(DEV_DIR)/docs/ $$dst/docs/; \
+		rsync -a --delete $(DEV_DIR)/benchmarks/ $$dst/benchmarks/; \
 		for f in $(ROOT_FILES); do cp $(DEV_DIR)/$$f $$dst/$$f; done; \
 	done
 	@python3 $(DEV_DIR)/scripts/check_source_sync.py --source $(DEV_DIR) --targets $(SKILL_DIRS)

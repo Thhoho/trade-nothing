@@ -25,6 +25,10 @@ write each research input into a separate runtime directory. Copy the printed
 identifiers, paths, and packet hashes. Run `score` only after every declared case/variant pair has
 both a result and a blind assessment.
 
+The benchmark suite is shipped in installed skill copies for reproducibility. Therefore research
+arms must run without filesystem/tool access and receive only the generated dispatch. Prompt-only
+instructions such as “do not read assessor files” do not qualify as blind isolation.
+
 ```bash
 python3 scripts/benchmark_harness.py materialize-case \
   --suite benchmarks/v014-six-case/suite.json \
