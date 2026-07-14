@@ -11,8 +11,7 @@
       "source_type": "official_energy_outlook",
       "url": "https://www.iea.org/reports/electricity-2024/executive-summary",
       "extracts": [
-        "The IEA estimated data-center, AI, and crypto electricity consumption could more than double from 460 TWh in 2022 to over 1,000 TWh in 2026.",
-        "The forecast is global and scenario-dependent; it does not identify which listed company can deliver incremental power at an attractive valuation."
+        "The IEA estimated data-center, AI, and crypto electricity consumption could more than double from 460 TWh in 2022 to over 1,000 TWh in 2026."
       ]
     },
     {
@@ -23,8 +22,7 @@
       "url": "https://investors.constellationenergy.com/news-releases/news-release-details/constellation-launch-crane-clean-energy-center-restoring-jobs",
       "extracts": [
         "Constellation announced a 20-year Microsoft PPA supporting restart of the 835 MW Crane Clean Energy Center.",
-        "The restart targeted 2028 and required NRC approval plus state and local permits; Constellation expected about $1.6 billion of restart investment.",
-        "This is contracted customer credit with delivery risk, not immediately deliverable MW."
+        "The restart targeted 2028 and required NRC approval plus state and local permits; Constellation expected about $1.6 billion of restart investment."
       ]
     },
     {
@@ -35,7 +33,7 @@
       "url": "https://www.ferc.gov/sites/default/files/2024-11/20241101-3061_ER24-2172-000.pdf",
       "extracts": [
         "FERC rejected without prejudice an amended PJM interconnection agreement increasing co-located load from 300 MW to 480 MW.",
-        "The order demonstrates that behind-the-meter power availability can face tariff, reliability, allocation, and regulatory barriers."
+        "The proceeding addressed tariff, reliability, cost-allocation, and service-obligation questions for co-located load."
       ]
     },
     {
@@ -45,8 +43,7 @@
       "source_type": "company_contract_announcement",
       "url": "https://investors.terawulf.com/news-events/press-releases/detail/99/terawulf-to-deliver-over-70-mw-of-data-center-infrastructure-for-g42s-us-operations",
       "extracts": [
-        "TeraWulf announced long-term leases to deliver more than 70 MW of data-center infrastructure for Core42/G42 operations.",
-        "The company still carried bitcoin-mining, customer, buildout, financing, power-cost, and execution risks; contracted MW is not the same as commissioned revenue-producing MW."
+        "TeraWulf announced long-term leases to deliver more than 70 MW of data-center infrastructure for Core42/G42 operations."
       ]
     },
     {

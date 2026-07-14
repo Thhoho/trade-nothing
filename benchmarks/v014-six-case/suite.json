@@ -1,63 +1,65 @@
 {
-  "schema_version": "trade-nothing.benchmark-suite.v1",
+  "schema_version": "trade-nothing.benchmark-suite.v2",
   "suite_id": "v014-six-case",
   "variants": ["single_agent", "v0_12", "v0_14"],
+  "evaluation_scope": "CLOSED_PACKET_REASONING",
+  "research_access": {"external_search_allowed": false, "filesystem_allowed": false},
   "evidence_manifest": {
-    "EV-AI-GPU-2024": {"path": "evidence/ai_gpu_bottleneck_2024.json", "sha256": "ca9911f8b387f3bd296c276d0a7d5cf7cf710306bde79c9b41faf6bdeef5d6af"},
-    "EV-AI-POWER-2025": {"path": "evidence/ai_power_infrastructure_2025.json", "sha256": "4b2af9409ac716f6415de46a35c60e2fcc7930b65dac3c84c1ee495fe912c400"},
-    "EV-EU-EV-2024": {"path": "evidence/eu_ev_tariffs_2024.json", "sha256": "9d6eb9ec3628c4d70fd3d2731563b3234407a914920c57a7f167fc6256896bee"},
-    "EV-GLP1-2024": {"path": "evidence/glp1_value_capture_2024.json", "sha256": "4b5fe8ca9e45e1b1c67823473c2947ce4331be75f55d4fa9ce60831a1cd032bc"},
-    "EV-RED-SEA-2024": {"path": "evidence/red_sea_shipping_2024.json", "sha256": "4be513b15296dc40fcc835acc1c9354ddd0dc012eaeb54a6961d302e5509e851"},
-    "EV-REGIONAL-BANK-2024": {"path": "evidence/regional_bank_cre_2024.json", "sha256": "1fe4538f46f4c3c0c5b7b6f225690a51d9b23e5e78586038c63a1b632fb054bf"}
+    "EV-AI-GPU-2024": {"path": "evidence/ai_gpu_bottleneck_2024.json", "sha256": "9014b02e826fb3cbd95d8730fff370f0e5f195abcacaaf49cf371249c21851ec"},
+    "EV-AI-POWER-2025": {"path": "evidence/ai_power_infrastructure_2025.json", "sha256": "c6661f94ad8fdd7cf180ea979488b467198522f130d46b931934d8892edb3156"},
+    "EV-EU-EV-2024": {"path": "evidence/eu_ev_tariffs_2024.json", "sha256": "0cdc49e2b0543d71fb83b89b29f56c5df9d23aad520ad87b86c6aec29f835aad"},
+    "EV-GLP1-2024": {"path": "evidence/glp1_value_capture_2024.json", "sha256": "3eabe2d7555a82a58a22decb3120927fd10c77a6c1fb1256e6f11ed079c607e0"},
+    "EV-RED-SEA-2024": {"path": "evidence/red_sea_shipping_2024.json", "sha256": "fa7e6c95a238037306da7f7e7377ff4ff902761deae5ee42265f244c447174a4"},
+    "EV-REGIONAL-BANK-2024": {"path": "evidence/regional_bank_cre_2024.json", "sha256": "a55b50e3411df04fda343a25fe24c296d4e3480c2dff639f0d3cd0917f4f3e8c"}
   },
   "cases": [
     {
       "case_id": "ai_gpu_bottleneck_2024",
       "question_type": "CAUSAL_CHAIN",
       "as_of": "2024-08-29",
-      "prompt": "截至 2024-08-29，质证‘超大规模云厂商持续扩张 AI 资本开支，因此 NVIDIA 仍是最有吸引力的上市载体’。分开判断需求真实性、价值捕获、市场定价和可交易载体；沿算力、网络、电力与散热链寻找最多 3 个值得跟踪的对象。只使用冻结证据和当时可知事实，不得使用事后结果。",
+      "prompt": "截至 2024-08-29，质证‘超大规模云厂商持续扩张 AI 资本开支，因此 NVIDIA 仍是最有吸引力的上市载体’。分开判断需求真实性、价值捕获、市场定价和可交易载体，并寻找最多 3 个值得跟踪的替代或补充对象。只使用冻结证据和当时可知事实，不得使用事后结果。",
       "frozen_evidence": ["EV-AI-GPU-2024"],
-      "budget": {"max_tokens": 50000, "max_searches": 20, "max_wall_seconds": 1800}
+      "budget": {"max_tokens": 50000, "max_searches": 0, "max_wall_seconds": 1800}
     },
     {
       "case_id": "eu_ev_tariffs_2024",
       "question_type": "COMPARATIVE",
       "as_of": "2024-06-13",
-      "prompt": "截至 2024-06-13，欧盟披露拟对中国制造的纯电动车征收差异化反补贴税。比较 BYD、Geely、SAIC 谁更可能保留欧洲经济性，并判断本地化生产、非欧市场或欧洲本土供应链是否是更好的价值转移路径。最多保留 3 个候选，明确法规成熟度和定价缺口。",
+      "prompt": "截至 2024-06-13，欧盟披露拟对中国制造的纯电动车征收差异化反补贴税。比较 BYD、Geely、SAIC 谁更可能保留欧洲经济性，并寻找可能更好地捕获价值转移的路径。最多保留 3 个候选，明确法规成熟度和定价缺口。",
       "frozen_evidence": ["EV-EU-EV-2024"],
-      "budget": {"max_tokens": 50000, "max_searches": 20, "max_wall_seconds": 1800}
+      "budget": {"max_tokens": 50000, "max_searches": 0, "max_wall_seconds": 1800}
     },
     {
       "case_id": "glp1_value_capture_2024",
       "question_type": "DISJUNCTIVE",
       "as_of": "2024-05-02",
-      "prompt": "截至 2024-05-02，GLP-1 药物需求快速增长但供给受限。判断价值最可能由品牌药企、灌装产能、器械/包装还是独立 CDMO 捕获；识别最多 3 个可交易载体，并特别检查产能内化、并购封顶、供应恢复和估值已计价风险。",
+      "prompt": "截至 2024-05-02，GLP-1 药物需求快速增长但供给受限。画出主要价值捕获路径，识别最多 3 个可交易载体，并检查每个载体的成熟度、价值捕获、供给变化和定价风险。",
       "frozen_evidence": ["EV-GLP1-2024"],
-      "budget": {"max_tokens": 50000, "max_searches": 20, "max_wall_seconds": 1800}
+      "budget": {"max_tokens": 50000, "max_searches": 0, "max_wall_seconds": 1800}
     },
     {
       "case_id": "red_sea_shipping_2024",
       "question_type": "CAUSAL_CHAIN",
       "as_of": "2024-01-31",
-      "prompt": "截至 2024-01-31，红海航线中断和集装箱即期运价暴涨是否构成航运股机会？质证从绕航到有效运力、合同运价、成本、船队结构再到股东收益的完整因果链，区分短期运价冲击与可持续权益价值，最多保留 3 个载体。",
+      "prompt": "截至 2024-01-31，红海航线中断和集装箱即期运价暴涨是否构成航运股机会？建立从运营冲击到股东收益的完整因果链，区分短期冲击与可持续权益价值，最多保留 3 个载体。",
       "frozen_evidence": ["EV-RED-SEA-2024"],
-      "budget": {"max_tokens": 50000, "max_searches": 20, "max_wall_seconds": 1800}
+      "budget": {"max_tokens": 50000, "max_searches": 0, "max_wall_seconds": 1800}
     },
     {
       "case_id": "regional_bank_cre_2024",
       "question_type": "CONJUNCTIVE",
       "as_of": "2024-02-07",
-      "prompt": "截至 2024-02-07，NYCB 的亏损、分红削减与商业地产拨备是否证明美国区域银行存在可做空的系统性偿付危机？逐项检验 CRE 信用损失、融资/存款、资本、监管门槛和机构差异；不得把 NO_EDGE 自动翻译成做空，最多给出 3 个研究对象或对冲载体。",
+      "prompt": "截至 2024-02-07，NYCB 的亏损、分红削减与商业地产拨备是否证明美国区域银行存在可做空的系统性偿付危机？检验从单一机构事件外推到行业结论所需的关键条件；不得把 NO_EDGE 自动翻译成做空，最多给出 3 个研究对象或对冲载体。",
       "frozen_evidence": ["EV-REGIONAL-BANK-2024"],
-      "budget": {"max_tokens": 50000, "max_searches": 20, "max_wall_seconds": 1800}
+      "budget": {"max_tokens": 50000, "max_searches": 0, "max_wall_seconds": 1800}
     },
     {
       "case_id": "ai_power_infrastructure_2025",
       "question_type": "UNIVERSE_SEARCH",
       "as_of": "2025-01-31",
-      "prompt": "截至 2025-01-31，从 AI 数据中心电力瓶颈出发寻找真正可投资的价值捕获者，不从热门股票名单反推故事。覆盖发电、并网/输配电、电气设备、散热、可转化园区与共址监管路径；每个候选必须区分规划 MW、签约 MW、可交付 MW、客户信用、融资闭合和定价，最多保留 3 个。",
+      "prompt": "截至 2025-01-31，从 AI 数据中心电力瓶颈出发寻找真正可投资的价值捕获者，不从热门股票名单反推故事。建立主要价值转移路径，并对每个候选检验容量成熟度、客户、融资、交付和定价；最多保留 3 个。",
       "frozen_evidence": ["EV-AI-POWER-2025"],
-      "budget": {"max_tokens": 50000, "max_searches": 20, "max_wall_seconds": 1800}
+      "budget": {"max_tokens": 50000, "max_searches": 0, "max_wall_seconds": 1800}
     }
   ]
 }

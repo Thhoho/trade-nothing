@@ -1,7 +1,8 @@
 # Frozen Benchmark Protocol
 
-Use this protocol only to evaluate whether a research architecture adds value. Do not load an
-assessment or future outcome into a research role's context.
+Use this protocol to compare reasoning, maturity control, and report usability from identical frozen
+inputs. Do not load an assessment or future outcome into a research role's context. This protocol
+does not test source discovery, full-universe coverage, or alpha.
 
 ## Separation
 
@@ -40,9 +41,11 @@ Minimal suite:
 
 ```json
 {
-  "schema_version": "trade-nothing.benchmark-suite.v1",
+  "schema_version": "trade-nothing.benchmark-suite.v2",
   "suite_id": "v014-six-case",
   "variants": ["single_agent", "v0_12", "v0_14"],
+  "evaluation_scope": "CLOSED_PACKET_REASONING",
+  "research_access": {"external_search_allowed": false, "filesystem_allowed": false},
   "evidence_manifest": {
     "SNAP-001": {"path": "evidence/SNAP-001.json", "sha256": "64 lowercase hex characters"},
     "SNAP-002": {"path": "evidence/SNAP-002.json", "sha256": "64 lowercase hex characters"}
@@ -53,7 +56,7 @@ Minimal suite:
     "as_of": "2025-01-15",
     "prompt": "Question shown to every arm",
     "frozen_evidence": ["SNAP-001", "SNAP-002"],
-    "budget": {"max_tokens": 50000, "max_searches": 20, "max_wall_seconds": 1800}
+    "budget": {"max_tokens": 50000, "max_searches": 0, "max_wall_seconds": 1800}
   }]
 }
 ```
@@ -118,9 +121,21 @@ Use at least two arms. The persisted v0.14 six-case benchmark uses:
 - `v0_14`: current crux workflow with Landscape Map, explicit pricing/vehicle separation, bounded
   artifact handoffs, opportunity harvesting, and CandidateScreen contracts.
 
-Give each arm the same frozen evidence packet and the same maximum Token, search, and wall-clock
-budget. A run exceeding any cap is not comparable. Report failed and recovered runs; do not silently
-drop them.
+Give each arm the same frozen evidence packet and the same maximum Token and wall-clock budget.
+External search and filesystem access are forbidden, so `max_searches` must be zero. A run exceeding
+any cap is not comparable. Report failed and recovered runs; do not silently drop them.
+
+## What this benchmark cannot prove
+
+The packet is selected and summarized by a curator. Even after evaluator conclusions are removed,
+source selection narrows the search space. Therefore `major_path_coverage` is closed-packet reasoning
+coverage, not discovery recall. Passing this suite can justify report or reasoning changes; it cannot
+justify claims that the system finds more opportunities.
+
+A discovery benchmark must be a separate `FROZEN_CORPUS_DISCOVERY` suite with an as-of searchable
+corpus, decoy documents, hidden entity/path labels, retrieval logs, and no live web or host
+filesystem access. Score source recall, novel valid paths, false discoveries, and cost independently
+from report comprehension. Do not merge the two scopes into one headline metric.
 
 ## Metrics
 

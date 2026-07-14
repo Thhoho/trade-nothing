@@ -1,6 +1,11 @@
 # v0.14 Six-case Frozen Benchmark
 
-This directory is the reproducible input contract for the initial 6 x 3 method comparison.
+This directory is the reproducible input contract for the initial 6 x 3
+`CLOSED_PACKET_REASONING` comparison.
+
+It measures whether an arm can reason from the same frozen facts, control maturity, avoid false
+opportunities, and produce a usable report. It does **not** measure source discovery, full-universe
+coverage, proprietary insight, or alpha. Those require a separate searchable frozen-corpus suite.
 
 - A research arm may receive only a generated single-case dispatch packet. Do not hand it this
   repository or the benchmark directory.
@@ -8,6 +13,8 @@ This directory is the reproducible input contract for the initial 6 x 3 method c
 - `results/` is intentionally absent until real arm executions are frozen.
 - Evidence extracts are curator-frozen summaries of sources available on or before each case as-of.
   They are not a substitute for the linked source body in production claim verification.
+- Extracts intentionally omit evaluator conclusions, but their source selection still embeds curator
+  judgment. Treat path coverage as closed-packet reasoning coverage, not treasure-finding recall.
 - Market observations are unadjusted closes captured for the stated session. They are pricing
   anchors, not recommendations and not future-return labels.
 
@@ -32,7 +39,8 @@ packet. The resulting file binds the suite contract hash, exactly one case, and 
 frozen evidence. The evaluator answer key remains physically separate.
 
 Installed skill copies also contain this benchmark for reproducibility. A benchmark research arm
-must run without filesystem/tool access and receive only the generated dispatch file; merely telling
+must run without filesystem/tool access or external search and receive only the generated dispatch
+file; merely telling
 an agent not to open `assessor/` is not blind isolation.
 
 The suite deliberately contains traps that a useful method should expose: demand is not necessarily

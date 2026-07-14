@@ -30,3 +30,8 @@ Count metrics mechanically:
   grammar edits do not count.
 
 Do not reward report length, candidate count, confident tone, role count, or predicted returns.
+
+This suite is `CLOSED_PACKET_REASONING`. `major_path_found` means a path was inferred or correctly
+marked unresolvable from the supplied packet; it is not evidence that the arm discovered the source
+or candidate independently. Never report these scores as universe recall, treasure-finding ability,
+or alpha.

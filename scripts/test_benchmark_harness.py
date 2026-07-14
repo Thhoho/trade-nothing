@@ -14,6 +14,11 @@ def suite():
         "schema_version": harness.SUITE_SCHEMA,
         "suite_id": "v013-smoke",
         "variants": ["single_agent", "v0_12", "v0_13"],
+        "evaluation_scope": "CLOSED_PACKET_REASONING",
+        "research_access": {
+            "external_search_allowed": False,
+            "filesystem_allowed": False,
+        },
         "evidence_manifest": {
             "SNAP-A": {"path": "evidence/snap-a.json", "sha256": "a" * 64},
             "SNAP-B": {"path": "evidence/snap-b.json", "sha256": "b" * 64},
@@ -26,7 +31,7 @@ def suite():
             "frozen_evidence": ["SNAP-A", "SNAP-B"],
             "budget": {
                 "max_tokens": 10000,
-                "max_searches": 8,
+                "max_searches": 0,
                 "max_wall_seconds": 600,
             },
         }],
@@ -44,7 +49,7 @@ def result(variant, tokens=5000, artifact_path="artifact.md", artifact_sha256="a
         "completion_status": "COMPLETE",
         "artifact_path": artifact_path,
         "artifact_sha256": artifact_sha256,
-        "usage": {"tokens_total": tokens, "search_count": 4, "wall_seconds": 120},
+        "usage": {"tokens_total": tokens, "search_count": 0, "wall_seconds": 120},
         "recovery_count": 0,
     }
 
@@ -90,6 +95,14 @@ class BenchmarkHarnessTests(unittest.TestCase):
             harness.QUESTION_TYPES,
         )
         self.assertEqual(validated["variants"], ["single_agent", "v0_12", "v0_14"])
+        self.assertEqual(validated["evaluation_scope"], "CLOSED_PACKET_REASONING")
+        self.assertTrue(all(case["budget"]["max_searches"] == 0 for case in validated["cases"]))
+
+    def test_closed_packet_suite_rejects_fake_search_budget(self):
+        data = suite()
+        data["cases"][0]["budget"]["max_searches"] = 1
+        with self.assertRaisesRegex(ValueError, "must be 0"):
+            harness.validate_suite(data)
 
     def test_dispatch_contains_one_case_and_no_assessor_material(self):
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

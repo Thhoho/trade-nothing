@@ -17,14 +17,15 @@ from datetime import date
 from pathlib import Path, PurePosixPath
 
 
-SUITE_SCHEMA = "trade-nothing.benchmark-suite.v1"
-DISPATCH_SCHEMA = "trade-nothing.benchmark-dispatch.v1"
+SUITE_SCHEMA = "trade-nothing.benchmark-suite.v2"
+DISPATCH_SCHEMA = "trade-nothing.benchmark-dispatch.v2"
 RESULT_SCHEMA = "trade-nothing.benchmark-result.v1"
 ASSESSMENT_SCHEMA = "trade-nothing.benchmark-assessment.v1"
 SUMMARY_SCHEMA = "trade-nothing.benchmark-summary.v1"
 QUESTION_TYPES = {
     "CONJUNCTIVE", "DISJUNCTIVE", "CAUSAL_CHAIN", "COMPARATIVE", "UNIVERSE_SEARCH"
 }
+EVALUATION_SCOPES = {"CLOSED_PACKET_REASONING"}
 STATUS_VALUES = {"COMPLETE", "FAILED", "PAUSED_BUDGET", "RUNTIME_FAILURE"}
 LEAKAGE_KEYS = {
     "gold", "gold_answer", "expected_answer", "expected_outcome", "major_paths",
@@ -120,6 +121,24 @@ def validate_suite(suite):
         raise ValueError("variants must be unique")
     if any(not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,31}", item) for item in variants):
         raise ValueError("variants must use lowercase letters, numbers, underscores, or hyphens")
+    evaluation_scope = _require_text(
+        suite.get("evaluation_scope"), "evaluation_scope"
+    ).upper()
+    if evaluation_scope not in EVALUATION_SCOPES:
+        raise ValueError(
+            "evaluation_scope must be CLOSED_PACKET_REASONING; discovery requires a separate "
+            "frozen-corpus protocol"
+        )
+    research_access = suite.get("research_access")
+    expected_access = {
+        "external_search_allowed": False,
+        "filesystem_allowed": False,
+    }
+    if research_access != expected_access:
+        raise ValueError(
+            "CLOSED_PACKET_REASONING requires external_search_allowed=false and "
+            "filesystem_allowed=false"
+        )
     evidence_manifest = suite.get("evidence_manifest")
     if not isinstance(evidence_manifest, dict) or not evidence_manifest:
         raise ValueError("evidence_manifest must bind every frozen evidence packet")
@@ -166,9 +185,20 @@ def validate_suite(suite):
         if not isinstance(budget, dict):
             raise ValueError(f"cases[{index}].budget must be an object")
         normalized_budget = {
-            field: _positive_number(budget.get(field), f"cases[{index}].budget.{field}")
-            for field in BUDGET_FIELDS
+            "max_tokens": _positive_number(
+                budget.get("max_tokens"), f"cases[{index}].budget.max_tokens"
+            ),
+            "max_searches": _nonnegative_number(
+                budget.get("max_searches"), f"cases[{index}].budget.max_searches"
+            ),
+            "max_wall_seconds": _positive_number(
+                budget.get("max_wall_seconds"), f"cases[{index}].budget.max_wall_seconds"
+            ),
         }
+        if normalized_budget["max_searches"] != 0:
+            raise ValueError(
+                f"cases[{index}].budget.max_searches must be 0 for CLOSED_PACKET_REASONING"
+            )
         frozen_evidence = case.get("frozen_evidence")
         if not isinstance(frozen_evidence, list) or not frozen_evidence:
             raise ValueError(f"cases[{index}].frozen_evidence must be a non-empty list")
@@ -198,6 +228,8 @@ def validate_suite(suite):
         "schema_version": SUITE_SCHEMA,
         "suite_id": suite_id,
         "variants": variants,
+        "evaluation_scope": evaluation_scope,
+        "research_access": research_access,
         "cases": normalized,
         "evidence_manifest": normalized_manifest,
     }
@@ -210,6 +242,8 @@ def validate_suite(suite):
         **suite,
         "suite_id": suite_id,
         "variants": variants,
+        "evaluation_scope": evaluation_scope,
+        "research_access": research_access,
         "cases": normalized,
         "evidence_manifest": normalized_manifest,
         "suite_contract_sha256": suite_contract_sha256,
@@ -271,11 +305,14 @@ def materialize_case_dispatch(suite, suite_path, case_id):
     dispatch = {
         "schema_version": DISPATCH_SCHEMA,
         "suite_id": suite["suite_id"],
+        "evaluation_scope": suite["evaluation_scope"],
         "suite_contract_sha256": suite["suite_contract_sha256"],
         "case": case,
         "evidence_packets": packets,
         "research_constraints": {
             "allowed_inputs": "this dispatch packet only",
+            "external_search_allowed": False,
+            "filesystem_allowed": False,
             "future_information": "forbidden",
             "self_assessment": "forbidden",
             "required_result_schema": RESULT_SCHEMA,
@@ -501,6 +538,7 @@ def score_suite(suite, results_dir):
     return {
         "schema_version": SUMMARY_SCHEMA,
         "suite_id": _require_text(suite.get("suite_id"), "suite_id"),
+        "evaluation_scope": suite["evaluation_scope"],
         "expected_case_variant_pairs": expected_pairs,
         "observed_case_variant_pairs": len(rows),
         "comparison_ready": (
@@ -518,11 +556,14 @@ def render_markdown(summary):
     lines = [
         f"# Benchmark Summary — {summary['suite_id']}",
         "",
+        f"- Evaluation scope: **{summary['evaluation_scope']}**",
         f"- Comparison ready: **{str(summary['comparison_ready']).upper()}**",
         f"- Complete pairs: {summary['observed_case_variant_pairs']} / "
         f"{summary['expected_case_variant_pairs']}",
         "- These metrics compare research process quality under frozen as-of evidence; they are not "
         "probabilities, expected returns, or trade signals.",
+        "- CLOSED_PACKET_REASONING measures reasoning, maturity control, and report usability. It "
+        "does not measure source discovery, universe coverage, or alpha.",
         "",
         "| Variant | Completion | Claim precision | Path coverage | False opportunity | "
         "Pricing valid | Maturity misread | 60s comprehension | Tokens / effective seed |",
@@ -569,6 +610,7 @@ def main():
             "suite_id": suite.get("suite_id"),
             "case_count": len(suite["cases"]),
             "variants": suite["variants"],
+            "evaluation_scope": suite["evaluation_scope"],
             "suite_contract_sha256": suite["suite_contract_sha256"],
         }, ensure_ascii=False, indent=2))
         return
