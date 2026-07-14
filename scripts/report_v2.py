@@ -241,12 +241,14 @@ def render(state):
     n_rounds = len(state.get("rounds", []))
     dt = state.get("decision_trace", [])
     trace_str = " → ".join(
-        f"R{d['round']}: {d['decision']}({int(d.get('support_weakest', d['p_weakest'])*100)}/100)"
+        f"R{d['round']}: {crux_engine.safe_decision_label(d.get('decision'))}"
+        f"({int(d.get('support_weakest', d['p_weakest'])*100)}/100)"
         for d in dt
     ) if dt else "—"
 
     support_w = (rd.get("support_weakest") or 0.5)
     support_m = (rd.get("support_mean") or 0.5)
+    verdict = rd.get("research_verdict", {})
 
     L = []
 
@@ -258,9 +260,19 @@ def render(state):
 
     # 结论
     L.append("## 🧭 研究状态")
-    L.append(f"- **状态: {rd['decision']}**（仅表示研究证据是否足以进入人工决策，不是交易指令）")
-    L.append(f"- 约束性 crux (binding): **{rd['binding_crux']}** ｜ "
-             f"最弱辩论支持度 {int(support_w*100)}/100 ｜ 均值支持度 {int(support_m*100)}/100")
+    L.append(f"- 题型: **{verdict.get('question_type', rd.get('question_type', 'CONJUNCTIVE'))}**")
+    L.append(f"- Edge: **{verdict.get('edge_state', 'INSUFFICIENT_EVIDENCE')}** ｜ "
+             f"证据方向: **{verdict.get('evidence_direction', 'UNDETERMINED')}** ｜ "
+             f"可行动性: **{verdict.get('actionability', 'NONE')}**")
+    L.append(f"- 判定依据: `{verdict.get('reason_code', 'LEGACY_STATE')}`。"
+             "`NO_EDGE` 只表示未发现可利用预期差，不等于 AVOID、SHORT，也不是交易指令。")
+    if rd.get("binding_crux"):
+        L.append(f"- 约束性 crux (binding): **{rd['binding_crux']}** ｜ "
+                 f"最弱辩论支持度 {int(support_w*100)}/100 ｜ 均值支持度 {int(support_m*100)}/100")
+    else:
+        L.append(f"- 聚合规则: **{rd.get('aggregation_rule', 'LOGIC_GRAPH_MULTI_PATH')}** ｜ "
+                 f"当前研究焦点 {rd.get('focus_crux') or '—'} ｜ 最低路径支持度 {int(support_w*100)}/100；"
+                 "多路径题型不存在可否定全局的单一 binding crux。")
     L.append(f"- 博弈深度: {n_rounds} 轮 ｜ 唯一可复核来源: {rd['n_unique_sources']} 个"
              f" ｜ 其中一级来源: {rd['n_primary_sources']} 个")
     opportunity_counts = opportunity_engine.summary(state)
@@ -354,7 +366,8 @@ def render(state):
     L.append("═══════════════════════════════════════════")
     L.append(f"  标的: {topic}")
     L.append(f"  博弈深度: {n_rounds} 轮 ｜ 唯一来源: {rd['n_unique_sources']} 个")
-    L.append(f"  最弱 crux 支持度: {rd['binding_crux']} ({int(support_w*100)}/100)")
+    L.append(f"  当前焦点 / 最低支持度: {rd.get('focus_crux') or rd.get('binding_crux')} "
+             f"({int(support_w*100)}/100)")
     L.append(f"  命题均值支持度: {int(support_m*100)}/100")
     L.append(f"  决策演化: {trace_str}")
     L.append("  交易输出: 禁止自动给出目标价、预期收益或仓位")
@@ -364,7 +377,7 @@ def render(state):
 
     # Deterministic opportunity layer. These are screening inputs, not recommendations.
     L.append("### A.3 · 宝藏地图（研究候选，不是投资建议）")
-    L.append("- 根命题的研究状态与候选线索相互独立：即使结论为 `NO_EDGE / AVOID`，"
+    L.append("- 根命题的研究状态与候选线索相互独立：即使根命题为 `NO_EDGE`，"
              "通过证据反查的替代者、竞争者或瓶颈所有者仍会保留。")
     L.append("- `READY_FOR_SCREENING` 只允许进入双边 CandidateScreen；`THESIS_CANDIDATE` 还必须通过"
              "页面快照与 claim 对齐，才会生成需要人工确认的新 Thesis 草稿。")
@@ -503,11 +516,13 @@ def render(state):
     L.append("")
     L.append("<!-- BATTLE_LOG_START -->")
     L.append("### 一句话裁决")
-    L.append(f"- Engine 当前给出 **{rd['decision']}**；该状态只表示研究证据门是否完成，"
-             "不是交易动作、胜率或收益判断。")
+    L.append(f"- **{verdict.get('edge_state', 'INSUFFICIENT_EVIDENCE')} / "
+             f"{verdict.get('evidence_direction', 'UNDETERMINED')} / "
+             f"{verdict.get('actionability', 'NONE')}**；该三维状态分别回答是否发现预期差、"
+             "证据方向和是否值得进入候选筛选，不是交易动作、胜率或收益判断。")
     L.append("")
-    binding_item = next((item for item in rd["cruxes"] if item["id"] == rd["binding_crux"]), None)
-    L.append("### 约束性 Crux")
+    binding_item = next((item for item in rd["cruxes"] if item["id"] == rd.get("binding_crux")), None)
+    L.append("### 约束性 Crux / 当前研究焦点")
     if binding_item:
         nums = crux_refs.get(binding_item["id"], [])
         ref_text = " ".join(f"[{n}]" for n in nums) or "—"
@@ -516,7 +531,14 @@ def render(state):
         L.append(f"- 最强空头: {binding_item.get('best_bear') or '—'} {ref_text}")
         L.append(f"- 翻案条件: {binding_item.get('falsifier') or '—'} {ref_text}")
     else:
-        L.append("- 无可用 binding crux。")
+        focus_item = next((item for item in rd["cruxes"] if item["id"] == rd.get("focus_crux")), None)
+        if focus_item:
+            nums = crux_refs.get(focus_item["id"], [])
+            ref_text = " ".join(f"[{n}]" for n in nums) or "—"
+            L.append(f"- 多路径题型无单一 binding crux；当前研究焦点为 **{focus_item['id']} "
+                     f"{focus_item['label']}** — {focus_item['status']} {ref_text}")
+        else:
+            L.append("- 无可用 binding crux 或当前研究焦点。")
     L.append("")
     L.append("### 证据方向与监控")
     for item in rd["cruxes"]:

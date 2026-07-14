@@ -169,6 +169,19 @@ class OpportunityOrchestratorTests(unittest.TestCase):
         topic = "opportunity integration"
         frame = {
             "decision_question": "test", "horizon": "3-6M", "as_of_date": "2026-07-11",
+            "question_type": "CONJUNCTIVE",
+            "logic_graph": {
+                "root_id": "Q1",
+                "nodes": [
+                    {"id": "Q1", "node_type": "QUESTION", "label": "test"},
+                    {"id": "C1", "node_type": "CRUX", "label": "c1"},
+                    {"id": "C2", "node_type": "CRUX", "label": "c2"},
+                ],
+                "edges": [
+                    {"from": "C1", "to": "Q1", "relation": "REQUIRED_FOR"},
+                    {"from": "C2", "to": "Q1", "relation": "REQUIRED_FOR"},
+                ],
+            },
             "unit_of_analysis": "test assets",
             "thesis_seed": "If the premise holds, there may be an edge.",
             "premise_audit": [{
@@ -177,11 +190,13 @@ class OpportunityOrchestratorTests(unittest.TestCase):
                 "required_primary_source": "issuer filing", "use": "scope the test",
             }],
             "candidate_cruxes": [
-                {"id": "C1", "label": "c1", "definition": "d1", "monitor_anchor": "m1",
+                {"id": "C1", "label": "c1", "logic_role": "THESIS_HINGE",
+                 "definition": "d1", "monitor_anchor": "m1",
                  "falsifier": "f1", "catalyst_window": {
                      "event": "e1", "expected_by": "2026-10-31",
                      "date_status": "REVIEW_CHECKPOINT", "basis_claim_id": "P1"}},
-                {"id": "C2", "label": "c2", "definition": "d2", "monitor_anchor": "m2",
+                {"id": "C2", "label": "c2", "logic_role": "THESIS_HINGE",
+                 "definition": "d2", "monitor_anchor": "m2",
                  "falsifier": "f2", "catalyst_window": {
                      "event": "e2", "expected_by": "2026-12-31",
                      "date_status": "REVIEW_CHECKPOINT", "basis_claim_id": "P1"}},
@@ -220,10 +235,12 @@ class OpportunityReportTests(unittest.TestCase):
             "contested_history": [0.35, 0.35, 0.35],
             "status": "RESOLVED_BEAR",
             "retired": True,
+            "p_history": [0.5, 0.35],
             "citations": [evidence, citation("report-2", claim="second source")],
         })
         md = report_v2.render(st)
-        self.assertIn("NO_EDGE / AVOID", md)
+        self.assertIn("Edge: **NO_EDGE**", md)
+        self.assertNotIn("NO_EDGE / AVOID", md)
         self.assertIn("A.3 · 宝藏地图", md)
         self.assertIn("Asset Owner", md)
         self.assertIn("不是投资建议", md)

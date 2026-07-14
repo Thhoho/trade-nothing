@@ -189,7 +189,7 @@ Override via `TRADE_NOTHING_MODEL_DEEP` / `TRADE_NOTHING_MODEL_FAST`.
 When receiving `-deepthink2 "target/topic"`, run this orchestrator-driven loop:
 
 ```bash
-# 1. Framing gate (DEEP, runs once) — decision question + 2-5 candidate cruxes + No-Edge precheck
+# 1. Framing gate (DEEP, runs once) — question type + connected logic graph + 2-5 cruxes
 python3 scripts/deepthink_orchestrator_v2.py --frame --topic "TARGET"
 #    → execute agents/framer.md INLINE IN THE PARENT. Never define/invoke a Framer sub-agent and
 #      never browse during framing. If no_edge_precheck.is_researchable=false → emit
@@ -257,6 +257,9 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > A fuse-break must still emit the deterministic non-formal Resolution Memo and compact continuation
 > packet. Never auto-resume it. Late cruxes missing a falsifier/catalyst or introduced after the
 > dry-round cutoff are deferred to a future topic instead of blocking the current run.
+> The user-facing verdict is always three-dimensional: `edge_state`, `evidence_direction`, and
+> `actionability`. `NO_EDGE` means no usable expectation gap was established; it never means
+> `AVOID` or `SHORT`. A short direction requires an independently admitted short seed and screen.
 
 > **Cost integrity:** each research agent gets at most 10 web searches per round and at most 2 per
 > OPEN crux. Stop after 2 searches without new primary evidence and return `UNKNOWN`. When untested
@@ -271,8 +274,11 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > with a monitor, falsifier, and exact future catalyst checkpoint inside the 3–6 month horizon.
 > Each catalyst must declare `REVIEW_CHECKPOINT` or `DATE_CLAIMED_UNVERIFIED` and bind to a premise
 > ID included in the No-Edge basis. The report keeps every framing premise visibly provisional.
+> Every researchable frame must also declare one question type and a connected logic graph.
+> `UNIVERSE_SEARCH` requires both an `OPPORTUNITY_PATH` and a `PRICING` crux. Read
+> `references/research-question-types.md` before framing broad, comparative, or multi-path questions.
 
-> **Opportunity integrity:** a root-thesis `NO_EDGE / AVOID` verdict does not erase a valid
+> **Opportunity integrity:** a root-thesis `NO_EDGE` verdict does not erase a valid
 > substitute, competitor, bottleneck-owner, infrastructure-owner, second-order, or short seed.
 > Every seed must pass the same-agent + same-round + same-crux citation back-check. Evidence maturity
 > and screening eligibility are separate: a screenable path also needs a healthy origin crux, root
@@ -398,3 +404,4 @@ copied with the skill.
 > 9. **默认用户报告不得包含 Detective/Inquisitor/Judge 原始输出、搜索日志或写作占位符；这些只留在 state 审计层。**
 > 10. **`fuse_break` 禁止正式报告和自动续跑，但必须提供非正式 Resolution Memo；扩展轮次必须由用户显式授权。**
 > 11. **Framer 必须由父上下文内联执行，禁止派生子代理和搜索；任何阶段超时必须输出非正式 runtime failure memo，禁止无界等待、伪造输出或自动重试。**
+> 12. **题型、逻辑图和 crux 角色决定总命题聚合方式；`NO_EDGE`、证据方向与可行动性必须分开，禁止恢复 `NO_EDGE / AVOID`。**

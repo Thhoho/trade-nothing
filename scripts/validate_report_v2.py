@@ -67,6 +67,12 @@ def validate_report(path, state_path=""):
     errors = []
     warnings = []
 
+    if "NO_EDGE / AVOID" in md:
+        errors.append("Legacy NO_EDGE / AVOID semantic leak found; NO_EDGE must stand alone.")
+    for required in ("Edge: **", "证据方向: **", "可行动性: **"):
+        if required not in md:
+            errors.append(f"Missing three-axis verdict field: {required}")
+
     refs = _references(md)
     if not refs:
         errors.append("No concrete References list found.")

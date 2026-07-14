@@ -40,6 +40,86 @@ def converged_state():
     return st
 
 
+class QuestionAwareVerdictTests(unittest.TestCase):
+    def _state(self, question_type, cruxes):
+        nodes = [{"id": "Q1", "node_type": "QUESTION", "label": "root"}]
+        nodes.extend({"id": item["id"], "node_type": "CRUX", "label": item["label"]}
+                     for item in cruxes)
+        edges = [{"from": item["id"], "to": "Q1", "relation": "PRICING_FOR"
+                  if item.get("logic_role") == "PRICING" else "ALTERNATIVE_PATH"}
+                 for item in cruxes]
+        return crux_engine.new_state(
+            "question-aware", "test", "3-6M", cruxes, question_type,
+            {"root_id": "Q1", "nodes": nodes, "edges": edges},
+        )
+
+    def test_universe_search_one_failed_path_cannot_kill_the_universe(self):
+        st = self._state("UNIVERSE_SEARCH", [
+            {"id": "C1", "label": "BTM path", "logic_role": "OPPORTUNITY_PATH"},
+            {"id": "C2", "label": "grid path", "logic_role": "OPPORTUNITY_PATH"},
+            {"id": "C3", "label": "pricing gap", "logic_role": "PRICING"},
+        ])
+        st["cruxes"]["C1"]["p_history"] = [0.5, 0.35]
+        st["cruxes"]["C2"]["p_history"] = [0.5, 0.50]
+        st["cruxes"]["C3"]["p_history"] = [0.5, 0.50]
+        verdict = crux_engine.research_verdict(st)
+        self.assertEqual(verdict["edge_state"], "INSUFFICIENT_EVIDENCE")
+        self.assertEqual(verdict["actionability"], "MONITOR")
+        self.assertEqual(verdict["reason_code"], "PATH_OR_PRICING_COVERAGE_INCOMPLETE")
+        st["decision_trace"].append({
+            "round": 3, "weakest": "C1", "focus_crux": "C1",
+            "p_weakest": 0.35, "p_mean": 0.45,
+            "decision": "MONITOR", "research_verdict": verdict,
+            "aggregation_rule": "LOGIC_GRAPH_MULTI_PATH",
+        })
+        report = crux_engine.report_data(st)
+        self.assertIsNone(report["binding_crux"])
+        self.assertEqual(report["focus_crux"], "C1")
+        self.assertEqual(report["aggregation_rule"], "LOGIC_GRAPH_MULTI_PATH")
+
+    def test_universe_search_requires_path_and_pricing_to_find_edge(self):
+        st = self._state("UNIVERSE_SEARCH", [
+            {"id": "C1", "label": "path a", "logic_role": "OPPORTUNITY_PATH"},
+            {"id": "C2", "label": "path b", "logic_role": "OPPORTUNITY_PATH"},
+            {"id": "C3", "label": "pricing", "logic_role": "PRICING"},
+        ])
+        st["cruxes"]["C1"]["p_history"] = [0.5, 0.35]
+        st["cruxes"]["C2"]["p_history"] = [0.5, 0.65]
+        st["cruxes"]["C3"]["p_history"] = [0.5, 0.60]
+        verdict = crux_engine.research_verdict(st)
+        self.assertEqual(verdict["edge_state"], "EDGE_FOUND")
+        self.assertEqual(verdict["actionability"], "MONITOR")
+        st["last_convergence"] = {"decision": "converge"}
+        verdict = crux_engine.research_verdict(st)
+        self.assertEqual(verdict["actionability"], "READY_FOR_SCREENING")
+
+    def test_conjunctive_bear_crux_yields_no_edge_but_never_short(self):
+        st = self._state("CONJUNCTIVE", [
+            {"id": "C1", "label": "necessary", "logic_role": "THESIS_HINGE"},
+            {"id": "C2", "label": "necessary two", "logic_role": "THESIS_HINGE"},
+        ])
+        st["cruxes"]["C1"]["p_history"] = [0.5, 0.35]
+        st["cruxes"]["C2"]["p_history"] = [0.5, 0.65]
+        verdict = crux_engine.research_verdict(st)
+        decision = crux_engine._legacy_decision(verdict)
+        self.assertEqual(verdict["edge_state"], "NO_EDGE")
+        self.assertEqual(decision, "NO_EDGE")
+        self.assertNotIn("AVOID", decision)
+        self.assertNotIn("SHORT", decision)
+
+    def test_supported_thesis_without_pricing_is_not_called_an_edge(self):
+        st = self._state("CONJUNCTIVE", [
+            {"id": "C1", "label": "necessary", "logic_role": "THESIS_HINGE"},
+            {"id": "C2", "label": "necessary two", "logic_role": "THESIS_HINGE"},
+        ])
+        st["cruxes"]["C1"]["p_history"] = [0.5, 0.65]
+        st["cruxes"]["C2"]["p_history"] = [0.5, 0.70]
+        verdict = crux_engine.research_verdict(st)
+        self.assertEqual(verdict["evidence_direction"], "BULL")
+        self.assertEqual(verdict["edge_state"], "INSUFFICIENT_EVIDENCE")
+        self.assertEqual(verdict["reason_code"], "PRICING_NOT_ASSESSED")
+
+
 class EvidenceGateTests(unittest.TestCase):
     def test_signal_without_citation_is_zeroed(self):
         st = state()
@@ -112,6 +192,19 @@ class OrchestratorTests(unittest.TestCase):
     def frame(self):
         return {
             "decision_question": "test", "horizon": "3-6M", "as_of_date": "2026-07-11",
+            "question_type": "CONJUNCTIVE",
+            "logic_graph": {
+                "root_id": "Q1",
+                "nodes": [
+                    {"id": "Q1", "node_type": "QUESTION", "label": "test"},
+                    {"id": "C1", "node_type": "CRUX", "label": "c1"},
+                    {"id": "C2", "node_type": "CRUX", "label": "c2"},
+                ],
+                "edges": [
+                    {"from": "C1", "to": "Q1", "relation": "REQUIRED_FOR"},
+                    {"from": "C2", "to": "Q1", "relation": "REQUIRED_FOR"},
+                ],
+            },
             "unit_of_analysis": "test assets",
             "thesis_seed": "If P1 holds, the test may reveal an edge.",
             "premise_audit": [{
@@ -120,11 +213,13 @@ class OrchestratorTests(unittest.TestCase):
                 "required_primary_source": "issuer filing", "use": "scope the cruxes",
             }],
             "candidate_cruxes": [
-                {"id": "C1", "label": "c1", "definition": "d1", "monitor_anchor": "m1",
+                {"id": "C1", "label": "c1", "logic_role": "THESIS_HINGE",
+                 "definition": "d1", "monitor_anchor": "m1",
                  "falsifier": "f1", "catalyst_window": {
                      "event": "e1", "expected_by": "2026-10-31",
                      "date_status": "REVIEW_CHECKPOINT", "basis_claim_id": "P1"}},
-                {"id": "C2", "label": "c2", "definition": "d2", "monitor_anchor": "m2",
+                {"id": "C2", "label": "c2", "logic_role": "THESIS_HINGE",
+                 "definition": "d2", "monitor_anchor": "m2",
                  "falsifier": "f2", "catalyst_window": {
                      "event": "e2", "expected_by": "2026-12-31",
                      "date_status": "REVIEW_CHECKPOINT", "basis_claim_id": "P1"}},
@@ -212,6 +307,26 @@ class OrchestratorTests(unittest.TestCase):
         self.assertEqual(stored["frame_contract"]["quality_status"], "PROVISIONAL_UNVERIFIED")
         self.assertEqual(stored["cruxes"]["C1"]["falsifier"], "f1")
         self.assertEqual(stored["cruxes"]["C1"]["catalyst_window"]["expected_by"], "2026-10-31")
+        self.assertEqual(stored["question_type"], "CONJUNCTIVE")
+        self.assertEqual(stored["logic_graph"]["root_id"], "Q1")
+
+    def test_universe_search_without_pricing_crux_is_rejected(self):
+        frame = self.frame()
+        frame["question_type"] = "UNIVERSE_SEARCH"
+        for crux in frame["candidate_cruxes"]:
+            crux["logic_role"] = "OPPORTUNITY_PATH"
+        result = orchestrator.cmd_init("universe-without-pricing", frame)
+        self.assertEqual(result["status"], "frame_rejected")
+        self.assertIn("universe_search_requires_pricing_crux", result["issues"])
+
+    def test_disconnected_logic_graph_is_rejected(self):
+        frame = self.frame()
+        frame["logic_graph"]["edges"] = [
+            {"from": "C1", "to": "Q1", "relation": "REQUIRED_FOR"},
+        ]
+        result = orchestrator.cmd_init("disconnected-graph", frame)
+        self.assertEqual(result["status"], "frame_rejected")
+        self.assertIn("logic_graph_cruxes_not_connected_to_root:C2", result["issues"])
 
     def test_state_uses_scratch_and_collision_resistant_slug(self):
         a = "a" * 80 + "x"
@@ -359,6 +474,7 @@ class ReportSafetyTests(unittest.TestCase):
         self.assertNotIn("回报预期", md)
         self.assertIn("辩论支持度", md)
         self.assertIn("不是交易指令", md)
+        self.assertNotIn("NO_EDGE / AVOID", md)
         self.assertNotIn("全量工作数据", md)
         self.assertNotIn("detective_raw", md)
         self.assertNotIn("待 deep 模型写入", md)
@@ -386,6 +502,15 @@ class ReportSafetyTests(unittest.TestCase):
             errors, warnings = validate_report_v2.validate_report(handle.name)
         self.assertEqual(errors, [])
         self.assertEqual(warnings, [])
+
+    def test_report_validator_rejects_legacy_no_edge_avoid_semantics(self):
+        st = converged_state()
+        md = report_v2.render(st) + "\nNO_EDGE / AVOID\n"
+        with tempfile.NamedTemporaryFile("w", suffix=".md", encoding="utf-8") as handle:
+            handle.write(md)
+            handle.flush()
+            errors, _ = validate_report_v2.validate_report(handle.name)
+        self.assertTrue(any("semantic leak" in item for item in errors))
 
     def test_report_exposes_provisional_framing_premises(self):
         st = converged_state()

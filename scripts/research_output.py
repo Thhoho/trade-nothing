@@ -221,6 +221,7 @@ def build_resolution_view(state):
             "falsifier": seed.get("falsifier"),
             "blockers": entity["paths"][0]["assessment"].get("blockers", []),
         })
+    verdict = crux_engine.research_verdict(state)
     return {
         "schema_version": SCHEMA_RESOLUTION,
         "output_type": "NON_FORMAL_RESOLUTION_MEMO",
@@ -230,7 +231,10 @@ def build_resolution_view(state):
         "horizon": state.get("horizon", ""),
         "research_status": _research_status(state),
         "evidence_stance": _evidence_stance(state),
-        "engine_decision": (state.get("decision_trace") or [{}])[-1].get("decision"),
+        "engine_decision": crux_engine.safe_decision_label(
+            (state.get("decision_trace") or [{}])[-1].get("decision")
+        ),
+        "research_verdict": verdict,
         "rounds": len(state.get("rounds", [])),
         "coverage": {
             "total_cruxes": len(all_cruxes),
@@ -272,6 +276,10 @@ def render_resolution_memo(state):
         "",
         "## 研究裁决",
         f"- 研究状态: **{view['research_status']}** ｜ 当前证据方向: **{view['evidence_stance']}**",
+        f"- 三维 verdict: **{view['research_verdict']['edge_state']} / "
+        f"{view['research_verdict']['evidence_direction']} / "
+        f"{view['research_verdict']['actionability']}** ｜ "
+        f"题型: **{view['research_verdict']['question_type']}**",
         f"- 决策问题: {view['decision_question']} ｜ 视野: {view['horizon']}",
         f"- 覆盖: {view['coverage']['settled_cruxes']}/{view['coverage']['total_cruxes']} 条 crux 已形成可用方向；"
         f"{view['coverage']['never_contested_cruxes']} 条从未实际质证。",
@@ -340,7 +348,12 @@ def build_synthesis_packet(state):
         "decision_question": state.get("decision_question", ""),
         "horizon": state.get("horizon", ""),
         "engine_decision": rd.get("decision"),
+        "research_verdict": rd.get("research_verdict"),
+        "question_type": rd.get("question_type"),
+        "logic_graph": rd.get("logic_graph"),
         "binding_crux": rd.get("binding_crux"),
+        "focus_crux": rd.get("focus_crux"),
+        "aggregation_rule": rd.get("aggregation_rule"),
         "cruxes": [
             {
                 "id": item["id"],

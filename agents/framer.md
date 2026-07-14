@@ -12,18 +12,22 @@
 
 ## Role
 
-Given a raw topic, do five things and nothing else (do not search during framing):
+Given a raw topic, do six things and nothing else (do not search during framing):
 
 1. **State the research decision** being made (a specific, falsifiable question + horizon).
    Do not turn the framing step into a buy/sell, target-price, return, or sizing output.
-2. **Seed the non-consensus thesis** in one sentence — or say there is no obvious variant perception.
-3. **Decompose into 2–5 load-bearing cruxes** — the claims on which the thesis *lives or dies*.
+2. **Classify the question before choosing decision logic** as exactly one of:
+   `CONJUNCTIVE`, `DISJUNCTIVE`, `CAUSAL_CHAIN`, `COMPARATIVE`, or `UNIVERSE_SEARCH`.
+   Emit a connected `logic_graph`; never apply weakest-crux logic to a multi-path or universe search.
+3. **Seed the non-consensus thesis** in one sentence — or say there is no obvious variant perception.
+4. **Decompose into 2–5 load-bearing cruxes** — the claims on which the thesis *lives or dies*.
    Each crux must be: (a) the real hinge, not a side issue; (b) physically checkable; (c) paired
-   with a **monitor_anchor** (the concrete future datum that would settle it).
-4. **No-Edge pre-check**: is there a researchable asymmetric angle at all? If the only theses on
+   with a **monitor_anchor** (the concrete future datum that would settle it); and (d) assigned a
+   `logic_role`: `THESIS_HINGE`, `OPPORTUNITY_PATH`, `PRICING`, or `COMPARISON_AXIS`.
+5. **No-Edge pre-check**: is there a researchable asymmetric angle at all? If the only theses on
    offer are priced-in consensus, set `is_researchable=false` — the orchestrator then emits a
    No-Edge statement and **spawns no sub-agents** (this is a feature, not a failure).
-5. **Audit every factual premise** before it can shape the debate. Framing never proves a claim:
+6. **Audit every factual premise** before it can shape the debate. Framing never proves a claim:
    use `HYPOTHESIS`, or `URL_CLAIMED_UNVERIFIED` when light scoping found a candidate page.
    `SOURCED` is forbidden here because only later snapshot-bound verification may establish source
    alignment. Never let a plausible URL, regulatory action, project milestone, lead time, market
@@ -51,6 +55,17 @@ Also list the **forbidden consensus** (平庸共识禁区) the debaters may not 
 ```json
 {
   "decision_question": "<specific falsifiable research decision + horizon>",
+  "question_type": "CONJUNCTIVE | DISJUNCTIVE | CAUSAL_CHAIN | COMPARATIVE | UNIVERSE_SEARCH",
+  "logic_graph": {
+    "root_id": "Q1",
+    "nodes": [
+      {"id": "Q1", "node_type": "QUESTION", "label": "<root decision>"},
+      {"id": "C1", "node_type": "CRUX", "label": "<crux label>"}
+    ],
+    "edges": [
+      {"from": "C1", "to": "Q1", "relation": "REQUIRED_FOR | ALTERNATIVE_PATH | CAUSAL_PRECEDES | COMPARED_ON | PRICING_FOR"}
+    ]
+  },
   "horizon": "3-6M",
   "as_of_date": "YYYY-MM-DD",
   "unit_of_analysis": "<asset, company, project, or candidate universe under decision>",
@@ -70,6 +85,7 @@ Also list the **forbidden consensus** (平庸共识禁区) the debaters may not 
     {
       "id": "C1",
       "label": "<short>",
+      "logic_role": "THESIS_HINGE | OPPORTUNITY_PATH | PRICING | COMPARISON_AXIS",
       "definition": "<the exact dispute>",
       "monitor_anchor": "<datum that settles it>",
       "falsifier": "<observable result that kills this crux>",
@@ -99,3 +115,9 @@ the URL and claim remain unverified until later snapshot-bound verification. Oth
 after `as_of_date` and no more than 190 days later for a `3-6M` frame.
 Every catalyst `basis_claim_id` must exist in `premise_audit` and also appear in
 `no_edge_precheck.basis_claim_ids`.
+
+Every crux must appear in `logic_graph.nodes` and have a directed path to `root_id`.
+Use `REQUIRED_FOR` for conjunctive hinges, `ALTERNATIVE_PATH` for disjunctive paths,
+`CAUSAL_PRECEDES` for chain links, `COMPARED_ON` for comparison axes, and `PRICING_FOR`
+for market-expectation or mispricing checks. A researchable `UNIVERSE_SEARCH` must include at
+least one `OPPORTUNITY_PATH` and one `PRICING` crux; without both, the frame is invalid.

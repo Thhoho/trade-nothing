@@ -56,6 +56,106 @@ def _present(value):
     return bool(str(value or "").strip())
 
 
+LOGIC_RELATIONS = {
+    "REQUIRED_FOR", "ALTERNATIVE_PATH", "CAUSAL_PRECEDES", "COMPARED_ON", "PRICING_FOR",
+}
+
+
+def _validate_logic_graph(graph, crux_roles):
+    """Require an explicit, connected map so decision logic cannot infer topology from prose."""
+    crux_ids = set(crux_roles)
+    if not isinstance(graph, dict):
+        return ["logic_graph_required"]
+    issues = []
+    root_id = str(graph.get("root_id", "")).strip()
+    if not root_id:
+        issues.append("logic_graph_root_id_required")
+    nodes = graph.get("nodes")
+    if not isinstance(nodes, list) or not nodes:
+        issues.append("logic_graph_nodes_required")
+        nodes = []
+    node_ids = set()
+    node_types = {}
+    for index, node in enumerate(nodes):
+        if not isinstance(node, dict):
+            issues.append(f"logic_graph_node_{index + 1}_must_be_object")
+            continue
+        node_id = str(node.get("id", "")).strip()
+        if not node_id:
+            issues.append(f"logic_graph_node_{index + 1}_missing_id")
+        elif node_id in node_ids:
+            issues.append(f"logic_graph_duplicate_node_{node_id}")
+        node_ids.add(node_id)
+        node_type = str(node.get("node_type", "")).upper()
+        node_types[node_id] = node_type
+        if node_type not in {"QUESTION", "CRUX"}:
+            issues.append(f"logic_graph_node_{index + 1}_invalid_type")
+    if root_id and root_id not in node_ids:
+        issues.append("logic_graph_root_missing_from_nodes")
+    elif root_id and node_types.get(root_id) != "QUESTION":
+        issues.append("logic_graph_root_must_be_question")
+    missing_cruxes = sorted(set(crux_ids) - node_ids)
+    if missing_cruxes:
+        issues.append("logic_graph_missing_crux_nodes:" + ",".join(missing_cruxes))
+    wrong_crux_types = sorted(cid for cid in crux_ids if node_types.get(cid) not in {None, "CRUX"})
+    if wrong_crux_types:
+        issues.append("logic_graph_crux_nodes_must_be_crux:" + ",".join(wrong_crux_types))
+
+    edges = graph.get("edges")
+    if not isinstance(edges, list):
+        issues.append("logic_graph_edges_required")
+        edges = []
+    if crux_ids and not edges:
+        issues.append("logic_graph_edges_required_for_cruxes")
+    adjacency = {}
+    relations_by_source = {}
+    for index, edge in enumerate(edges):
+        if not isinstance(edge, dict):
+            issues.append(f"logic_graph_edge_{index + 1}_must_be_object")
+            continue
+        source = str(edge.get("from", "")).strip()
+        target = str(edge.get("to", "")).strip()
+        relation = str(edge.get("relation", "")).upper()
+        if not source or not target:
+            issues.append(f"logic_graph_edge_{index + 1}_missing_endpoint")
+            continue
+        if source not in node_ids or target not in node_ids:
+            issues.append(f"logic_graph_edge_{index + 1}_unknown_node")
+        if source == target:
+            issues.append(f"logic_graph_edge_{index + 1}_self_loop")
+        if relation not in LOGIC_RELATIONS:
+            issues.append(f"logic_graph_edge_{index + 1}_invalid_relation")
+        adjacency.setdefault(source, set()).add(target)
+        relations_by_source.setdefault(source, set()).add(relation)
+
+    def reaches_root(start):
+        frontier, seen = [start], set()
+        while frontier:
+            current = frontier.pop()
+            if current == root_id:
+                return True
+            if current in seen:
+                continue
+            seen.add(current)
+            frontier.extend(adjacency.get(current, ()))
+        return False
+
+    disconnected = sorted(cid for cid in crux_ids if root_id and not reaches_root(cid))
+    if disconnected:
+        issues.append("logic_graph_cruxes_not_connected_to_root:" + ",".join(disconnected))
+    expected_relations = {
+        "THESIS_HINGE": {"REQUIRED_FOR", "CAUSAL_PRECEDES"},
+        "OPPORTUNITY_PATH": {"ALTERNATIVE_PATH"},
+        "PRICING": {"PRICING_FOR"},
+        "COMPARISON_AXIS": {"COMPARED_ON"},
+    }
+    for cid, role in crux_roles.items():
+        expected = expected_relations.get(role, set())
+        if expected and not (relations_by_source.get(cid, set()) & expected):
+            issues.append(f"logic_graph_relation_mismatch:{cid}:{role}")
+    return issues
+
+
 def _compact_text(value, limit=4000):
     text = str(value or "")
     if len(text) <= limit:
@@ -76,6 +176,9 @@ def _validate_frame(frame):
         frame_as_of = date.fromisoformat(str(frame.get("as_of_date", "")))
     except ValueError:
         issues.append("as_of_date_requires_iso_date")
+    question_type = str(frame.get("question_type", "")).upper()
+    if question_type not in crux_engine.QUESTION_TYPES:
+        issues.append("invalid_question_type")
 
     premises = frame.get("premise_audit")
     if not isinstance(premises, list) or not premises:
@@ -140,6 +243,8 @@ def _validate_frame(frame):
     elif not researchable and len(cruxes) > 5:
         issues.append("candidate_cruxes_max_5")
     crux_ids = set()
+    crux_roles = []
+    crux_role_by_id = {}
     catalyst_basis_ids = set()
     for index, crux in enumerate(cruxes):
         prefix = f"crux_{index + 1}"
@@ -152,6 +257,13 @@ def _validate_frame(frame):
         elif cid in crux_ids:
             issues.append(f"duplicate_crux_id_{cid}")
         crux_ids.add(cid)
+        role = str(crux.get("logic_role", "")).upper()
+        if role not in crux_engine.CRUX_ROLES:
+            issues.append(f"{prefix}_invalid_logic_role")
+        else:
+            crux_roles.append(role)
+            if cid:
+                crux_role_by_id[cid] = role
         for field in ("label", "definition", "monitor_anchor", "falsifier"):
             if not _present(crux.get(field)):
                 issues.append(f"{prefix}_missing_{field}")
@@ -188,6 +300,21 @@ def _validate_frame(frame):
                             issues.append(f"{prefix}_catalyst_outside_3_to_6m_horizon")
     if researchable and not catalyst_basis_ids.issubset(set(basis_ids)):
         issues.append("no_edge_basis_must_cover_catalysts")
+    if researchable and question_type in {"CONJUNCTIVE", "CAUSAL_CHAIN"}:
+        if "THESIS_HINGE" not in crux_roles:
+            issues.append("question_type_requires_thesis_hinge")
+    if researchable and question_type == "DISJUNCTIVE":
+        if crux_roles.count("OPPORTUNITY_PATH") < 2:
+            issues.append("disjunctive_requires_two_opportunity_paths")
+    if researchable and question_type == "COMPARATIVE":
+        if crux_roles.count("COMPARISON_AXIS") < 2:
+            issues.append("comparative_requires_two_comparison_axes")
+    if researchable and question_type == "UNIVERSE_SEARCH":
+        if "OPPORTUNITY_PATH" not in crux_roles:
+            issues.append("universe_search_requires_opportunity_path")
+        if "PRICING" not in crux_roles:
+            issues.append("universe_search_requires_pricing_crux")
+    issues.extend(_validate_logic_graph(frame.get("logic_graph"), crux_role_by_id))
     return sorted(set(issues))
 
 
@@ -378,6 +505,8 @@ def _new_crux_issues(state, crux):
     for field in ("id", "label", "definition", "monitor_anchor", "falsifier"):
         if not _present(crux.get(field)):
             issues.append(f"new_crux_missing_{field}")
+    if str(crux.get("logic_role", "")).upper() not in crux_engine.CRUX_ROLES:
+        issues.append("new_crux_invalid_logic_role")
     catalyst = crux.get("catalyst_window")
     if not isinstance(catalyst, dict):
         issues.append("new_crux_missing_catalyst_window")
@@ -430,6 +559,18 @@ def _admit_new_cruxes(state, proposed, round_num, policy):
             deferred.append(deferred_item)
             continue
         crux_engine.add_crux(state, item, round_num)
+        graph = state.setdefault("logic_graph", {})
+        root_id = str(graph.get("root_id", "Q1"))
+        graph.setdefault("nodes", []).append({
+            "id": cid, "node_type": "CRUX", "label": item.get("label", cid),
+        })
+        relation = {
+            "PRICING": "PRICING_FOR",
+            "OPPORTUNITY_PATH": "ALTERNATIVE_PATH",
+            "COMPARISON_AXIS": "COMPARED_ON",
+            "THESIS_HINGE": "REQUIRED_FOR",
+        }[str(item.get("logic_role")).upper()]
+        graph.setdefault("edges", []).append({"from": cid, "to": root_id, "relation": relation})
         admitted.append(cid)
     return admitted, deferred
 
@@ -469,8 +610,9 @@ def frame_prompt(topic):
             "define_subagent, invoke_subagent, Task, delegate, context-fork, or any equivalent "
             "sub-agent mechanism. Do not browse or call tools during framing.\n"
             f"[Framer · framer.md] Topic: {topic}\n"
-            "立题：输出 decision_question / horizon / as_of_date / unit_of_analysis / thesis_seed / premise_audit / "
-            "2–5 candidate_cruxes(每条带 monitor_anchor、falsifier、catalyst_window) / "
+            "立题：输出 decision_question / question_type / logic_graph / horizon / as_of_date / "
+            "unit_of_analysis / thesis_seed / premise_audit / 2–5 candidate_cruxes(每条带 "
+            "logic_role、monitor_anchor、falsifier、catalyst_window) / "
             "forbidden_consensus / no_edge_precheck / suggested_max_rounds。严格按 framer.md 的 JSON 输出。"
             "只返回内联 JSON；禁止创建 Markdown、Google Drive、云文档或自选输出路径。")
 
@@ -487,6 +629,7 @@ def dispatch_prompts(state, round_num):
                          f"basis={catalyst.get('basis_claim_id', '—')}]"
                          if isinstance(catalyst, dict) else str(catalyst or "—"))
         lines.append(f"- [{cid}] {cx['label']}: {cx.get('definition','')}\n"
+                     f"    逻辑角色: {cx.get('logic_role', 'THESIS_HINGE')}\n"
                      f"    对方当前最强点(bear): {cx.get('best_bear') or '（暂无）'}\n"
                      f"    我方当前最强点(bull): {cx.get('best_bull') or '（暂无）'}\n"
                      f"    监控锚点: {cx.get('monitor_anchor','')}\n"
@@ -667,12 +810,16 @@ def cmd_init(topic, frame):
     cruxes = frame.get("candidate_cruxes", [])
     if not cruxes:
         return {"status": "error", "reason": "framer 未给出 candidate_cruxes。"}
-    state = crux_engine.new_state(topic, frame.get("decision_question", topic),
-                                  frame.get("horizon", "3-6M"), cruxes)
+    state = crux_engine.new_state(
+        topic, frame.get("decision_question", topic), frame.get("horizon", "3-6M"), cruxes,
+        question_type=frame.get("question_type"), logic_graph=frame.get("logic_graph"),
+    )
     state["forbidden_consensus"] = frame.get("forbidden_consensus", [])
     state["thesis_seed"] = frame.get("thesis_seed", "")
     state["frame_contract"] = {
         "quality_status": _frame_quality_status(frame),
+        "question_type": frame.get("question_type"),
+        "logic_graph": frame.get("logic_graph"),
         "as_of_date": frame.get("as_of_date", ""),
         "unit_of_analysis": frame.get("unit_of_analysis", ""),
         "premise_audit": frame.get("premise_audit", []),
@@ -740,8 +887,13 @@ def cmd_submit(topic, detective, inquisitor, judge):
     state["rounds"][-1]["opportunity_harvest"] = harvest
     _save(topic, state)
     dt = state["decision_trace"][-1]
+    binding_crux = (dt["weakest"] if state.get("question_type") in {
+        "CONJUNCTIVE", "CAUSAL_CHAIN"
+    } else None)
     base = {"topic": topic, "round_completed": round_num,
-            "decision": dt["decision"], "binding_crux": dt["weakest"],
+            "decision": dt["decision"], "binding_crux": binding_crux,
+            "focus_crux": dt["weakest"], "aggregation_rule": dt.get("aggregation_rule"),
+            "research_verdict": dt.get("research_verdict"),
             "support_weakest": dt.get("support_weakest", dt["p_weakest"]),
             "support_mean": dt.get("support_mean", dt["p_mean"]), "convergence": conv,
             "opportunity_seed_count": harvest["opportunity_seed_count"],
@@ -1037,6 +1189,8 @@ def cmd_report(topic):
     verification_counts = claim_verification_engine.summary(state)
     return {"status": "report_data_ready", "topic": topic,
             "decision": rd["decision"], "binding_crux": rd["binding_crux"],
+            "focus_crux": rd["focus_crux"], "aggregation_rule": rd["aggregation_rule"],
+            "research_verdict": rd["research_verdict"],
             "support_weakest": rd["support_weakest"], "support_mean": rd["support_mean"],
             "n_unique_sources": rd["n_unique_sources"],
             "n_primary_sources": rd["n_primary_sources"],
@@ -1121,6 +1275,21 @@ def selftest():
     if os.path.exists(_path(topic)): os.remove(_path(topic))
     frame = {
         "decision_question": "绿色算力产业链是否值得做多(3-6月)", "horizon": "3-6M",
+        "question_type": "CONJUNCTIVE",
+        "logic_graph": {
+            "root_id": "Q1",
+            "nodes": [
+                {"id": "Q1", "node_type": "QUESTION", "label": "是否值得继续筛选"},
+                {"id": "C1", "node_type": "CRUX", "label": "时空错配/储能成本"},
+                {"id": "C2", "node_type": "CRUX", "label": "液冷/PFAS介质"},
+                {"id": "C3", "node_type": "CRUX", "label": "WUE水资源红线"},
+            ],
+            "edges": [
+                {"from": "C1", "to": "Q1", "relation": "REQUIRED_FOR"},
+                {"from": "C2", "to": "Q1", "relation": "REQUIRED_FOR"},
+                {"from": "C3", "to": "Q1", "relation": "REQUIRED_FOR"},
+            ],
+        },
         "as_of_date": "2026-07-11",
         "unit_of_analysis": "绿色算力产业链资产",
         "thesis_seed": "若能源约束能够转化为可兑现现金流，市场可能低估相关基础设施资产",
@@ -1130,15 +1299,15 @@ def selftest():
             "required_primary_source": "项目合同、费率文件与并网数据", "use": "定义研究方向",
         }],
         "candidate_cruxes": [
-            {"id":"C1","label":"时空错配/储能成本","definition":"综合电力成本能否支持项目收益",
+            {"id":"C1","label":"时空错配/储能成本","logic_role":"THESIS_HINGE","definition":"综合电力成本能否支持项目收益",
              "monitor_anchor":"西部到户综合电价(含储能)、储能EPC元/Wh", "falsifier":"综合成本持续高于项目承受上限",
              "catalyst_window":{"event":"项目合同或费率披露", "expected_by":"2026-10-31",
                                 "date_status":"REVIEW_CHECKPOINT", "basis_claim_id":"P1"}},
-            {"id":"C2","label":"液冷/PFAS介质","definition":"冷却介质是否构成可兑现瓶颈",
+            {"id":"C2","label":"液冷/PFAS介质","logic_role":"THESIS_HINGE","definition":"冷却介质是否构成可兑现瓶颈",
              "monitor_anchor":"冷板式市占率、巨化/新宙邦氟化液产能", "falsifier":"替代介质快速规模化",
              "catalyst_window":{"event":"供应商产能与订单披露", "expected_by":"2026-11-30",
                                 "date_status":"REVIEW_CHECKPOINT", "basis_claim_id":"P1"}},
-            {"id":"C3","label":"WUE水资源红线","definition":"水资源约束是否改变技术选型",
+            {"id":"C3","label":"WUE水资源红线","logic_role":"THESIS_HINGE","definition":"水资源约束是否改变技术选型",
              "monitor_anchor":"西部干冷器节点实测WUE、水预算配额", "falsifier":"审批与项目数据未体现水约束",
              "catalyst_window":{"event":"项目环评或用水许可披露", "expected_by":"2026-12-31",
                                 "date_status":"REVIEW_CHECKPOINT", "basis_claim_id":"P1"}}],

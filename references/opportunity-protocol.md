@@ -80,7 +80,9 @@ user explicitly requests a specific seed.
 
 ## Root-thesis independence
 
-The weakest-crux decision still controls the root thesis. A `NO_EDGE / AVOID`
-verdict may coexist with valid substitute, competitor, bottleneck-owner, asset-
-owner, second-order, or short-candidate seeds. The report must preserve both:
-reject the weak thesis and retain the evidence-backed research leads.
+The declared question type and logic graph control root-thesis aggregation. Weakest-crux
+rejection is valid only for necessary hinges in `CONJUNCTIVE` or `CAUSAL_CHAIN` questions;
+it cannot negate one surviving alternative path or an entire universe search. A `NO_EDGE`
+root verdict may coexist with valid substitute, competitor, bottleneck-owner, asset-owner,
+second-order, or short-candidate seeds. The report must preserve both the root assessment and
+the evidence-backed research leads. `NO_EDGE` never means `AVOID` or `SHORT`.

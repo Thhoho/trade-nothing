@@ -64,6 +64,7 @@ You never write that score, a trade verdict, a target price, or a position size.
     {
       "id": "C7",
       "label": "<short>",
+      "logic_role": "THESIS_HINGE|OPPORTUNITY_PATH|PRICING|COMPARISON_AXIS",
       "definition": "<the dispute>",
       "monitor_anchor": "<what to watch>",
       "falsifier": "<observable result that kills the crux>",

@@ -38,6 +38,13 @@ MIN_CONTESTED = 3               # min contested rounds before a crux is eligible
 DRY_ROUNDS   = 3                # no NEW crux introduced for this many rounds = adversary went dry
 MIN_VALID_CITATIONS = 2         # a crux needs real source anchors before it may retire
 
+QUESTION_TYPES = {
+    "CONJUNCTIVE", "DISJUNCTIVE", "CAUSAL_CHAIN", "COMPARATIVE", "UNIVERSE_SEARCH",
+}
+CRUX_ROLES = {
+    "THESIS_HINGE", "OPPORTUNITY_PATH", "PRICING", "COMPARISON_AXIS",
+}
+
 def _sig(x):   return 1.0 / (1.0 + math.exp(-x))
 def _clamp(x, lo, hi): return max(lo, min(hi, x))
 
@@ -136,17 +143,24 @@ def _normalize_signal(js, seen_evidence_keys=None):
     return out
 
 
-def new_state(topic, decision_question, horizon, cruxes):
+def new_state(topic, decision_question, horizon, cruxes,
+              question_type="CONJUNCTIVE", logic_graph=None):
     """cruxes: list of {id, label, definition, monitor_anchor, falsifier, catalyst_window}"""
+    normalized_type = str(question_type or "CONJUNCTIVE").upper()
+    if normalized_type not in QUESTION_TYPES:
+        raise ValueError(f"unsupported question_type: {question_type}")
     return {
         "topic": topic,
         "decision_question": decision_question,
+        "question_type": normalized_type,
+        "logic_graph": logic_graph or {},
         "horizon": horizon,
         "score_semantics": "debate_support_score_not_calibrated_probability",
         "config": {"K": K, "DECAY": DECAY, "L_MAX_ODDS": 4.0, "MAX_ROUNDS": MAX_ROUNDS},
         "cruxes": {c["id"]: {
             "label": c["label"],
             "definition": c.get("definition", ""),
+            "logic_role": str(c.get("logic_role", "THESIS_HINGE")).upper(),
             "monitor_anchor": c.get("monitor_anchor", ""),
             "falsifier": c.get("falsifier", ""),
             "catalyst_window": c.get("catalyst_window", {}),
@@ -172,6 +186,7 @@ def add_crux(state, crux, round_num):
         return
     state["cruxes"][crux["id"]] = {
         "label": crux["label"], "definition": crux.get("definition", ""),
+        "logic_role": str(crux.get("logic_role", "THESIS_HINGE")).upper(),
         "monitor_anchor": crux.get("monitor_anchor", ""),
         "falsifier": crux.get("falsifier", ""),
         "catalyst_window": crux.get("catalyst_window", {}),
@@ -248,21 +263,132 @@ def submit_round(state, round_num, judge_signals):
     probs = {cid: cx["p_history"][-1] for cid, cx in state["cruxes"].items()}
     weakest = min(probs, key=probs.get)
     mean_L = sum(math.log(p/(1-p)) for p in probs.values()) / len(probs)
-    decision = _decide(probs[weakest], _sig(mean_L))
+    verdict = research_verdict(state, probs)
+    decision = _legacy_decision(verdict)
+    aggregation_rule = ("WEAKEST_NECESSARY_CRUX"
+                        if state.get("question_type") in {"CONJUNCTIVE", "CAUSAL_CHAIN"}
+                        else "LOGIC_GRAPH_MULTI_PATH")
     state["rounds"].append({"round": round_num, "fired_cruxes": fired, "signals": normalized_signals})
     state["decision_trace"].append({
         "round": round_num, "weakest": weakest,
         "p_weakest": round(probs[weakest], 4), "p_mean": round(_sig(mean_L), 4),
         "support_weakest": round(probs[weakest], 4), "support_mean": round(_sig(mean_L), 4),
-        "decision": decision,
+        "decision": decision, "research_verdict": verdict,
+        "focus_crux": weakest, "aggregation_rule": aggregation_rule,
     })
-    return convergence(state, round_num)
+    conv = convergence(state, round_num)
+    if conv.get("decision") == "converge" and verdict.get("edge_state") == "EDGE_FOUND":
+        verdict["actionability"] = "READY_FOR_SCREENING"
+    return conv
 
 
-def _decide(p_weakest, p_mean):
-    if p_weakest >= 0.60 and p_mean >= 0.62:  return "RESEARCH_READY"
-    if p_weakest <= 0.40:                     return "NO_EDGE / AVOID"
+def _legacy_decision(verdict):
+    """Compatibility projection. Never translate NO_EDGE into AVOID or SHORT."""
+    if verdict.get("edge_state") == "EDGE_FOUND":
+        return "RESEARCH_READY"
+    if verdict.get("edge_state") == "NO_EDGE":
+        return "NO_EDGE"
     return "MONITOR"
+
+
+def safe_decision_label(value):
+    """Remove the legacy NO_EDGE -> AVOID semantic leak from old saved states."""
+    label = str(value or "")
+    if label.startswith("NO_EDGE"):
+        return "NO_EDGE"
+    return label
+
+
+def _direction(values):
+    bull = any(value >= 0.60 for value in values)
+    bear = any(value <= 0.40 for value in values)
+    if bull and bear:
+        return "MIXED"
+    if bull:
+        return "BULL"
+    if bear:
+        return "BEAR"
+    return "UNDETERMINED"
+
+
+def research_verdict(state, probs=None):
+    """Project crux support into question-aware research semantics.
+
+    This is deliberately conservative. Debate support schedules research; it is not a
+    calibrated probability. In particular, one failed path cannot negate a disjunctive
+    or universe-search question, and NO_EDGE never implies a short.
+    """
+    if probs is None:
+        probs = {
+            cid: cx.get("p_history", [0.5])[-1]
+            for cid, cx in state.get("cruxes", {}).items()
+        }
+    qtype = str(state.get("question_type", "CONJUNCTIVE")).upper()
+    if qtype not in QUESTION_TYPES:
+        qtype = "CONJUNCTIVE"
+
+    roles = {
+        cid: str(state.get("cruxes", {}).get(cid, {}).get("logic_role", "THESIS_HINGE")).upper()
+        for cid in probs
+    }
+    pricing = [probs[cid] for cid, role in roles.items() if role == "PRICING"]
+    paths = [
+        probs[cid] for cid, role in roles.items()
+        if role in {"OPPORTUNITY_PATH", "THESIS_HINGE"}
+    ]
+    axes = [probs[cid] for cid, role in roles.items() if role == "COMPARISON_AXIS"]
+    if not paths:
+        paths = [value for cid, value in probs.items() if roles.get(cid) != "PRICING"]
+    all_values = list(probs.values())
+    direction = _direction(all_values)
+
+    edge_state = "INSUFFICIENT_EVIDENCE"
+    actionability = "MONITOR" if any(value != 0.5 for value in all_values) else "NONE"
+    reason_code = "UNRESOLVED_CRUXES"
+
+    if qtype in {"CONJUNCTIVE", "CAUSAL_CHAIN"}:
+        necessary = paths or all_values
+        if necessary and any(value <= 0.40 for value in necessary):
+            edge_state, actionability, reason_code = "NO_EDGE", "NONE", "NECESSARY_CRUX_CONTRADICTED"
+        elif necessary and all(value >= 0.60 for value in necessary):
+            if pricing and all(value >= 0.55 for value in pricing):
+                edge_state, actionability, reason_code = "EDGE_FOUND", "MONITOR", "THESIS_SUPPORTED_WITH_PRICING_GAP"
+            elif pricing and all(value <= 0.40 for value in pricing):
+                edge_state, actionability, reason_code = "NO_EDGE", "NONE", "THESIS_SUPPORTED_BUT_PRICING_GAP_REJECTED"
+            elif not pricing:
+                reason_code = "PRICING_NOT_ASSESSED"
+            else:
+                reason_code = "PRICING_GAP_UNRESOLVED"
+    elif qtype in {"DISJUNCTIVE", "UNIVERSE_SEARCH"}:
+        pricing_supports_gap = bool(pricing) and any(value >= 0.55 for value in pricing)
+        pricing_rejects_gap = bool(pricing) and all(value <= 0.40 for value in pricing)
+        if paths and any(value >= 0.60 for value in paths) and pricing_supports_gap:
+            edge_state, actionability, reason_code = "EDGE_FOUND", "MONITOR", "SUPPORTED_PATH_WITH_PRICING_GAP"
+        elif paths and all(value <= 0.40 for value in paths) and pricing_rejects_gap:
+            edge_state, actionability, reason_code = "NO_EDGE", "NONE", "ALL_PATHS_AND_PRICING_GAP_REJECTED"
+        else:
+            reason_code = "PATH_OR_PRICING_COVERAGE_INCOMPLETE"
+    elif qtype == "COMPARATIVE":
+        compared = axes or paths
+        if (len(compared) >= 2 and max(compared) >= 0.60 and min(compared) <= 0.40
+                and pricing and any(value >= 0.55 for value in pricing)):
+            edge_state, actionability, reason_code = "EDGE_FOUND", "MONITOR", "RELATIVE_WINNER_SEPARATED"
+            direction = "MIXED"
+        elif len(compared) >= 2 and max(compared) >= 0.60 and min(compared) <= 0.40 and not pricing:
+            reason_code = "RELATIVE_WINNER_FOUND_BUT_PRICING_NOT_ASSESSED"
+        else:
+            reason_code = "NO_DECISIVE_RELATIVE_SEPARATION"
+
+    if (edge_state == "EDGE_FOUND"
+            and state.get("last_convergence", {}).get("decision") == "converge"):
+        actionability = "READY_FOR_SCREENING"
+    return {
+        "edge_state": edge_state,
+        "evidence_direction": direction,
+        "actionability": actionability,
+        "question_type": qtype,
+        "reason_code": reason_code,
+    }
 
 
 def convergence(state, round_num):
@@ -299,8 +425,19 @@ def convergence(state, round_num):
     # decision stability over last 2 rounds
     if len(state["decision_trace"]) >= 2:
         a, b = state["decision_trace"][-1], state["decision_trace"][-2]
-        if a["decision"] != b["decision"] or abs(a["p_weakest"] - b["p_weakest"]) > EPS_STABLE:
+        if a["decision"] != b["decision"]:
             return not_ready("研究状态尚未稳定。")
+        if state.get("question_type") in {"CONJUNCTIVE", "CAUSAL_CHAIN"}:
+            if abs(a["p_weakest"] - b["p_weakest"]) > EPS_STABLE:
+                return not_ready("必要条件的最弱支持度尚未稳定。")
+        else:
+            av = a.get("research_verdict", {})
+            bv = b.get("research_verdict", {})
+            signature = lambda item: (
+                item.get("edge_state"), item.get("evidence_direction"), item.get("actionability")
+            )
+            if signature(av) != signature(bv):
+                return not_ready("多路径逻辑图的三维 verdict 尚未稳定。")
     return {"decision": "converge", "round": round_num,
             "reason": "每条 crux 已 RESOLVED 或转为可监控，且决策稳定。逻辑就绪。"}
 
@@ -314,6 +451,7 @@ def report_data(state):
         cruxes.append({
             "id": cid, "label": cx["label"], "p": round(cx["p_history"][-1], 3),
             "support_score": round(cx["p_history"][-1], 3),
+            "logic_role": cx.get("logic_role", "THESIS_HINGE"),
             "status": cx["status"], "best_bull": cx["best_bull"], "best_bear": cx["best_bear"],
             "monitor_anchor": cx["monitor_anchor"], "falsifier": cx.get("falsifier", ""),
             "catalyst_window": cx.get("catalyst_window", {}), "citations": cx["citations"],
@@ -326,9 +464,18 @@ def report_data(state):
     unique_sources = {citation_source_identity(c) for c in all_valid}
     primary_sources = {citation_source_identity(c) for c in all_valid
                        if str(c.get("source_tier", "")).lower() in {"primary", "tier-1", "tier1"}}
+    question_type = state.get("question_type", "CONJUNCTIVE")
+    focus_crux = last.get("focus_crux", last.get("weakest"))
+    binding_crux = (focus_crux
+                    if question_type in {"CONJUNCTIVE", "CAUSAL_CHAIN"} else None)
     return {
-        "decision": last.get("decision"),
-        "binding_crux": last.get("weakest"),
+        "decision": safe_decision_label(last.get("decision")),
+        "research_verdict": last.get("research_verdict") or research_verdict(state),
+        "question_type": question_type,
+        "logic_graph": state.get("logic_graph", {}),
+        "binding_crux": binding_crux,
+        "focus_crux": focus_crux,
+        "aggregation_rule": last.get("aggregation_rule", "WEAKEST_NECESSARY_CRUX"),
         "p_weakest": last.get("p_weakest"), "p_mean": last.get("p_mean"),
         "support_weakest": last.get("support_weakest", last.get("p_weakest")),
         "support_mean": last.get("support_mean", last.get("p_mean")),
