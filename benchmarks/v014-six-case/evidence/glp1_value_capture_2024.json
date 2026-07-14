@@ -1,0 +1,66 @@
+{
+  "packet_id": "EV-GLP1-2024",
+  "as_of": "2024-05-02",
+  "topic": "GLP-1 demand, supply bottlenecks, and value capture",
+  "capture_method": "curator-frozen extracts plus unadjusted market observations",
+  "sources": [
+    {
+      "source_id": "LLY-Q1-2024",
+      "date": "2024-04-30",
+      "publisher": "Eli Lilly",
+      "source_type": "company_results",
+      "url": "https://investor.lilly.com/node/50666",
+      "extracts": [
+        "Q1 2024 revenue rose 26%; new-product revenue increased by $1.79 billion to $2.39 billion, led by Mounjaro and Zepbound.",
+        "Lilly raised full-year revenue guidance by $2 billion while still describing supply constraints and a manufacturing expansion plan.",
+        "Strong product demand does not establish that an external supplier captures the incremental economics."
+      ]
+    },
+    {
+      "source_id": "NVO-Q1-2024",
+      "date": "2024-05-02",
+      "publisher": "Novo Nordisk",
+      "source_type": "company_results",
+      "url": "https://www.novonordisk.com/investors/financial-results.html",
+      "extracts": [
+        "Novo Nordisk announced results for the first three months of 2024 and showed continued obesity-care growth.",
+        "Its investor material described a gradual increase in Wegovy supply rather than unconstrained availability.",
+        "Pricing pressure, manufacturing yield, market access, and competitive share remain distinct from prescription growth."
+      ]
+    },
+    {
+      "source_id": "NVO-CATALENT-SITES",
+      "date": "2024-02-05",
+      "publisher": "Novo Nordisk",
+      "source_type": "acquisition_announcement",
+      "url": "https://www.novonordisk.com/news-and-media/news-and-ir-materials/news-details.html?id=167017",
+      "extracts": [
+        "Novo Nordisk agreed to acquire three fill-finish sites from Novo Holdings after Novo Holdings' planned Catalent acquisition.",
+        "Closing depended on the Catalent transaction and approvals; additional filling capacity was expected gradually from 2026 onward.",
+        "The structure potentially internalizes a bottleneck rather than guaranteeing listed CDMO upside."
+      ]
+    },
+    {
+      "source_id": "CATALENT-DEAL",
+      "date": "2024-02-05",
+      "publisher": "Catalent",
+      "source_type": "acquisition_announcement",
+      "url": "https://www.catalent.com/catalent-news/novo-holdings-to-acquire-catalent/",
+      "extracts": [
+        "Novo Holdings agreed to acquire Catalent for $63.50 per share; three fill-finish sites were intended for sale to Novo Nordisk.",
+        "The announced price represented a 16.5% premium to Catalent's February 2 close and 47.5% to its 60-day VWAP.",
+        "A signed takeout price caps ordinary public-equity upside and changes the relevance of Catalent as an independent vehicle."
+      ]
+    },
+    {
+      "source_id": "MARKET-GLP1-PRICES",
+      "date": "2024-05-02",
+      "publisher": "Yahoo Finance and ChartExchange archive",
+      "source_type": "market_data_snapshot",
+      "price_treatment": "raw",
+      "currency": "USD",
+      "observations": {"LLY": 755.9099731445312, "NVO": 124.0199966430664, "CTLT": 56.34},
+      "url": "https://chartexchange.com/symbol/nyse-ctlt/historical/"
+    }
+  ]
+}

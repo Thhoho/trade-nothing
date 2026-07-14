@@ -1,0 +1,63 @@
+{
+  "packet_id": "EV-RED-SEA-2024",
+  "as_of": "2024-01-31",
+  "topic": "Red Sea disruption and container-shipping equity economics",
+  "capture_method": "curator-frozen extracts plus unadjusted market observations",
+  "sources": [
+    {
+      "source_id": "UNCTAD-RED-SEA",
+      "date": "2024-01-26",
+      "publisher": "UN Trade and Development",
+      "source_type": "official_trade_monitoring",
+      "url": "https://unctad.org/news/red-sea-black-sea-and-panama-canal-unctad-raises-alarm-global-trade-disruptions",
+      "extracts": [
+        "Weekly container-ship transits had fallen 67% and major carriers had suspended Suez transits.",
+        "Average Shanghai container spot rates had risen 122% since early December; Shanghai-Europe rates were up 256%.",
+        "Longer routes also increase fuel, insurance, labor, and vessel-capacity requirements, so spot-rate gains are not pure margin."
+      ]
+    },
+    {
+      "source_id": "MAERSK-JAN30",
+      "date": "2024-01-30",
+      "publisher": "A.P. Moller - Maersk",
+      "source_type": "operational_update",
+      "url": "https://www.maersk.com/news/articles/2024/01/24/red-sea-gulf-aden-service-updates",
+      "extracts": [
+        "Maersk said security risk remained significantly high, cancelled some bookings, and expected delays and significant network disruption.",
+        "Service changes and Cape diversions aimed to preserve predictability, not to guarantee higher profit."
+      ]
+    },
+    {
+      "source_id": "HAPAG-JAN23",
+      "date": "2024-01-23",
+      "publisher": "Hapag-Lloyd",
+      "source_type": "operational_update",
+      "url": "https://www.hapag-lloyd.com/en/services-information/news/2023/12/faq-for-the-suez-canal-situation.html",
+      "extracts": [
+        "Hapag-Lloyd continued Cape of Good Hope diversions until further notice because the Red Sea remained unsafe.",
+        "The carrier repeatedly reassessed routing, leaving duration and normalization timing unresolved."
+      ]
+    },
+    {
+      "source_id": "IMF-JAN-REGIONAL",
+      "date": "2024-01-31",
+      "publisher": "International Monetary Fund",
+      "source_type": "official_economic_update",
+      "url": "https://www.imf.org/-/media/files/publications/reo/mcd-cca/2024/update/january/english/text.pdf",
+      "extracts": [
+        "As of January 21, ten-day cumulative Suez shipping volume was almost 50% below the prior year.",
+        "Europe/Mediterranean-China freight costs had risen more than 400% since mid-November, reflecting insurance and longer-route costs."
+      ]
+    },
+    {
+      "source_id": "YF-RED-SEA-PRICES",
+      "date": "2024-01-31",
+      "publisher": "Yahoo Finance",
+      "source_type": "market_data_snapshot",
+      "price_treatment": "raw",
+      "currency": "USD",
+      "observations": {"ZIM": 15.0, "MATX": 112.02999877929688, "AMKBY": 9.180000305175781},
+      "url": "https://finance.yahoo.com/"
+    }
+  ]
+}

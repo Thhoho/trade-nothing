@@ -18,6 +18,7 @@ from pathlib import Path, PurePosixPath
 
 
 SUITE_SCHEMA = "trade-nothing.benchmark-suite.v1"
+DISPATCH_SCHEMA = "trade-nothing.benchmark-dispatch.v1"
 RESULT_SCHEMA = "trade-nothing.benchmark-result.v1"
 ASSESSMENT_SCHEMA = "trade-nothing.benchmark-assessment.v1"
 SUMMARY_SCHEMA = "trade-nothing.benchmark-summary.v1"
@@ -248,6 +249,61 @@ def validate_evidence_files(suite, suite_path):
             if source_date > packet_as_of:
                 raise ValueError(f"post-as-of source in evidence packet: {evidence_id}")
     return suite
+
+
+def materialize_case_dispatch(suite, suite_path, case_id):
+    """Build the only payload a research arm is allowed to receive."""
+    suite = validate_evidence_files(suite, suite_path)
+    selected = [case for case in suite["cases"] if case["case_id"] == case_id]
+    if not selected:
+        raise ValueError(f"unknown case_id: {case_id}")
+    case = selected[0]
+    root = Path(suite_path).resolve().parent
+    packets = []
+    for evidence_id in case["frozen_evidence"]:
+        entry = suite["evidence_manifest"][evidence_id]
+        packet = _load_json(root / entry["path"])
+        packets.append({
+            "evidence_id": evidence_id,
+            "sha256": entry["sha256"],
+            "packet": packet,
+        })
+    dispatch = {
+        "schema_version": DISPATCH_SCHEMA,
+        "suite_id": suite["suite_id"],
+        "suite_contract_sha256": suite["suite_contract_sha256"],
+        "case": case,
+        "evidence_packets": packets,
+        "research_constraints": {
+            "allowed_inputs": "this dispatch packet only",
+            "future_information": "forbidden",
+            "self_assessment": "forbidden",
+            "required_result_schema": RESULT_SCHEMA,
+        },
+    }
+    leaked = sorted(LEAKAGE_KEYS.intersection(key.lower() for key in _walk_keys(dispatch)))
+    if leaked:
+        raise ValueError("dispatch contains evaluator-only leakage keys: " + ", ".join(leaked))
+    return dispatch
+
+
+def write_case_dispatch(suite, suite_path, case_id, output_path):
+    """Write a dispatch outside the suite tree so assessor files are not adjacent."""
+    suite_root = Path(suite_path).resolve().parent
+    output = Path(output_path).resolve()
+    if output.is_relative_to(suite_root):
+        raise ValueError("dispatch output must be outside the suite directory")
+    if output.exists():
+        raise ValueError(f"dispatch output already exists: {output}")
+    if not output.parent.is_dir():
+        raise ValueError(f"dispatch output directory does not exist: {output.parent}")
+    dispatch = materialize_case_dispatch(suite, suite_path, case_id)
+    encoded = (
+        json.dumps(dispatch, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    with open(output, "xb") as handle:
+        handle.write(encoded)
+    return dispatch, hashlib.sha256(encoded).hexdigest()
 
 
 def validate_result(result, case, variants, suite_contract_sha256):
@@ -495,6 +551,10 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     validate_cmd = sub.add_parser("validate-suite")
     validate_cmd.add_argument("--suite", required=True)
+    dispatch_cmd = sub.add_parser("materialize-case")
+    dispatch_cmd.add_argument("--suite", required=True)
+    dispatch_cmd.add_argument("--case-id", required=True)
+    dispatch_cmd.add_argument("--output", required=True)
     score_cmd = sub.add_parser("score")
     score_cmd.add_argument("--suite", required=True)
     score_cmd.add_argument("--results-dir", required=True)
@@ -510,6 +570,18 @@ def main():
             "case_count": len(suite["cases"]),
             "variants": suite["variants"],
             "suite_contract_sha256": suite["suite_contract_sha256"],
+        }, ensure_ascii=False, indent=2))
+        return
+    if args.command == "materialize-case":
+        dispatch, dispatch_hash = write_case_dispatch(
+            suite, args.suite, args.case_id, args.output
+        )
+        print(json.dumps({
+            "status": "MATERIALIZED",
+            "case_id": dispatch["case"]["case_id"],
+            "suite_contract_sha256": dispatch["suite_contract_sha256"],
+            "dispatch_sha256": dispatch_hash,
+            "output": str(Path(args.output).resolve()),
         }, ensure_ascii=False, indent=2))
         return
     summary = score_suite(suite, args.results_dir)

@@ -1,0 +1,52 @@
+{
+  "packet_id": "EV-EU-EV-2024",
+  "as_of": "2024-06-13",
+  "topic": "EU pre-disclosed countervailing duties on China-made BEVs",
+  "capture_method": "curator-frozen extracts plus unadjusted market observations",
+  "sources": [
+    {
+      "source_id": "EC-PREDISCLOSURE-2024",
+      "date": "2024-06-12",
+      "publisher": "European Commission",
+      "source_type": "regulatory_predisclosure",
+      "url": "https://ec.europa.eu/commission/presscorner/api/files/document/print/en/qanda_24_3232/QANDA_24_3232_EN.pdf",
+      "extracts": [
+        "The disclosure was procedural pre-disclosure, not a final definitive duty decision.",
+        "Intended provisional duties were BYD 17.4%, Geely 20.0%, and SAIC 38.1%, on top of the ordinary 10% import duty.",
+        "Affected parties had a comment window and the Commission could revise calculations before provisional measures."
+      ]
+    },
+    {
+      "source_id": "ACEA-EU-CHINA-TRADE",
+      "date": "2024-06-12",
+      "publisher": "European Automobile Manufacturers' Association",
+      "source_type": "industry_data",
+      "url": "https://www.acea.auto/fact/fact-sheet-eu-china-vehicle-trade-2024/",
+      "extracts": [
+        "China-made cars' share of EU battery-electric sales had risen from around 3% to more than 20% in three years.",
+        "The data describe cars made in China, which includes non-Chinese brands; manufacturer nationality and production origin are not interchangeable."
+      ]
+    },
+    {
+      "source_id": "BYD-2023-SALES",
+      "date": "2024-01-01",
+      "publisher": "BYD",
+      "source_type": "company_operating_update",
+      "url": "https://www.bydglobal.com/sites/Satellite?c=BydArticle&cid=1617162249628&d=Touch&pagename=BYD_EN%2FBydArticle%2FBYD_ENCommon%2FArticleDetails&rendermode=preview",
+      "extracts": [
+        "BYD reported more than 3 million new-energy vehicle sales in 2023.",
+        "Global scale does not by itself disclose EU unit economics, local-production timing, or the margin impact of tariffs."
+      ]
+    },
+    {
+      "source_id": "YF-EU-EV-PRICES",
+      "date": "2024-06-13",
+      "publisher": "Yahoo Finance",
+      "source_type": "market_data_snapshot",
+      "price_treatment": "raw",
+      "observations": {"1211.HK": 77.5999984741211, "0175.HK": 9.050000190734863, "600104.SS": 13.970000267028809},
+      "currencies": {"1211.HK": "HKD", "0175.HK": "HKD", "600104.SS": "CNY"},
+      "url": "https://finance.yahoo.com/"
+    }
+  ]
+}

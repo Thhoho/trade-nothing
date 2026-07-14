@@ -1,0 +1,54 @@
+{
+  "packet_id": "EV-AI-GPU-2024",
+  "as_of": "2024-08-29",
+  "topic": "AI infrastructure demand, bottlenecks, and value capture",
+  "capture_method": "curator-frozen extracts plus unadjusted market observations",
+  "sources": [
+    {
+      "source_id": "NVDA-Q2FY25",
+      "date": "2024-08-28",
+      "publisher": "NVIDIA",
+      "source_type": "company_results",
+      "url": "https://investor.nvidia.com/news/press-release-details/2024/NVIDIA-Announces-Financial-Results-for-Second-Quarter-Fiscal-2025/default.aspx",
+      "extracts": [
+        "Q2 FY2025 revenue was $30.0 billion, up 122% year over year.",
+        "Data Center revenue was $26.3 billion, up 154% year over year and 16% sequentially.",
+        "Management described strong Hopper demand and anticipation for Blackwell; forward statements still carry supply, execution, and customer-concentration risk."
+      ]
+    },
+    {
+      "source_id": "MSFT-FY24-Q4",
+      "date": "2024-07-30",
+      "publisher": "Microsoft",
+      "source_type": "earnings_transcript",
+      "url": "https://www.microsoft.com/en-us/investor/events/fy-2024/earnings-fy-2024-q4",
+      "extracts": [
+        "Microsoft said the AI transition is both knowledge- and capital-intensive.",
+        "Roughly half of FY2024 and Q4 capital expense related to land, buildings, and finance leases, which management described as flexible assets monetized over 15 years or longer.",
+        "The same infrastructure serves platform, application, partner, and first-party SaaS demand, so capex cannot be attributed only to one AI product."
+      ]
+    },
+    {
+      "source_id": "VRT-Q1-2024",
+      "date": "2024-04-24",
+      "publisher": "Vertiv",
+      "source_type": "company_results",
+      "url": "https://investors.vertiv.com/files/doc_financials/2024/q1/Vertiv-First-Quarter-2024-Earnings-Release.pdf",
+      "extracts": [
+        "Vertiv reported 60% organic order growth in Q1 2024.",
+        "Management said the data-center market was accelerating with high-performance compute and that opportunity-pipeline velocity had increased.",
+        "The company sells power and thermal-management infrastructure, but orders, capacity conversion, margins, and valuation remain separate questions."
+      ]
+    },
+    {
+      "source_id": "YF-AI-GPU-PRICES",
+      "date": "2024-08-29",
+      "publisher": "Yahoo Finance",
+      "source_type": "market_data_snapshot",
+      "price_treatment": "raw",
+      "currency": "USD",
+      "observations": {"NVDA": 117.58999633789062, "MSFT": 413.1199951171875, "VRT": 79.91999816894531, "AVGO": 156.92999267578125},
+      "url": "https://finance.yahoo.com/"
+    }
+  ]
+}

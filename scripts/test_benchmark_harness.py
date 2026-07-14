@@ -77,6 +77,52 @@ def assessment(variant, artifact_sha256="a" * 64):
 
 
 class BenchmarkHarnessTests(unittest.TestCase):
+    def test_persisted_v014_suite_is_real_and_complete(self):
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        suite_path = os.path.join(
+            repo_root, "benchmarks", "v014-six-case", "suite.json"
+        )
+        data = harness._load_json(suite_path)
+        validated = harness.validate_evidence_files(data, suite_path)
+        self.assertEqual(len(validated["cases"]), 6)
+        self.assertEqual(
+            set(case["question_type"] for case in validated["cases"]),
+            harness.QUESTION_TYPES,
+        )
+        self.assertEqual(validated["variants"], ["single_agent", "v0_12", "v0_14"])
+
+    def test_dispatch_contains_one_case_and_no_assessor_material(self):
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        suite_path = os.path.join(
+            repo_root, "benchmarks", "v014-six-case", "suite.json"
+        )
+        data = harness._load_json(suite_path)
+        dispatch = harness.materialize_case_dispatch(
+            data, suite_path, "ai_power_infrastructure_2025"
+        )
+        encoded = json.dumps(dispatch, ensure_ascii=False).lower()
+        self.assertEqual(dispatch["schema_version"], harness.DISPATCH_SCHEMA)
+        self.assertEqual(dispatch["case"]["case_id"], "ai_power_infrastructure_2025")
+        self.assertEqual(len(dispatch["evidence_packets"]), 1)
+        self.assertNotIn("answer-key", encoded)
+        self.assertNotIn("major_paths", encoded)
+        self.assertNotIn("false_opportunity_traps", encoded)
+        self.assertNotIn("ai_gpu_bottleneck_2024", encoded)
+
+    def test_dispatch_must_be_written_outside_suite_tree(self):
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        suite_path = os.path.join(
+            repo_root, "benchmarks", "v014-six-case", "suite.json"
+        )
+        data = harness._load_json(suite_path)
+        forbidden = os.path.join(
+            repo_root, "benchmarks", "v014-six-case", "dispatch.json"
+        )
+        with self.assertRaisesRegex(ValueError, "outside the suite"):
+            harness.write_case_dispatch(
+                data, suite_path, "ai_power_infrastructure_2025", forbidden
+            )
+
     def test_suite_rejects_answer_leakage(self):
         data = suite()
         data["cases"][0]["gold_answer"] = "future winner"

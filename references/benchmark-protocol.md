@@ -5,29 +5,40 @@ assessment or future outcome into a research role's context.
 
 ## Separation
 
-Keep three artifacts physically separate:
+Keep four artifacts physically separate:
 
 1. **Suite case**: prompt, question type, as-of date, frozen evidence identifiers, an
    `evidence_manifest` binding every packet path and SHA-256, and one budget shared by every
    variant. It must not contain expected answers, future returns, major-path labels, or evaluator
    rubrics. Validation rejects missing, changed, path-traversing, or post-as-of packets.
-2. **Research result**: exact artifact hash, engine version, completion status, usage, and recovery
+2. **Single-case dispatch**: the generated research input containing exactly one case, its bound
+   evidence packet(s), the suite contract hash, and no assessor material. Generate it outside the
+   suite directory; never give a research arm repository or benchmark-directory access.
+3. **Research result**: exact artifact hash, engine version, completion status, usage, and recovery
    count. The research system must not include a self-assessment.
-3. **Blind assessment**: a human or independent evaluator scores the already-frozen artifact and
+4. **Blind assessment**: a human or independent evaluator scores the already-frozen artifact and
    binds its assessment to that artifact's SHA-256.
 
-Run `scripts/benchmark_harness.py validate-suite` before dispatch and copy its
+Run `scripts/benchmark_harness.py validate-suite` before dispatch, then use `materialize-case` to
+write each research input into a separate runtime directory. Copy the printed
 `suite_contract_sha256` into every result. The contract hash binds prompts, arms, budgets, packet
 identifiers, paths, and packet hashes. Run `score` only after every declared case/variant pair has
 both a result and a blind assessment.
+
+```bash
+python3 scripts/benchmark_harness.py materialize-case \
+  --suite benchmarks/v014-six-case/suite.json \
+  --case-id ai_power_infrastructure_2025 \
+  --output /private/tmp/ai_power_infrastructure_2025.dispatch.json
+```
 
 Minimal suite:
 
 ```json
 {
   "schema_version": "trade-nothing.benchmark-suite.v1",
-  "suite_id": "v013-six-case",
-  "variants": ["single_agent", "v0_12", "v0_13"],
+  "suite_id": "v014-six-case",
+  "variants": ["single_agent", "v0_12", "v0_14"],
   "evidence_manifest": {
     "SNAP-001": {"path": "evidence/SNAP-001.json", "sha256": "64 lowercase hex characters"},
     "SNAP-002": {"path": "evidence/SNAP-002.json", "sha256": "64 lowercase hex characters"}
@@ -53,7 +64,7 @@ Minimal result:
 {
   "schema_version": "trade-nothing.benchmark-result.v1",
   "case_id": "universe_01",
-  "variant": "v0_13",
+  "variant": "v0_14",
   "suite_contract_sha256": "hash printed by validate-suite",
   "execution_id": "RUN-OR-BASELINE-ID",
   "engine_version": "git-sha-or-baseline-version",
@@ -96,11 +107,12 @@ Minimal assessment:
 
 ## Comparison arms
 
-Use at least two arms. The initial v0.13 benchmark should use:
+Use at least two arms. The persisted v0.14 six-case benchmark uses:
 
 - `single_agent`: the same model with one structured research prompt;
 - `v0_12`: current crux workflow without Landscape Map;
-- `v0_13`: Landscape Map plus an independent Pricing Gap stage.
+- `v0_14`: current crux workflow with Landscape Map, explicit pricing/vehicle separation, bounded
+  artifact handoffs, opportunity harvesting, and CandidateScreen contracts.
 
 Give each arm the same frozen evidence packet and the same maximum Token, search, and wall-clock
 budget. A run exceeding any cap is not comparable. Report failed and recovered runs; do not silently

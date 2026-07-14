@@ -1,0 +1,65 @@
+{
+  "packet_id": "EV-REGIONAL-BANK-2024",
+  "as_of": "2024-02-07",
+  "topic": "NYCB losses, commercial real estate, and regional-bank contagion",
+  "capture_method": "curator-frozen extracts plus contemporaneous market observations",
+  "sources": [
+    {
+      "source_id": "NYCB-Q4-2023",
+      "date": "2024-01-31",
+      "publisher": "New York Community Bancorp / SEC",
+      "source_type": "company_results",
+      "url": "https://www.sec.gov/Archives/edgar/data/910073/000091007324000034/nycb4q2023earningsrelease.htm",
+      "extracts": [
+        "NYCB recorded a $552 million provision for credit losses versus $62 million in Q3 and $185 million of net charge-offs, driven by two loans.",
+        "Non-performing assets were 0.38% of assets; the allowance was $992 million and 232% of non-performing loans.",
+        "The common dividend was cut to $0.05 as the bank accelerated capital building after crossing $100 billion in assets."
+      ]
+    },
+    {
+      "source_id": "FED-FSR-OCT2023",
+      "date": "2023-10-20",
+      "publisher": "Federal Reserve Board",
+      "source_type": "financial_stability_report",
+      "url": "https://www.federalreserve.gov/publications/2023-october-financial-stability-report-near-term-risks.htm",
+      "extracts": [
+        "Market contacts viewed CRE as a potential stress trigger because of rates, lower property values, and structural office-demand changes.",
+        "Small and regional banks were viewed as more vulnerable because of higher CRE concentration, but vulnerability is not the same as insolvency for every institution."
+      ]
+    },
+    {
+      "source_id": "FDIC-Q3-2023",
+      "date": "2023-11-29",
+      "publisher": "Federal Deposit Insurance Corporation",
+      "source_type": "quarterly_banking_profile",
+      "url": "https://www.fdic.gov/news/speeches/2023/spnov2923.html",
+      "extracts": [
+        "Noncurrent non-owner-occupied CRE loans rose 36.4% sequentially and the noncurrent rate was the highest since Q3 2014.",
+        "Industry unrealized securities losses were $683.9 billion, while deposit outflows were moderating.",
+        "The report described emerging office stress and funding pressure, not a conclusion of system-wide failure."
+      ]
+    },
+    {
+      "source_id": "OCC-FALL-2023",
+      "date": "2023-12-07",
+      "publisher": "Office of the Comptroller of the Currency",
+      "source_type": "supervisory_risk_report",
+      "url": "https://www.occ.treas.gov/news-issuances/news-releases/2023/nr-occ-2023-135.html",
+      "extracts": [
+        "The OCC said credit risk was increasing due partly to higher rates and CRE, while the overall federal banking system remained sound.",
+        "The combination argues for institution-level funding, capital, concentration, and loan-quality analysis rather than a blanket sector verdict."
+      ]
+    },
+    {
+      "source_id": "MARKET-REGIONAL-BANK-PRICES",
+      "date": "2024-02-07",
+      "publisher": "Yahoo Finance and contemporaneous exchange archives",
+      "source_type": "market_data_snapshot",
+      "price_treatment": "raw",
+      "currency": "USD",
+      "observations": {"NYCB": 4.9, "KRE": 46.849998474121094, "WAL": 57.810001373291016},
+      "notes": "NYCB later completed a reverse split; 4.90 is the contemporaneous pre-split price convention.",
+      "url": "https://finance.yahoo.com/"
+    }
+  ]
+}
