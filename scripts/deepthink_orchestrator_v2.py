@@ -975,6 +975,10 @@ def cmd_screen(topic, as_of_date="", seed_id=""):
         "candidate_seed_ids": prompts["candidate_seed_ids"],
         "selection_audit": prompts["selection_audit"],
         "max_batch": candidate_screen_engine.MAX_BATCH,
+        "prompt_sha256": {
+            "analyst": hashlib.sha256(prompts["analyst_prompt"].encode("utf-8")).hexdigest(),
+            "skeptic": hashlib.sha256(prompts["skeptic_prompt"].encode("utf-8")).hexdigest(),
+        },
     }
     history = state.setdefault("candidate_screen_dispatches", [])
     if not isinstance(history, list):
@@ -1002,7 +1006,10 @@ def cmd_screen(topic, as_of_date="", seed_id=""):
     return out
 
 
-def cmd_submit_screen(topic, analyst, skeptic, as_of_date="", isolation_status="unverified"):
+def cmd_submit_screen(
+    topic, analyst, skeptic, as_of_date="", isolation_status="unverified",
+    isolation_receipt=None,
+):
     state = _load(topic)
     if not state:
         return {"status": "error", "reason": "状态不存在。"}
@@ -1016,6 +1023,7 @@ def cmd_submit_screen(topic, analyst, skeptic, as_of_date="", isolation_status="
             state, analyst, skeptic,
             as_of_date or analyst.get("as_of_date") or skeptic.get("as_of_date"),
             isolation_status=isolation_status,
+            isolation_receipt=isolation_receipt,
         )
     except ValueError as exc:
         return {"status": "error", "reason": str(exc)}
@@ -1304,6 +1312,7 @@ def main():
                     choices=["verified", "degraded", "unverified"])
     ap.add_argument("--runtime-isolation", default="unverified",
                     choices=["verified", "degraded", "unverified"])
+    ap.add_argument("--isolation-receipt", default="")
     ap.add_argument("--snapshots", default=""); ap.add_argument("--verifier", default="")
     ap.add_argument("--claim-id", default="")
     ap.add_argument("--challenge-only", action="store_true",
@@ -1324,7 +1333,8 @@ def main():
     elif a.resume_blocked: out = cmd_resume_blocked(a.topic, a.extra_rounds)
     elif a.screen: out = cmd_screen(a.topic, a.as_of, a.seed_id)
     elif a.submit_screen: out = cmd_submit_screen(
-        a.topic, _jload(a.analyst), _jload(a.skeptic), a.as_of, a.screen_isolation
+        a.topic, _jload(a.analyst), _jload(a.skeptic), a.as_of, a.screen_isolation,
+        _jload(a.isolation_receipt),
     )
     elif a.verification_plan: out = cmd_verification_plan(a.topic, a.seed_id)
     elif a.verify_claims: out = cmd_verify_claims(

@@ -317,8 +317,13 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > IANA example/test hosts, localhost, and loopback URLs are invalid evidence even when they contain
 > a path. Google/Vertex/Bing grounding redirect wrappers are also invalid: resolve and store the
 > publisher's final URL. Source-organization diversity is derived from publisher domains, not agent-written
-> `source` labels. A `--screen-isolation verified` claim is capped by the run's host isolation
-> attestation; it cannot upgrade an `unverified` runtime.
+> `source` labels. A `--screen-isolation verified` claim is not proof. `THESIS_CANDIDATE` requires
+> a validated `candidate-screen-isolation.v1` receipt binding the stored dispatch, exact role
+> prompts, exact submitted payloads, distinct process IDs, distinct invocation IDs, and successful
+> exits. Without that receipt the screen remains at most `WATCHLIST`, even when the caller claims
+> verified isolation. Antigravity users should run `scripts/agy_candidate_screen_runner.py` rather
+> than manually submitting two role payloads. Tool permission bypass is never implicit: add
+> `--allow-agent-tools` only when the caller has explicitly authorized non-interactive agent tools.
 
 > **Source-content integrity:** capture each decisive URL with `scripts/evidence_snapshot.py`
 > or an equivalent host fetcher, then run `agents/claim_verifier.md` independently. SUPPORTS and
@@ -348,6 +353,10 @@ python3 scripts/logic_radar_v2.py
 
 # Dispatch and submit two-sided OpportunitySeed screens
 python3 scripts/deepthink_orchestrator_v2.py --screen --topic "Topic Name" --as-of "YYYY-MM-DD"
+
+# Antigravity: execute both screen roles in distinct OS processes and submit a bound receipt
+python3 scripts/agy_candidate_screen_runner.py --topic "Topic Name" --as-of "YYYY-MM-DD"
+# Add --allow-agent-tools only after explicit authorization for non-interactive agy tool access.
 python3 scripts/deepthink_orchestrator_v2.py --submit-screen --topic "Topic Name" --as-of "YYYY-MM-DD" \
   --screen-isolation verified --analyst '<json>' --skeptic '<json>'
 

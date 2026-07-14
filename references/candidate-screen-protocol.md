@@ -14,13 +14,23 @@ promoting a draft.
 1. Only screen a stateful `READY_FOR_SCREENING` path: seed evidence alone is insufficient;
    the origin crux must be healthy, the root thesis converged, and the structured catalyst must
    fall inside the root horizon. Default dispatch screens one representative path per exact entity.
-2. Run Candidate Analyst and Candidate Skeptic in isolated contexts.
+2. Run Candidate Analyst and Candidate Skeptic in isolated contexts. For Antigravity, use
+   `scripts/agy_candidate_screen_runner.py`; it launches two distinct OS processes concurrently.
 3. Give both the same seed packet, as-of date, and eight fixed questions.
 4. Submit both JSON payloads to candidate_screen_engine.py.
 5. Preserve disagreement. Do not ask an LLM Judge to average it away.
 
-The host must submit screen isolation as verified, degraded, or unverified.
-Only verified physical isolation is eligible for THESIS_CANDIDATE.
+The host must submit screen isolation as verified, degraded, or unverified. A claimed value of
+`verified` is insufficient. Only verified physical isolation with a validated
+`candidate-screen-isolation.v1` receipt is eligible for THESIS_CANDIDATE. The receipt binds the
+stored dispatch and exact role prompt hashes to the exact submitted payload hashes, successful
+process exits, and distinct process and invocation IDs. A missing, mismatched, or self-authored
+receipt caps the result at WATCHLIST.
+
+The receipt is an auditable process-integrity control, not a cryptographic trust boundary against
+a malicious host with filesystem access. A stronger deployment should sign receipts with a
+host-held key inaccessible to either role. Antigravity's permission bypass is opt-in: pass
+`--allow-agent-tools` only after the caller explicitly authorizes non-interactive tool use.
 
 ## Fixed questions
 
@@ -78,9 +88,9 @@ ranking. Zero selected candidates is valid; do not fill the batch with lower-sta
 
 Evidence on `example.com`, `example.org`, `example.net`, `.test`, `.invalid`, localhost, or
 loopback hosts is synthetic and must be dropped. Independent source organizations are counted from
-publisher domains, not the submitted `source` string. Screen isolation is effective only when both
-the run-level host attestation and the screen submission claim are `verified`; the submission
-cannot promote itself above the runtime.
+publisher domains, not the submitted `source` string. A valid stage-specific receipt can establish
+physical CandidateScreen isolation even if the parent research runtime was unverified; without the
+receipt, effective isolation is the weaker of run-level attestation and the screen submission.
 
 Search and grounding redirect wrappers (including Vertex grounding redirects, Google `/url`, and
 Bing `/ck/`) are not publisher evidence. Resolve them to the final issuer, regulator, filing,

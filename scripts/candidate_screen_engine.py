@@ -10,6 +10,7 @@ returns, ranks positions, or promotes a candidate into a live thesis.
 import calendar
 import datetime as dt
 import hashlib
+import json
 import re
 
 import crux_engine
@@ -316,6 +317,80 @@ def selection_audit(seeds):
     ]
 
 
+def payload_sha256(value):
+    encoded = json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def isolation_receipt_id(receipt):
+    content = dict(receipt) if isinstance(receipt, dict) else {}
+    content.pop("receipt_id", None)
+    return "ISR-" + payload_sha256(content)[:12].upper()
+
+
+def validate_isolation_receipt(state, receipt, analyst_payload, skeptic_payload, as_of_date):
+    blockers = []
+    receipt = receipt if isinstance(receipt, dict) else {}
+    if receipt.get("schema") != "candidate-screen-isolation.v1":
+        blockers.append("isolation_receipt_schema_invalid")
+    if receipt.get("runner_kind") != "agy_separate_process_v1":
+        blockers.append("isolation_receipt_runner_invalid")
+    if receipt.get("host_enforced") is not True:
+        blockers.append("isolation_receipt_not_host_enforced")
+    dispatch_id = _text(receipt.get("dispatch_id"))
+    dispatch = next((
+        item for item in state.get("candidate_screen_dispatches", [])
+        if isinstance(item, dict) and item.get("dispatch_id") == dispatch_id
+    ), None)
+    if dispatch is None:
+        blockers.append("isolation_receipt_dispatch_unknown")
+    else:
+        if receipt.get("as_of_date") != as_of_date:
+            blockers.append("isolation_receipt_as_of_mismatch")
+        if receipt.get("candidate_seed_ids") != dispatch.get("candidate_seed_ids"):
+            blockers.append("isolation_receipt_seed_ids_mismatch")
+
+    roles = receipt.get("roles") if isinstance(receipt.get("roles"), dict) else {}
+    process_ids = []
+    invocation_ids = []
+    payloads = {"analyst": analyst_payload, "skeptic": skeptic_payload}
+    for role in ("analyst", "skeptic"):
+        item = roles.get(role) if isinstance(roles.get(role), dict) else {}
+        invocation_id = _text(item.get("invocation_id"))
+        try:
+            process_id = int(item.get("process_id"))
+        except (TypeError, ValueError):
+            process_id = 0
+        if not invocation_id:
+            blockers.append(f"isolation_receipt_{role}_invocation_missing")
+        if process_id <= 0:
+            blockers.append(f"isolation_receipt_{role}_process_missing")
+        if item.get("exit_code") != 0 or item.get("timed_out") is not False:
+            blockers.append(f"isolation_receipt_{role}_process_failed")
+        expected_prompt = (dispatch or {}).get("prompt_sha256", {}).get(role)
+        if not expected_prompt or item.get("prompt_sha256") != expected_prompt:
+            blockers.append(f"isolation_receipt_{role}_prompt_hash_mismatch")
+        if item.get("payload_sha256") != payload_sha256(payloads[role]):
+            blockers.append(f"isolation_receipt_{role}_payload_hash_mismatch")
+        process_ids.append(process_id)
+        invocation_ids.append(invocation_id)
+    if len(set(process_ids)) != 2:
+        blockers.append("isolation_receipt_processes_not_distinct")
+    if len(set(invocation_ids)) != 2:
+        blockers.append("isolation_receipt_invocations_not_distinct")
+    expected_id = isolation_receipt_id(receipt)
+    if receipt.get("receipt_id") != expected_id:
+        blockers.append("isolation_receipt_id_mismatch")
+    unique = list(dict.fromkeys(blockers))
+    return {
+        "status": "verified" if not unique else "invalid",
+        "receipt_id": receipt.get("receipt_id") or "",
+        "blockers": unique,
+    }
+
+
 def screenable_seeds(state, seed_id=None):
     latest = latest_by_seed(state)
     seeds = [s for s in state.get("opportunity_seeds", []) if isinstance(s, dict)]
@@ -351,7 +426,10 @@ def screenable_seeds(state, seed_id=None):
     return out[:MAX_BATCH]
 
 
-def evaluate_batch(state, analyst_payload, skeptic_payload, as_of_date=None, isolation_status="unverified"):
+def evaluate_batch(
+    state, analyst_payload, skeptic_payload, as_of_date=None,
+    isolation_status="unverified", isolation_receipt=None,
+):
     """Evaluate up to three paired candidate screens and persist idempotently."""
     as_of_date = normalize_as_of(as_of_date)
     as_of = _parse_date(as_of_date)
@@ -363,7 +441,12 @@ def evaluate_batch(state, analyst_payload, skeptic_payload, as_of_date=None, iso
     ).lower()
     if runtime_isolation_status not in {"verified", "degraded", "unverified"}:
         runtime_isolation_status = "unverified"
-    if "unverified" in {claimed_isolation_status, runtime_isolation_status}:
+    receipt_validation = validate_isolation_receipt(
+        state, isolation_receipt, analyst_payload, skeptic_payload, as_of_date
+    )
+    if receipt_validation["status"] == "verified":
+        isolation_status = "verified"
+    elif "unverified" in {claimed_isolation_status, runtime_isolation_status}:
         isolation_status = "unverified"
     elif "degraded" in {claimed_isolation_status, runtime_isolation_status}:
         isolation_status = "degraded"
@@ -384,6 +467,9 @@ def evaluate_batch(state, analyst_payload, skeptic_payload, as_of_date=None, iso
         "claimed_isolation_status": claimed_isolation_status,
         "runtime_isolation_status": runtime_isolation_status,
         "effective_isolation_status": isolation_status,
+        "isolation_receipt_status": receipt_validation["status"],
+        "isolation_receipt_id": receipt_validation["receipt_id"],
+        "isolation_receipt_blockers": receipt_validation["blockers"],
         "submitted_seed_ids": requested_ids,
         "evaluated": 0,
         "unknown_seed_ids": [],
@@ -427,6 +513,9 @@ def evaluate_batch(state, analyst_payload, skeptic_payload, as_of_date=None, iso
             gaps.append("screen_isolation_unverified")
         if claimed_isolation_status == "verified" and runtime_isolation_status != "verified":
             gaps.append("screen_isolation_claim_exceeds_runtime")
+        if claimed_isolation_status == "verified" and receipt_validation["status"] != "verified":
+            gaps.append("screen_isolation_receipt_invalid")
+            gaps.extend(receipt_validation["blockers"])
         screen = {
             "screen_id": _screen_id(seed_id, as_of_date),
             "seed_id": seed_id,
@@ -437,6 +526,9 @@ def evaluate_batch(state, analyst_payload, skeptic_payload, as_of_date=None, iso
             "claimed_isolation_status": claimed_isolation_status,
             "runtime_isolation_status": runtime_isolation_status,
             "isolation_status": isolation_status,
+            "isolation_receipt_status": receipt_validation["status"],
+            "isolation_receipt_id": receipt_validation["receipt_id"],
+            "isolation_receipt_blockers": receipt_validation["blockers"],
             "status": status,
             "dimensions": dimensions,
             "source_gate": source_gate,

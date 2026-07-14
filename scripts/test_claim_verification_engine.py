@@ -17,12 +17,14 @@ AS_OF = candidate_fixtures.AS_OF
 
 def screened_state():
     st = candidate_fixtures.state_with_seed()
+    analyst = candidate_fixtures.payload("Analyst")
+    skeptic = candidate_fixtures.payload("Skeptic")
+    receipt = candidate_fixtures.install_test_dispatch(st, analyst, skeptic)
     candidate_screen_engine.evaluate_batch(
-        st,
-        candidate_fixtures.payload("Analyst"),
-        candidate_fixtures.payload("Skeptic"),
+        st, analyst, skeptic,
         AS_OF,
         isolation_status="verified",
+        isolation_receipt=receipt,
     )
     return st
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Offline regression tests for the two-sided CandidateScreen gate."""
 import copy
+import hashlib
 import os
 import re
 import tempfile
@@ -106,6 +107,62 @@ def payload(side, default_answer="YES", overrides=None, source_override=None, st
     }
 
 
+def receipt_from_dispatch(dispatch, analyst, skeptic):
+    receipt = {
+        "schema": "candidate-screen-isolation.v1",
+        "runner_kind": "agy_separate_process_v1",
+        "host_enforced": True,
+        "dispatch_id": dispatch["dispatch_id"],
+        "as_of_date": dispatch["as_of_date"],
+        "candidate_seed_ids": dispatch["candidate_seed_ids"],
+        "roles": {
+            "analyst": {
+                "invocation_id": "test-analyst",
+                "process_id": 1001,
+                "exit_code": 0,
+                "timed_out": False,
+                "prompt_sha256": hashlib.sha256(
+                    dispatch["analyst_prompt"].encode("utf-8")
+                ).hexdigest(),
+                "payload_sha256": screen_engine.payload_sha256(analyst),
+            },
+            "skeptic": {
+                "invocation_id": "test-skeptic",
+                "process_id": 1002,
+                "exit_code": 0,
+                "timed_out": False,
+                "prompt_sha256": hashlib.sha256(
+                    dispatch["skeptic_prompt"].encode("utf-8")
+                ).hexdigest(),
+                "payload_sha256": screen_engine.payload_sha256(skeptic),
+            },
+        },
+    }
+    receipt["receipt_id"] = screen_engine.isolation_receipt_id(receipt)
+    return receipt
+
+
+def install_test_dispatch(st, analyst, skeptic):
+    prompts = orchestrator.candidate_screen_prompts(
+        st, screen_engine.screenable_seeds(st), AS_OF
+    )
+    dispatch = {
+        "dispatch_id": "CSD-TEST",
+        "as_of_date": AS_OF,
+        **prompts,
+    }
+    st["candidate_screen_dispatches"] = [{
+        "dispatch_id": dispatch["dispatch_id"],
+        "as_of_date": AS_OF,
+        "candidate_seed_ids": dispatch["candidate_seed_ids"],
+        "prompt_sha256": {
+            "analyst": hashlib.sha256(dispatch["analyst_prompt"].encode("utf-8")).hexdigest(),
+            "skeptic": hashlib.sha256(dispatch["skeptic_prompt"].encode("utf-8")).hexdigest(),
+        },
+    }]
+    return receipt_from_dispatch(dispatch, analyst, skeptic)
+
+
 class CandidateScreenEngineTests(unittest.TestCase):
     def test_default_dispatch_deduplicates_entity_and_honors_old_duplicate_screen(self):
         st = state_with_seed()
@@ -155,8 +212,12 @@ class CandidateScreenEngineTests(unittest.TestCase):
 
     def test_two_sided_fresh_independent_evidence_creates_thesis_candidate(self):
         st = state_with_seed()
+        analyst = payload("Analyst")
+        skeptic = payload("Skeptic")
+        receipt = install_test_dispatch(st, analyst, skeptic)
         audit = screen_engine.evaluate_batch(
-            st, payload("Analyst"), payload("Skeptic"), AS_OF, isolation_status="verified"
+            st, analyst, skeptic, AS_OF, isolation_status="verified",
+            isolation_receipt=receipt,
         )
         screen = st["candidate_screens"][0]
         self.assertEqual(audit["thesis_candidate_count"], 1)
@@ -264,11 +325,16 @@ class CandidateScreenEngineTests(unittest.TestCase):
 
     def test_same_day_replay_is_idempotent(self):
         st = state_with_seed()
+        analyst = payload("Analyst")
+        skeptic = payload("Skeptic")
+        receipt = install_test_dispatch(st, analyst, skeptic)
         screen_engine.evaluate_batch(
-            st, payload("Analyst"), payload("Skeptic"), AS_OF, isolation_status="verified"
+            st, analyst, skeptic, AS_OF, isolation_status="verified",
+            isolation_receipt=receipt,
         )
         screen_engine.evaluate_batch(
-            st, payload("Analyst"), payload("Skeptic"), AS_OF, isolation_status="verified"
+            st, analyst, skeptic, AS_OF, isolation_status="verified",
+            isolation_receipt=receipt,
         )
         self.assertEqual(len(st["candidate_screens"]), 1)
 
@@ -297,8 +363,12 @@ class CandidateScreenOrchestratorTests(unittest.TestCase):
         self.assertNotIn("selection_rank", dispatch["analyst_prompt"])
         self.assertEqual(dispatch["max_batch"], 3)
         self.assertEqual(dispatch["selection_audit"][0]["seed_id"], "OS-TEST")
+        analyst = payload("Analyst")
+        skeptic = payload("Skeptic")
+        receipt = receipt_from_dispatch(dispatch, analyst, skeptic)
         result = orchestrator.cmd_submit_screen(
-            topic, payload("Analyst"), payload("Skeptic"), AS_OF, isolation_status="verified"
+            topic, analyst, skeptic, AS_OF, isolation_status="verified",
+            isolation_receipt=receipt,
         )
         stored = orchestrator._load(topic)
         self.assertEqual(result["thesis_candidate_count"], 1)
@@ -356,8 +426,12 @@ class CandidateScreenOrchestratorTests(unittest.TestCase):
 class CandidateScreenReportTests(unittest.TestCase):
     def test_report_renders_screen_matrix_without_auto_promotion(self):
         st = state_with_seed()
+        analyst = payload("Analyst")
+        skeptic = payload("Skeptic")
+        receipt = install_test_dispatch(st, analyst, skeptic)
         screen_engine.evaluate_batch(
-            st, payload("Analyst"), payload("Skeptic"), AS_OF, isolation_status="verified"
+            st, analyst, skeptic, AS_OF, isolation_status="verified",
+            isolation_receipt=receipt,
         )
         md = report_v2.render(st)
         self.assertIn("THESIS_CANDIDATE", md)
