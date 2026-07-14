@@ -7,16 +7,19 @@ assessment or future outcome into a research role's context.
 
 Keep three artifacts physically separate:
 
-1. **Suite case**: prompt, question type, as-of date, frozen evidence identifiers, and one budget
-   shared by every variant. It must not contain expected answers, future returns, major-path labels,
-   or evaluator rubrics.
+1. **Suite case**: prompt, question type, as-of date, frozen evidence identifiers, an
+   `evidence_manifest` binding every packet path and SHA-256, and one budget shared by every
+   variant. It must not contain expected answers, future returns, major-path labels, or evaluator
+   rubrics. Validation rejects missing, changed, path-traversing, or post-as-of packets.
 2. **Research result**: exact artifact hash, engine version, completion status, usage, and recovery
    count. The research system must not include a self-assessment.
 3. **Blind assessment**: a human or independent evaluator scores the already-frozen artifact and
    binds its assessment to that artifact's SHA-256.
 
-Run `scripts/benchmark_harness.py validate-suite` before dispatch. Run `score` only after every
-declared case/variant pair has both a result and a blind assessment.
+Run `scripts/benchmark_harness.py validate-suite` before dispatch and copy its
+`suite_contract_sha256` into every result. The contract hash binds prompts, arms, budgets, packet
+identifiers, paths, and packet hashes. Run `score` only after every declared case/variant pair has
+both a result and a blind assessment.
 
 Minimal suite:
 
@@ -25,6 +28,10 @@ Minimal suite:
   "schema_version": "trade-nothing.benchmark-suite.v1",
   "suite_id": "v013-six-case",
   "variants": ["single_agent", "v0_12", "v0_13"],
+  "evidence_manifest": {
+    "SNAP-001": {"path": "evidence/SNAP-001.json", "sha256": "64 lowercase hex characters"},
+    "SNAP-002": {"path": "evidence/SNAP-002.json", "sha256": "64 lowercase hex characters"}
+  },
   "cases": [{
     "case_id": "universe_01",
     "question_type": "UNIVERSE_SEARCH",
@@ -47,6 +54,7 @@ Minimal result:
   "schema_version": "trade-nothing.benchmark-result.v1",
   "case_id": "universe_01",
   "variant": "v0_13",
+  "suite_contract_sha256": "hash printed by validate-suite",
   "execution_id": "RUN-OR-BASELINE-ID",
   "engine_version": "git-sha-or-baseline-version",
   "completion_status": "COMPLETE",

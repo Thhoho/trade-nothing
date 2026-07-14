@@ -14,6 +14,10 @@ def suite():
         "schema_version": harness.SUITE_SCHEMA,
         "suite_id": "v013-smoke",
         "variants": ["single_agent", "v0_12", "v0_13"],
+        "evidence_manifest": {
+            "SNAP-A": {"path": "evidence/snap-a.json", "sha256": "a" * 64},
+            "SNAP-B": {"path": "evidence/snap-b.json", "sha256": "b" * 64},
+        },
         "cases": [{
             "case_id": "case_universe_01",
             "question_type": "UNIVERSE_SEARCH",
@@ -34,6 +38,7 @@ def result(variant, tokens=5000, artifact_path="artifact.md", artifact_sha256="a
         "schema_version": harness.RESULT_SCHEMA,
         "case_id": "case_universe_01",
         "variant": variant,
+        "suite_contract_sha256": harness.validate_suite(suite())["suite_contract_sha256"],
         "execution_id": f"EXEC-{variant}",
         "engine_version": variant,
         "completion_status": "COMPLETE",
@@ -83,11 +88,17 @@ class BenchmarkHarnessTests(unittest.TestCase):
         data["assessment"] = {"great": True}
         case = harness.validate_suite(suite())["cases"][0]
         with self.assertRaisesRegex(ValueError, "own assessment"):
-            harness.validate_result(data, case, suite()["variants"])
+            harness.validate_result(
+                data, case, suite()["variants"],
+                harness.validate_suite(suite())["suite_contract_sha256"],
+            )
 
     def test_blind_assessment_must_bind_exact_artifact(self):
         case = harness.validate_suite(suite())["cases"][0]
-        run = harness.validate_result(result("v0_13"), case, suite()["variants"])
+        run = harness.validate_result(
+            result("v0_13"), case, suite()["variants"],
+            harness.validate_suite(suite())["suite_contract_sha256"],
+        )
         review = assessment("v0_13")
         review["artifact_sha256"] = "b" * 64
         with self.assertRaisesRegex(ValueError, "exact result artifact"):
@@ -161,6 +172,33 @@ class BenchmarkHarnessTests(unittest.TestCase):
         data["variants"] = ["single_agent", "../escape"]
         with self.assertRaisesRegex(ValueError, "variants must use"):
             harness.validate_suite(data)
+
+    def test_evidence_packet_hash_is_verified(self):
+        with tempfile.TemporaryDirectory() as root:
+            evidence_dir = os.path.join(root, "evidence")
+            os.makedirs(evidence_dir)
+            data = suite()
+            for evidence_id, filename in (("SNAP-A", "snap-a.json"), ("SNAP-B", "snap-b.json")):
+                packet = {
+                    "packet_id": evidence_id,
+                    "as_of": "2026-01-15",
+                    "sources": [{"date": "2026-01-14"}],
+                }
+                path = os.path.join(evidence_dir, filename)
+                with open(path, "w", encoding="utf-8") as handle:
+                    json.dump(packet, handle)
+                with open(path, "rb") as handle:
+                    data["evidence_manifest"][evidence_id]["sha256"] = hashlib.sha256(
+                        handle.read()
+                    ).hexdigest()
+            suite_path = os.path.join(root, "suite.json")
+            with open(suite_path, "w", encoding="utf-8") as handle:
+                json.dump(data, handle)
+            harness.validate_evidence_files(data, suite_path)
+            with open(os.path.join(evidence_dir, "snap-a.json"), "a", encoding="utf-8") as handle:
+                handle.write(" ")
+            with self.assertRaisesRegex(ValueError, "hash mismatch"):
+                harness.validate_evidence_files(data, suite_path)
 
 
 if __name__ == "__main__":

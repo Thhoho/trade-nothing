@@ -14,7 +14,7 @@ import json
 import re
 from collections import defaultdict
 from datetime import date
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 SUITE_SCHEMA = "trade-nothing.benchmark-suite.v1"
@@ -119,6 +119,24 @@ def validate_suite(suite):
         raise ValueError("variants must be unique")
     if any(not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,31}", item) for item in variants):
         raise ValueError("variants must use lowercase letters, numbers, underscores, or hyphens")
+    evidence_manifest = suite.get("evidence_manifest")
+    if not isinstance(evidence_manifest, dict) or not evidence_manifest:
+        raise ValueError("evidence_manifest must bind every frozen evidence packet")
+    normalized_manifest = {}
+    for evidence_id, entry in evidence_manifest.items():
+        evidence_id = _require_text(evidence_id, "evidence_manifest key")
+        if not isinstance(entry, dict):
+            raise ValueError(f"evidence_manifest.{evidence_id} must be an object")
+        relative_path = _require_text(entry.get("path"), f"evidence_manifest.{evidence_id}.path")
+        pure_path = PurePosixPath(relative_path)
+        if pure_path.is_absolute() or ".." in pure_path.parts:
+            raise ValueError(f"evidence_manifest.{evidence_id}.path must remain inside suite directory")
+        normalized_manifest[evidence_id] = {
+            "path": relative_path,
+            "sha256": _sha256(
+                entry.get("sha256"), f"evidence_manifest.{evidence_id}.sha256"
+            ),
+        }
     cases = suite.get("cases")
     if not isinstance(cases, list) or not cases:
         raise ValueError("cases must be a non-empty list")
@@ -154,6 +172,12 @@ def validate_suite(suite):
         if not isinstance(frozen_evidence, list) or not frozen_evidence:
             raise ValueError(f"cases[{index}].frozen_evidence must be a non-empty list")
         evidence_ids = [_require_text(item, "frozen_evidence[]") for item in frozen_evidence]
+        missing_evidence = sorted(set(evidence_ids) - set(normalized_manifest))
+        if missing_evidence:
+            raise ValueError(
+                f"cases[{index}] references evidence missing from manifest: "
+                + ", ".join(missing_evidence)
+            )
         normalized.append({
             **case,
             "case_id": case_id,
@@ -163,10 +187,70 @@ def validate_suite(suite):
             "budget": normalized_budget,
             "frozen_evidence": evidence_ids,
         })
-    return {**suite, "suite_id": suite_id, "variants": variants, "cases": normalized}
+    unused_evidence = sorted(
+        set(normalized_manifest)
+        - {evidence_id for case in normalized for evidence_id in case["frozen_evidence"]}
+    )
+    if unused_evidence:
+        raise ValueError("evidence_manifest contains unused packets: " + ", ".join(unused_evidence))
+    contract = {
+        "schema_version": SUITE_SCHEMA,
+        "suite_id": suite_id,
+        "variants": variants,
+        "cases": normalized,
+        "evidence_manifest": normalized_manifest,
+    }
+    suite_contract_sha256 = hashlib.sha256(
+        json.dumps(contract, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+    return {
+        **suite,
+        "suite_id": suite_id,
+        "variants": variants,
+        "cases": normalized,
+        "evidence_manifest": normalized_manifest,
+        "suite_contract_sha256": suite_contract_sha256,
+    }
 
 
-def validate_result(result, case, variants):
+def validate_evidence_files(suite, suite_path):
+    suite = validate_suite(suite)
+    root = Path(suite_path).resolve().parent
+    packet_dates = {}
+    for case in suite["cases"]:
+        for evidence_id in case["frozen_evidence"]:
+            previous = packet_dates.get(evidence_id)
+            if previous is not None and previous != case["as_of"]:
+                raise ValueError(f"evidence packet {evidence_id} is shared across different as_of dates")
+            packet_dates[evidence_id] = case["as_of"]
+    for evidence_id, entry in suite["evidence_manifest"].items():
+        path = (root / entry["path"]).resolve()
+        if not path.is_relative_to(root):
+            raise ValueError(f"evidence packet escapes suite directory: {evidence_id}")
+        if not path.is_file():
+            raise ValueError(f"evidence packet is missing: {evidence_id}")
+        if _artifact_hash(path) != entry["sha256"]:
+            raise ValueError(f"evidence packet hash mismatch: {evidence_id}")
+        packet = _load_json(path)
+        if packet.get("packet_id") != evidence_id:
+            raise ValueError(f"evidence packet_id mismatch: {evidence_id}")
+        packet_as_of = _iso_date(packet.get("as_of"), f"{evidence_id}.as_of")
+        if packet_as_of != packet_dates[evidence_id]:
+            raise ValueError(f"evidence packet as_of does not match suite case: {evidence_id}")
+        for index, source in enumerate(packet.get("sources") or []):
+            if not isinstance(source, dict):
+                raise ValueError(f"{evidence_id}.sources[{index}] must be an object")
+            source_date = _iso_date(
+                source.get("date"), f"{evidence_id}.sources[{index}].date"
+            )
+            if source_date > packet_as_of:
+                raise ValueError(f"post-as-of source in evidence packet: {evidence_id}")
+    return suite
+
+
+def validate_result(result, case, variants, suite_contract_sha256):
     if result.get("schema_version") != RESULT_SCHEMA:
         raise ValueError(f"result schema_version must be {RESULT_SCHEMA}")
     case_id = _require_text(result.get("case_id"), "result.case_id")
@@ -175,6 +259,9 @@ def validate_result(result, case, variants):
         raise ValueError("result.case_id does not match suite case")
     if variant not in variants:
         raise ValueError(f"result.variant is not declared in suite: {variant}")
+    bound_suite = _sha256(result.get("suite_contract_sha256"), "result.suite_contract_sha256")
+    if bound_suite != suite_contract_sha256:
+        raise ValueError("result is not bound to the exact suite/evidence contract")
     status = _require_text(result.get("completion_status"), "result.completion_status").upper()
     if status not in STATUS_VALUES:
         raise ValueError(f"unsupported completion_status: {status}")
@@ -192,6 +279,7 @@ def validate_result(result, case, variants):
         **result,
         "case_id": case_id,
         "variant": variant,
+        "suite_contract_sha256": bound_suite,
         "completion_status": status,
         "execution_id": _require_text(result.get("execution_id"), "result.execution_id"),
         "engine_version": _require_text(result.get("engine_version"), "result.engine_version"),
@@ -265,7 +353,10 @@ def score_suite(suite, results_dir):
                 errors.append(f"missing result/assessment pair: {stem}")
                 continue
             try:
-                result = validate_result(_load_json(result_path), case, suite["variants"])
+                result = validate_result(
+                    _load_json(result_path), case, suite["variants"],
+                    suite["suite_contract_sha256"],
+                )
                 artifact_path = Path(result["artifact_path"])
                 if not artifact_path.is_absolute():
                     artifact_path = result_path.parent / artifact_path
@@ -411,13 +502,14 @@ def main():
     score_cmd.add_argument("--output-md", required=True)
     args = parser.parse_args()
 
-    suite = validate_suite(_load_json(args.suite))
+    suite = validate_evidence_files(_load_json(args.suite), args.suite)
     if args.command == "validate-suite":
         print(json.dumps({
             "status": "VALID",
             "suite_id": suite.get("suite_id"),
             "case_count": len(suite["cases"]),
             "variants": suite["variants"],
+            "suite_contract_sha256": suite["suite_contract_sha256"],
         }, ensure_ascii=False, indent=2))
         return
     summary = score_suite(suite, args.results_dir)
