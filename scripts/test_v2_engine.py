@@ -364,6 +364,31 @@ class OrchestratorTests(unittest.TestCase):
         self.assertTrue(orchestrator._path(a).startswith(self.tmp.name))
         self.assertNotEqual(orchestrator._path(a), orchestrator._path(b))
 
+    def test_dynamic_dispatch_bounds_cruxes_and_prioritizes_untested_without_starvation(self):
+        st = crux_engine.new_state(
+            "bounded", "bounded", "3-6M",
+            [
+                {"id": "C1", "label": "one"},
+                {"id": "C2", "label": "two"},
+                {"id": "C3", "label": "three"},
+            ],
+        )
+        first = orchestrator.dispatch_prompts(st, 1)
+        self.assertEqual(first["open_cruxes"], ["C1", "C2", "C3"])
+        self.assertEqual(first["dispatch_cruxes"], ["C1", "C2"])
+        self.assertEqual(first["round_policy"]["deferred_open_cruxes"], ["C3"])
+        self.assertIn("最多 4 次网页搜索", first["detective_prompt"])
+
+        st["cruxes"]["C1"]["first_contested"] = 1
+        st["cruxes"]["C2"]["first_contested"] = 1
+        st["rounds"] = [{
+            "round": 1,
+            "judge_raw": {"crux_signals": {"C1": {}, "C2": {}}},
+        }]
+        second = orchestrator.dispatch_prompts(st, 2)
+        self.assertEqual(second["dispatch_cruxes"][0], "C3")
+        self.assertEqual(len(second["dispatch_cruxes"]), 2)
+
     def test_evolution_path_falls_back_to_nonempty_configured_vault(self):
         with tempfile.TemporaryDirectory() as root:
             skill_dir = os.path.join(root, "skill")

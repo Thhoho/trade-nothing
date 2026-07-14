@@ -27,6 +27,9 @@ DIMENSIONS = (
     "CATALYST",
     "FALSIFIER",
 )
+CORE_DIMENSIONS = (
+    "ECONOMIC_EXPOSURE", "EXPECTATION_GAP", "TRADABILITY", "CATALYST",
+)
 
 QUESTIONS = {
     "ECONOMIC_EXPOSURE": "候选是否能直接且实质地承接该价值转移，而不是只有主题相关性？",

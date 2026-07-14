@@ -360,6 +360,8 @@ class CandidateScreenOrchestratorTests(unittest.TestCase):
         self.assertEqual(dispatch["status"], "dispatch_candidate_screeners")
         self.assertIn("OS-TEST", dispatch["analyst_prompt"])
         self.assertIn("pricing_anchor", dispatch["analyst_prompt"])
+        self.assertIn("cheap-first", dispatch["analyst_prompt"])
+        self.assertIn("其余维度填 UNKNOWN", dispatch["skeptic_prompt"])
         self.assertNotIn("selection_rank", dispatch["analyst_prompt"])
         self.assertEqual(dispatch["max_batch"], 3)
         self.assertEqual(dispatch["selection_audit"][0]["seed_id"], "OS-TEST")

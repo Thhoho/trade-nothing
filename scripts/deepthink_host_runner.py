@@ -182,13 +182,33 @@ def execute_round(context, *, agy_bin, timeout_seconds, allow_agent_tools=False,
     checkpoint.setdefault("prompt_sha256", {
         role: _prompt_hash(prompt) for role, prompt in role_prompts.items()
     })
-    if checkpoint["prompt_sha256"] != {
+    expected_prompt_hashes = {
         role: _prompt_hash(prompt) for role, prompt in role_prompts.items()
-    }:
-        return _pause(
-            context, stage_id, checkpoint, ["manual_review"],
-            "checkpoint_prompt_hash_mismatch", budget
+    }
+    if checkpoint["prompt_sha256"] != expected_prompt_hashes:
+        old_records = checkpoint.get("roles") if isinstance(checkpoint.get("roles"), dict) else {}
+        records_to_check = list(old_records.values())
+        if isinstance(checkpoint.get("judge"), dict):
+            records_to_check.append(checkpoint["judge"])
+        has_successful_payload = any(
+            isinstance(record, dict)
+            and isinstance(record.get("payload"), dict)
+            and record.get("exit_code") == 0
+            and record.get("payload_sha256")
+            == run_registry.canonical_json_hash(record.get("payload"))
+            for record in records_to_check
         )
+        if checkpoint.get("submitted") or has_successful_payload:
+            return _pause(
+                context, stage_id, checkpoint, ["manual_review"],
+                "checkpoint_prompt_hash_mismatch", budget
+            )
+        checkpoint = {
+            "prompt_sha256": expected_prompt_hashes,
+            "superseded_prompt_sha256": checkpoint.get("prompt_sha256", {}),
+            "roles": {},
+            "status": "restarted_after_failed_prompt_drift",
+        }
     records = checkpoint.setdefault("roles", {})
     missing = [
         role for role, prompt in role_prompts.items()

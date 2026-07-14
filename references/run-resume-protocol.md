@@ -13,7 +13,9 @@ identity, stage checkpoints, and bounded continuation.
    timeout state, and sanitized error code. Never persist transcript or stdout/stderr tails.
 5. Mark a round `submitted=true` only after the deterministic orchestrator saves it.
 6. A resumed round reuses a successful hash-matching role and runs only missing or invalid roles.
-7. Prompt-hash drift requires manual review; never combine a saved payload with a changed prompt.
+7. Prompt-hash drift requires manual review whenever any successful payload exists; never combine a
+   saved payload with a changed prompt. A checkpoint containing only failed, payload-free attempts
+   may be superseded while preserving the old prompt hashes for audit.
 8. No automatic retry. `resume` is an explicit new budget authorization.
 
 ## Stage envelope

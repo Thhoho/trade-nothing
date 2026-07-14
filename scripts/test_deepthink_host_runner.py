@@ -162,6 +162,40 @@ class HostRunnerTests(unittest.TestCase):
             resumed["result"],
         )
 
+    def test_prompt_drift_discards_only_failed_payload_free_checkpoint(self):
+        run_registry.save_checkpoint(self.context["run_id"], "round-1", {
+            "prompt_sha256": {"detective": "old", "inquisitor": "old"},
+            "roles": {
+                "detective": {"exit_code": 1, "payload": None, "payload_sha256": ""},
+                "inquisitor": {"exit_code": 1, "payload": None, "payload_sha256": ""},
+            },
+        })
+        calls = []
+        def successful(role, prompt, agy_bin, timeout_seconds, allow_agent_tools=False,
+                       workdir=""):
+            calls.append(role)
+            if role == "detective":
+                payload = {"evidence_chain": [{"claim_node": "det", "source": "source"}]}
+            elif role == "inquisitor":
+                payload = {"lethal_attack_vectors": [{"attack": "inq", "evidence_audit": "s"}]}
+            else:
+                payload = {"round": 1, "crux_signals": {
+                    "C1": {"signal": 0, "rationale": "none", "citations": []},
+                    "C2": {"signal": 0, "rationale": "none", "citations": []},
+                }, "new_cruxes": []}
+            return result(role, prompt, payload)
+
+        with mock.patch.object(runner, "_run_role", side_effect=successful):
+            resumed = runner.execute_round(
+                self.context, agy_bin="agy", timeout_seconds=60
+            )
+        self.assertNotEqual(resumed["status"], "paused_runtime_failure")
+        self.assertEqual(calls, ["detective", "inquisitor", "judge"])
+        stored = run_registry.load_checkpoint(self.context["run_id"], "round-1")
+        self.assertEqual(stored["superseded_prompt_sha256"], {
+            "detective": "old", "inquisitor": "old",
+        })
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

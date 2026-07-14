@@ -486,9 +486,38 @@ def _open_cruxes(state):
     return [cid for cid, cx in state["cruxes"].items() if not cx["retired"]]
 
 
+def _last_scored_round(state, crux_id):
+    for round_record in reversed(state.get("rounds", [])):
+        judge = round_record.get("judge_raw") if isinstance(round_record, dict) else {}
+        signals = judge.get("crux_signals", {}) if isinstance(judge, dict) else {}
+        if crux_id in signals:
+            return int(round_record.get("round") or 0)
+    return 0
+
+
+def _dispatch_cruxes(state, open_ids, limit=2):
+    """Bound each round while preventing untested or stale crux starvation."""
+    try:
+        configured = int(state.get("config", {}).get("MAX_CRUXES_PER_ROUND", limit))
+    except (TypeError, ValueError):
+        configured = limit
+    configured = max(1, min(3, configured))
+    ranked = sorted(
+        open_ids,
+        key=lambda cid: (
+            0 if state["cruxes"][cid].get("first_contested") is None else 1,
+            _last_scored_round(state, cid),
+            abs(float(state["cruxes"][cid].get("p_history", [0.5])[-1]) - 0.5),
+            cid,
+        ),
+    )
+    return ranked[:configured]
+
+
 def _round_policy(state, round_num):
     open_ids = _open_cruxes(state)
     untested = [cid for cid in open_ids if state["cruxes"][cid].get("first_contested") is None]
+    dispatch_ids = _dispatch_cruxes(state, open_ids)
     try:
         max_rounds = int(state.get("config", {}).get("MAX_ROUNDS", crux_engine.MAX_ROUNDS))
     except (TypeError, ValueError):
@@ -496,6 +525,8 @@ def _round_policy(state, round_num):
     new_crux_cutoff = max(0, max_rounds - crux_engine.DRY_ROUNDS)
     return {
         "open_cruxes": open_ids,
+        "dispatch_cruxes": dispatch_ids,
+        "deferred_open_cruxes": [cid for cid in open_ids if cid not in dispatch_ids],
         "untested_cruxes": untested,
         "free_roam_allowed": not untested and round_num < max_rounds,
         "new_cruxes_allowed": round_num <= new_crux_cutoff,
@@ -582,7 +613,7 @@ def _admit_new_cruxes(state, proposed, round_num, policy):
 
 
 def _enforce_round_scope(judge, state, policy, admitted_ids):
-    allowed = set(policy["open_cruxes"]) | set(admitted_ids)
+    allowed = set(policy.get("dispatch_cruxes", policy["open_cruxes"])) | set(admitted_ids)
     reopen_candidates = []
     if policy["free_roam_allowed"]:
         for cid, signal in judge.get("crux_signals", {}).items():
@@ -624,7 +655,7 @@ def frame_prompt(topic):
 
 def dispatch_prompts(state, round_num):
     policy = _round_policy(state, round_num)
-    open_ids = policy["open_cruxes"]
+    open_ids = policy["dispatch_cruxes"]
     fc = state.get("forbidden_consensus", [])
     lines = []
     for cid in open_ids:
@@ -669,7 +700,8 @@ def dispatch_prompts(state, round_num):
     )
     budget_directive = (
         "\n🧮 有界研究预算（硬上限）:\n"
-        "  1. 每个 agent 本轮最多 10 次网页搜索，每条 OPEN crux 最多 2 次\n"
+        f"  1. 每个 agent 本轮最多 {min(10, 2 * max(1, len(open_ids)))} 次网页搜索，"
+        "每条本轮 crux 最多 2 次\n"
         "  2. 每条 crux 最多保留 2 个一级来源 + 1 个补充来源\n"
         "  3. 连续 2 次搜索没有新增一级证据，立即返回 UNKNOWN/INSUFFICIENT_EVIDENCE\n"
         "  4. 禁止重复查询、重复域名和为了必须回答而换词无限搜索"
@@ -678,6 +710,8 @@ def dispatch_prompts(state, round_num):
         f"\n🎯 本轮调度契约: free_roam_allowed={str(policy['free_roam_allowed']).lower()}, "
         f"new_cruxes_allowed={str(policy['new_cruxes_allowed']).lower()}, "
         f"new_crux_cutoff_round={policy['new_crux_cutoff_round']}。\n"
+        f"本轮只处理 {policy['dispatch_cruxes']}；延后但仍 OPEN: "
+        f"{policy['deferred_open_cruxes']}。\n"
         "未检验 crux 永远优先；若 free-roam 或新增 crux 被禁用，不得用旧 crux 或新主题替代当前任务。"
     )
     common = (f"决策问题: {state['decision_question']} | 视野: {state['horizon']} | as-of: "
@@ -718,7 +752,8 @@ def dispatch_prompts(state, round_num):
              f"读 Detective/Inquisitor 两份 JSON，对 OPEN crux {open_ids} 各打一个 signal∈[-1,1]+引用，"
              f"free-roam={policy['free_roam_allowed']}，new_cruxes={policy['new_cruxes_allowed']}。"
              "严格按 judge.md 的 JSON 输出。")
-    return {"open_cruxes": open_ids, "round_policy": policy,
+    return {"open_cruxes": policy["open_cruxes"], "dispatch_cruxes": open_ids,
+            "round_policy": policy,
             "detective_prompt": det, "inquisitor_prompt": inq, "judge_prompt": judge}
 
 
@@ -745,7 +780,10 @@ def candidate_screen_prompts(state, seeds, as_of_date):
         f"research_horizon: {state.get('horizon', '3-6M')}\n"
         "候选包:\n" + json.dumps(packet, ensure_ascii=False, indent=2) + "\n"
         "固定问题:\n" + json.dumps(candidate_screen_engine.QUESTIONS, ensure_ascii=False, indent=2) + "\n"
-        "硬约束: 每个候选回答全部八个维度；YES/NO 必须有新鲜、具体 URL 证据；"
+        "cheap-first 顺序: 先查 ECONOMIC_EXPOSURE / EXPECTATION_GAP / TRADABILITY / CATALYST。"
+        "任一核心维度为 NO 或 UNKNOWN 时，停止该候选的扩展检索，并把其余维度填 UNKNOWN、"
+        "evidence=[]；只有四个核心维度全部 YES 才继续查估值、治理、拥挤度和证伪。\n"
+        "硬约束: 最终仍回答全部八个维度；YES/NO 必须有新鲜、具体 URL 证据；"
         "无证据写 UNKNOWN；禁止目标价、收益率、概率、排名和仓位。"
     )
     analyst = (
@@ -1461,7 +1499,7 @@ def selftest():
         st = _load(topic)
         # mock judge output from SIG, scoped to currently-open cruxes; introduce late cruxes here
         new = [LATE[r]] if r in LATE else []
-        score_ids = set(_open_cruxes(st) + [c["id"] for c in new])
+        score_ids = set(dispatch_prompts(st, r)["dispatch_cruxes"] + [c["id"] for c in new])
         if r in FREEROAM:                       # free-roam may score a retired crux -> re-open
             score_ids.add(FREEROAM[r][0])
         cs = {}

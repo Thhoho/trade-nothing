@@ -20,6 +20,14 @@ promoting a draft.
 4. Submit both JSON payloads to candidate_screen_engine.py.
 5. Preserve disagreement. Do not ask an LLM Judge to average it away.
 
+Use an agent-local cheap-first order for each seed. Both roles first answer
+ECONOMIC_EXPOSURE, EXPECTATION_GAP, TRADABILITY, and CATALYST. If either role finds any of its core
+dimensions NO or UNKNOWN, that role stops expanded research for the seed and fills all remaining
+dimensions with UNKNOWN and empty evidence. It must still return the complete eight-dimension
+schema. Only a role with four core YES answers researches valuation, governance, crowding, and
+falsifier. The deterministic combination rule is unchanged; this saves cost without weakening a
+gate or treating missing work as support.
+
 The host must submit screen isolation as verified, degraded, or unverified. A claimed value of
 `verified` is insufficient. Only verified physical isolation with a validated
 `candidate-screen-isolation.v1` receipt is eligible for THESIS_CANDIDATE. The receipt binds the

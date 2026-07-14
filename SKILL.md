@@ -291,9 +291,11 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > `actionability`. `NO_EDGE` means no usable expectation gap was established; it never means
 > `AVOID` or `SHORT`. A short direction requires an independently admitted short seed and screen.
 
-> **Cost integrity:** each research agent gets at most 10 web searches per round and at most 2 per
-> OPEN crux. Stop after 2 searches without new primary evidence and return `UNKNOWN`. When untested
-> cruxes exist, disable free-roam and do not redispatch resolved cruxes. Parent/orchestrator contexts
+> **Cost integrity:** each round deterministically dispatches at most two OPEN cruxes, prioritizing
+> untested, least-recently-scored, and decision-uncertain cruxes without retiring deferred work. Each
+> research agent gets at most 2 searches per dispatched crux. Stop after 2 searches without new
+> primary evidence and return `UNKNOWN`. When untested cruxes exist, disable free-roam and do not
+> redispatch resolved cruxes. Parent/orchestrator contexts
 > consume structured JSON, compact packets, and final artifacts only—never raw transcripts or search logs.
 > Every delegated stage must use the bounded waits in `references/runtime-protocol.md`. A timeout
 > must emit `--runtime-failure`; never fabricate missing JSON, wait indefinitely, or retry automatically.
@@ -344,6 +346,9 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > verified isolation. Antigravity users should run `scripts/agy_candidate_screen_runner.py` rather
 > than manually submitting two role payloads. Tool permission bypass is never implicit: add
 > `--allow-agent-tools` only when the caller has explicitly authorized non-interactive agent tools.
+> Both screen roles use cheap-first order: economic exposure, expectation gap, tradability, and
+> catalyst first. A NO or UNKNOWN core answer stops expanded research for that seed; the role still
+> returns all eight dimensions and marks unresearched fields UNKNOWN. Missing work never becomes YES.
 
 > **Source-content integrity:** capture each decisive URL with `scripts/evidence_snapshot.py`
 > or an equivalent host fetcher, then run `agents/claim_verifier.md` independently. SUPPORTS and
