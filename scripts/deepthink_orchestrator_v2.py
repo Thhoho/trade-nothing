@@ -1258,7 +1258,7 @@ def cmd_resume_blocked(topic, extra_rounds=0):
     )
     return out
 
-def cmd_report(topic, challenge_only=False):
+def cmd_report(topic, challenge_only=False, report_view="full", include_synthesis=False):
     state = _load(topic)
     if not state:
         return {"status": "error", "reason": "状态不存在。"}
@@ -1304,7 +1304,8 @@ def cmd_report(topic, challenge_only=False):
     opportunity_counts = opportunity_engine.summary(state)
     candidate_counts = candidate_screen_engine.summary(state)
     verification_counts = claim_verification_engine.summary(state)
-    return {"status": "report_data_ready", "topic": topic,
+    view_model = report_v2.build_report_view_model(state)
+    out = {"status": "report_data_ready", "topic": topic,
             "decision": rd["decision"], "binding_crux": rd["binding_crux"],
             "focus_crux": rd["focus_crux"], "aggregation_rule": rd["aggregation_rule"],
             "research_verdict": rd["research_verdict"],
@@ -1315,14 +1316,22 @@ def cmd_report(topic, challenge_only=False):
             **candidate_counts,
             **verification_counts,
             "model": model_for("battle_log_synthesis"),
-            "report_markdown": report_v2.render(state),
-            "synthesis_packet": research_output.build_synthesis_packet(state),
+            "report_view": report_view,
+            "available_report_views": ["brief", "cards", "audit", "full"],
+            "report_view_model": view_model,
+            "report_markdown": report_v2.render(state, view=report_view),
             "audit_state_path": _path(topic),
             "instruction": (
                 "默认正式报告已是可读确定性产物，不含 raw agent dump。"
-                "如需增强叙事，只可使用 synthesis_packet 与报告 References；"
+                "父上下文优先消费 report_view_model 或 brief；"
                 "不得读取 transcript、扩展候选或改变 engine 状态。"
             )}
+    if include_synthesis:
+        out["synthesis_packet"] = research_output.build_synthesis_packet(state)
+        out["instruction"] += (
+            " 已显式包含 synthesis_packet；它只允许增强叙事，不得改变状态词。"
+        )
+    return out
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
@@ -1365,6 +1374,11 @@ def main():
     ap.add_argument("--claim-id", default="")
     ap.add_argument("--challenge-only", action="store_true",
                     help="render root-thesis report without default opportunity CandidateScreen")
+    ap.add_argument("--report-view", default="full",
+                    choices=["brief", "cards", "audit", "full"],
+                    help="select one deterministic report view")
+    ap.add_argument("--include-synthesis", action="store_true",
+                    help="include optional compact synthesis input; off by default to save context")
     ap.add_argument("--extra-rounds", type=int, default=0)
     ap.add_argument("--stage", default="")
     ap.add_argument("--reason", default="")
@@ -1414,7 +1428,12 @@ def main():
     if a.frame:  out = cmd_frame(a.topic)
     elif a.init: out = cmd_init(a.topic, _jload(a.frame_json), a.runtime_isolation)
     elif a.submit: out = cmd_submit(a.topic, _jload(a.det), _jload(a.inq), _jload(a.judge))
-    elif a.report: out = cmd_report(a.topic, challenge_only=a.challenge_only)
+    elif a.report: out = cmd_report(
+        a.topic,
+        challenge_only=a.challenge_only,
+        report_view=a.report_view,
+        include_synthesis=a.include_synthesis,
+    )
     elif a.resolution_memo: out = cmd_resolution_memo(a.topic)
     elif a.resume_blocked: out = cmd_resume_blocked(a.topic, a.extra_rounds)
     elif a.screen: out = cmd_screen(a.topic, a.as_of, a.seed_id)

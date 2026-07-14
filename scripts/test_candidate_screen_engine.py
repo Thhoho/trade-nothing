@@ -444,6 +444,13 @@ class CandidateScreenReportTests(unittest.TestCase):
             "https://fixture-analyst-economic-exposure.org/screen/analyst-economic_exposure",
             md,
         )
+        self.assertLess(md.index("# Candidate Cards"), md.index("# Audit Appendix"))
+        model = report_v2.build_report_view_model(st)
+        self.assertEqual(model["candidate_cards"][0]["candidate_state"], "THESIS_CANDIDATE")
+        self.assertEqual(
+            model["candidate_cards"][0]["next_action_code"],
+            "RUN_CLAIM_VERIFICATION",
+        )
 
 
 if __name__ == "__main__":

@@ -521,6 +521,52 @@ class OrchestratorTests(unittest.TestCase):
 
 
 class ReportSafetyTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.old_scratch = os.environ.get("TRADE_NOTHING_SCRATCH_DIR")
+        os.environ["TRADE_NOTHING_SCRATCH_DIR"] = self.tmp.name
+
+    def tearDown(self):
+        if self.old_scratch is None:
+            os.environ.pop("TRADE_NOTHING_SCRATCH_DIR", None)
+        else:
+            os.environ["TRADE_NOTHING_SCRATCH_DIR"] = self.old_scratch
+        self.tmp.cleanup()
+
+    def test_full_report_leads_with_decision_brief_and_defers_audit(self):
+        md = report_v2.render(converged_state())
+        self.assertTrue(md.startswith("# Decision Brief"))
+        self.assertLess(md.index("# Candidate Cards"), md.index("# Audit Appendix"))
+        self.assertLess(md.index("# Audit Appendix"), md.index("## A · 证明账本"))
+        self.assertIn("<details><summary>展开完整证据、状态、来源与运行审计</summary>", md)
+
+    def test_report_view_model_excludes_raw_role_payloads(self):
+        st = converged_state()
+        st["rounds"] = [{
+            "round": 1,
+            "detective_raw": {"private": "do not expose"},
+            "inquisitor_raw": {"private": "do not expose"},
+        }]
+        model = report_v2.build_report_view_model(st)
+        encoded = json.dumps(model, ensure_ascii=False)
+        self.assertEqual(model["schema_version"], "trade-nothing.report-view-model.v1")
+        self.assertNotIn("do not expose", encoded)
+        self.assertNotIn("detective_raw", encoded)
+        self.assertEqual(model["next_action"]["code"], "STOP_NO_PROMOTABLE_CANDIDATE")
+
+    def test_each_report_view_uses_same_three_axis_verdict(self):
+        st = converged_state()
+        model = report_v2.build_report_view_model(st)
+        brief = report_v2.render(st, view="brief")
+        full = report_v2.render(st, view="full")
+        for value in model["verdict"].values():
+            self.assertIn(str(value), brief)
+            self.assertIn(str(value), full)
+
+    def test_report_rejects_unknown_view(self):
+        with self.assertRaisesRegex(ValueError, "unknown report view"):
+            report_v2.render(converged_state(), view="raw-transcript")
+
     def test_report_has_no_sizing_or_numeric_scenario_request(self):
         md = report_v2.render(converged_state())
         self.assertNotIn("Half-Kelly", md)
@@ -625,6 +671,44 @@ class ReportSafetyTests(unittest.TestCase):
         self.assertIn("PROVISIONAL_UNVERIFIED", md)
         self.assertIn("unverified seed", md)
         self.assertIn("requires_explicit_user_opt_in", md)
+
+    def test_orchestrator_can_emit_brief_without_synthesis_packet(self):
+        topic = "brief report view"
+        st = converged_state()
+        st["cruxes"]["C1"].update({
+            "status": "MONITORABLE",
+            "retired": True,
+            "first_contested": 1,
+            "contested_history": [0.5, 0.5, 0.5],
+            "citations": [citation("brief-a"), citation("brief-b")],
+        })
+        orchestrator._save(topic, st)
+        out = orchestrator.cmd_report(topic, challenge_only=True, report_view="brief")
+        self.assertEqual(out["status"], "report_data_ready")
+        self.assertEqual(out["report_view"], "brief")
+        self.assertTrue(out["report_markdown"].startswith("# Decision Brief"))
+        self.assertNotIn("# Audit Appendix", out["report_markdown"])
+        self.assertNotIn("synthesis_packet", out)
+        self.assertEqual(
+            out["report_view_model"]["schema_version"],
+            "trade-nothing.report-view-model.v1",
+        )
+
+    def test_synthesis_packet_requires_explicit_opt_in(self):
+        topic = "brief report synthesis opt in"
+        st = converged_state()
+        st["cruxes"]["C1"].update({
+            "status": "MONITORABLE",
+            "retired": True,
+            "first_contested": 1,
+            "contested_history": [0.5, 0.5, 0.5],
+            "citations": [citation("synthesis-a"), citation("synthesis-b")],
+        })
+        orchestrator._save(topic, st)
+        out = orchestrator.cmd_report(
+            topic, challenge_only=True, report_view="brief", include_synthesis=True
+        )
+        self.assertIn("synthesis_packet", out)
 
 
 if __name__ == "__main__":

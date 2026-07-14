@@ -243,6 +243,9 @@ python3 scripts/deepthink_orchestrator_v2.py --submit --topic "TARGET" \
 #    user explicitly requests thesis critique without opportunity screening. The default report is
 #    compact, deterministic, and never embeds raw agent payloads.
 python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET"
+# Low-context decision view (does not include synthesis input unless explicitly requested):
+python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET" --report-view brief
+# Read references/report-contract.md before changing report status words, views, or next actions.
 # Explicit thesis-critique-only escape hatch:
 python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET" --challenge-only
 
@@ -356,6 +359,10 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > tampered hashes and invented quotes are rejected. Full page bodies are not persisted in state.
 > `VERIFIED` means claim-to-snapshot alignment, not that the publisher or claim is objectively true.
 > Read `references/claim-verification-protocol.md` before verification.
+
+For method evaluation, read `references/benchmark-protocol.md` and use
+`scripts/benchmark_harness.py`. Never expose blind assessments, expected paths, or post-as-of
+outcomes to a research role, and never let a research result score itself.
 
 **Data tiers (取数分层):** Tier-2 = WebSearch (the sub-agents' primary qualitative engine — broad,
 robust, carries URLs that flow into the ledger/References). Tier-1 = `scripts/tier1_providers.py`

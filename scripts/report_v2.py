@@ -128,7 +128,212 @@ def _extract_raw_material(state):
     return material
 
 
-def render(state):
+def _candidate_next_action(candidate_state):
+    return {
+        opportunity_engine.VERIFIED_FOR_HUMAN: (
+            "HUMAN_REVIEW_PROMOTION_PACKET",
+            "人工审阅升级包；若认可，建立一条全新的 DRAFT Thesis。",
+        ),
+        opportunity_engine.THESIS_CANDIDATE: (
+            "RUN_CLAIM_VERIFICATION",
+            "只核验决定晋级的最小 claim 集，不重跑整份研究。",
+        ),
+        opportunity_engine.READY: (
+            "RUN_CANDIDATE_SCREEN",
+            "运行隔离的 Candidate Analyst / Skeptic 双边筛选。",
+        ),
+        opportunity_engine.WATCHLIST: (
+            "CLOSE_SCREEN_GAPS_OR_WAIT",
+            "补齐明确的筛选缺口，或等待已定义催化；不得建立 Thesis。",
+        ),
+        opportunity_engine.REJECTED: (
+            "ARCHIVE_REJECTION",
+            "保留否决原因；除非出现新事实，不得复活原 seed。",
+        ),
+        opportunity_engine.EVIDENCE_BACKED: (
+            "COMPLETE_SEED_CONTRACT",
+            "补齐经济暴露、预期差、定价锚、催化或反证；当前只是一条线索。",
+        ),
+    }.get(candidate_state, ("STOP_UNKNOWN_STATE", "停止晋级并检查候选状态。"))
+
+
+def _candidate_cards(state):
+    latest_screens = candidate_screen_engine.latest_by_seed(state)
+    seed_by_id = {
+        seed.get("seed_id"): seed for seed in state.get("opportunity_seeds", [])
+        if isinstance(seed, dict) and seed.get("seed_id")
+    }
+    latest_screen_by_entity = {}
+    for seed_id, screen in latest_screens.items():
+        seed = seed_by_id.get(seed_id)
+        if not seed:
+            continue
+        identity = opportunity_engine.entity_identity(seed)
+        current = latest_screen_by_entity.get(identity)
+        order = (str(screen.get("as_of_date") or ""), str(screen.get("screen_id") or ""))
+        current_order = (
+            str((current or {}).get("as_of_date") or ""),
+            str((current or {}).get("screen_id") or ""),
+        )
+        if current is None or order >= current_order:
+            latest_screen_by_entity[identity] = screen
+
+    cards = []
+    for entity in opportunity_engine.entity_views(state):
+        seed = entity.get("representative_seed") or {}
+        if not seed.get("seed_id"):
+            continue
+        promotion = opportunity_engine.promotion_assessment(state, seed)
+        candidate_state = promotion["candidate_state"]
+        screen = (
+            latest_screens.get(seed.get("seed_id"))
+            or latest_screen_by_entity.get(entity.get("entity_identity"))
+            or {}
+        )
+        action_code, action_text = _candidate_next_action(candidate_state)
+        cards.append({
+            "entity_id": entity.get("entity_id"),
+            "seed_id": seed.get("seed_id"),
+            "candidate": _clean(seed.get("candidate")),
+            "ticker": _clean(seed.get("ticker")) if seed.get("ticker") else "",
+            "asset_type": _clean(seed.get("asset_type")),
+            "relation_type": _clean(seed.get("relation_type")),
+            "origin_crux": _clean(seed.get("origin_crux")),
+            "candidate_state": candidate_state,
+            "promotion_eligibility": promotion["promotion_eligibility"],
+            "blocking_reasons": promotion["blocking_reasons"],
+            "economic_exposure": _clean(seed.get("economic_exposure")),
+            "expectation_gap": _clean(seed.get("why_market_may_miss")),
+            "pricing_anchor": opportunity_engine.pricing_anchor_text(seed.get("pricing_anchor")),
+            "catalyst": _clean(seed.get("catalyst")),
+            "falsifier": _clean(seed.get("falsifier")),
+            "screen_status": screen.get("status", "UNSCREENED"),
+            "claim_verification_status": screen.get(
+                "claim_verification_status", "NOT_APPLICABLE"
+            ),
+            "isolation_status": screen.get("isolation_status", "unverified"),
+            "path_count": len(entity.get("paths", [])),
+            "next_action_code": action_code,
+            "next_action": action_text,
+        })
+    priority = {
+        opportunity_engine.VERIFIED_FOR_HUMAN: 0,
+        opportunity_engine.THESIS_CANDIDATE: 1,
+        opportunity_engine.READY: 2,
+        opportunity_engine.WATCHLIST: 3,
+        opportunity_engine.EVIDENCE_BACKED: 4,
+        opportunity_engine.REJECTED: 5,
+    }
+    cards.sort(key=lambda item: (
+        priority.get(item["candidate_state"], 99),
+        item["candidate"],
+        item["seed_id"],
+    ))
+    return cards
+
+
+def build_report_view_model(state):
+    """Build the deterministic user-facing projection used by every report view.
+
+    The view model contains no raw role payloads. It keeps root-thesis truth,
+    candidate maturity, and the next legal action separate so renderers cannot
+    turn a valid report into an investment recommendation.
+    """
+    if state.get("last_convergence", {}).get("decision") != "converge":
+        raise ValueError("formal report blocked: engine state is not converged")
+    opportunity_engine.refresh_candidate_states(state)
+    rd = crux_engine.report_data(state)
+    verdict = rd.get("research_verdict", {})
+    cards = _candidate_cards(state)
+    survived = [
+        item for item in rd["cruxes"] if item.get("status") == "RESOLVED_BULL"
+    ]
+    falsified = [
+        item for item in rd["cruxes"] if item.get("status") == "RESOLVED_BEAR"
+    ]
+    monitorable = [
+        item for item in rd["cruxes"] if item.get("status") == "MONITORABLE"
+    ]
+    focus_id = rd.get("binding_crux") or rd.get("focus_crux")
+    focus = next((item for item in rd["cruxes"] if item["id"] == focus_id), None)
+    if cards:
+        next_action_code = cards[0]["next_action_code"]
+        next_action = cards[0]["next_action"]
+        next_action_candidate = cards[0]["candidate"]
+    elif verdict.get("actionability") == "MONITOR":
+        next_action_code = "WAIT_FOR_MONITOR"
+        next_action = "等待已定义的监控事件；在新事实出现前停止追加搜索。"
+        next_action_candidate = ""
+    else:
+        next_action_code = "STOP_NO_PROMOTABLE_CANDIDATE"
+        next_action = "停止候选晋级；本轮没有可进入下一阶段的证据路径。"
+        next_action_candidate = ""
+    catalyst = (focus or {}).get("catalyst_window", {})
+    trigger = (
+        catalyst.get("event") if isinstance(catalyst, dict) else ""
+    ) or (focus or {}).get("monitor_anchor") or "未定义"
+    falsifier = (focus or {}).get("falsifier") or "未定义"
+    counts = {
+        "lead_count": len(cards),
+        "ready_for_screening_count": sum(
+            card["candidate_state"] == opportunity_engine.READY for card in cards
+        ),
+        "screened_count": sum(card["screen_status"] != "UNSCREENED" for card in cards),
+        "thesis_candidate_count": sum(
+            card["candidate_state"] == opportunity_engine.THESIS_CANDIDATE for card in cards
+        ),
+        "verified_for_human_count": sum(
+            card["candidate_state"] == opportunity_engine.VERIFIED_FOR_HUMAN for card in cards
+        ),
+        "watchlist_count": sum(
+            card["candidate_state"] == opportunity_engine.WATCHLIST for card in cards
+        ),
+        "rejected_count": sum(
+            card["candidate_state"] == opportunity_engine.REJECTED for card in cards
+        ),
+    }
+    return {
+        "schema_version": "trade-nothing.report-view-model.v1",
+        "topic": _clean(state.get("topic")),
+        "decision_question": _clean(state.get("decision_question")),
+        "horizon": _clean(state.get("horizon")),
+        "question_type": verdict.get("question_type", rd.get("question_type", "CONJUNCTIVE")),
+        "verdict": {
+            "edge_state": verdict.get("edge_state", "INSUFFICIENT_EVIDENCE"),
+            "evidence_direction": verdict.get("evidence_direction", "UNDETERMINED"),
+            "actionability": verdict.get("actionability", "NONE"),
+            "reason_code": verdict.get("reason_code", "LEGACY_STATE"),
+        },
+        "root_thesis": {
+            "survived": survived,
+            "falsified": falsified,
+            "monitorable": monitorable,
+            "focus": focus,
+        },
+        "candidate_counts": counts,
+        "candidate_cards": cards,
+        "next_action": {
+            "code": next_action_code,
+            "candidate": next_action_candidate,
+            "instruction": next_action,
+        },
+        "change_trigger": {
+            "focus_crux": focus_id or "",
+            "event": _clean(trigger),
+            "falsifier": _clean(falsifier),
+        },
+        "runtime": {
+            "isolation_status": state.get("runtime_contract", {}).get(
+                "isolation_status", "unverified"
+            ),
+            "round_count": len(state.get("rounds", [])),
+            "unique_source_count": rd.get("n_unique_sources", 0),
+            "primary_source_count": rd.get("n_primary_sources", 0),
+        },
+    }
+
+
+def _render_audit(state, include_title=True):
     if state.get("last_convergence", {}).get("decision") != "converge":
         raise ValueError("formal report blocked: engine state is not converged")
     opportunity_engine.refresh_candidate_states(state)
@@ -256,10 +461,11 @@ def render(state):
     L = []
 
     # ─────────── FIXED LAYER ───────────
-    L.append(f"# Trade Nothing v0.10 深度研究报告 — {topic}")
-    L.append(f"> 决策问题: {state.get('decision_question','')} ｜ 视野: {state.get('horizon','')}")
-    L.append(f"> 假设种子: {state.get('thesis_seed','')}")
-    L.append("")
+    if include_title:
+        L.append(f"# Trade Nothing v0.10 深度研究报告 — {topic}")
+        L.append(f"> 决策问题: {state.get('decision_question','')} ｜ 视野: {state.get('horizon','')}")
+        L.append(f"> 假设种子: {state.get('thesis_seed','')}")
+        L.append("")
 
     # 结论
     L.append("## 🧭 研究状态")
@@ -563,6 +769,121 @@ def render(state):
     L.append("- 未完成 CandidateScreen 与页面快照对齐的候选，均不得表述为投资结论。")
     L.append("<!-- BATTLE_LOG_END -->")
     return "\n".join(L)
+
+
+def _render_decision_brief(view):
+    verdict = view["verdict"]
+    counts = view["candidate_counts"]
+    root = view["root_thesis"]
+    survived = "；".join(
+        f"{item['id']} {item['label']}" for item in root["survived"][:3]
+    ) or "无已确认的偏多 crux"
+    falsified = "；".join(
+        f"{item['id']} {item['label']}" for item in root["falsified"][:3]
+    ) or "无已确认被推翻的 crux"
+    monitoring = "；".join(
+        f"{item['id']} {item['label']}" for item in root["monitorable"][:3]
+    ) or "无"
+    next_action = view["next_action"]
+    target = f"（{next_action['candidate']}）" if next_action["candidate"] else ""
+    return "\n".join([
+        f"# Decision Brief — {view['topic']}",
+        f"> 决策问题: {view['decision_question']} ｜ 视野: {view['horizon']} ｜ "
+        f"题型: {view['question_type']}",
+        "",
+        "## 一句话结论",
+        f"- Edge: **{verdict['edge_state']}** ｜ 证据方向: **{verdict['evidence_direction']}** ｜ "
+        f"可行动性: **{verdict['actionability']}**。",
+        f"- 这回答的是命题、证据和研究动作，不是买卖建议；依据代码: `{verdict['reason_code']}`。",
+        "",
+        "## 原想法经质证后发生了什么",
+        f"- **活下来**: {survived}。",
+        f"- **被推翻**: {falsified}。",
+        f"- **仍需监控**: {monitoring}。",
+        "",
+        "## 候选成熟度",
+        f"- 唯一候选 {counts['lead_count']}；可筛选 {counts['ready_for_screening_count']}；"
+        f"已筛选 {counts['screened_count']}；待 claim 核验 {counts['thesis_candidate_count']}；"
+        f"可供人工建 Thesis {counts['verified_for_human_count']}。",
+        "- 根命题成立不等于候选可用；只有 `VERIFIED_FOR_HUMAN` 才能交给人工建立全新 Thesis。",
+        "",
+        "## 当前唯一合法动作",
+        f"- `{next_action['code']}`{target}: {next_action['instruction']}",
+        "",
+        "## 什么会改变结论",
+        f"- 焦点 crux: `{view['change_trigger']['focus_crux'] or '—'}`；"
+        f"观察事件: {view['change_trigger']['event']}；"
+        f"反证条件: {view['change_trigger']['falsifier']}。",
+        "",
+        "## 运行边界",
+        f"- 隔离 `{view['runtime']['isolation_status']}`；轮次 {view['runtime']['round_count']}；"
+        f"可复核来源 {view['runtime']['unique_source_count']}；一级来源 "
+        f"{view['runtime']['primary_source_count']}。",
+        "- 支持度、候选状态和模拟收益均不是概率、预期收益、交易指令或仓位输入。",
+    ])
+
+
+def _render_candidate_cards(view):
+    lines = [
+        "# Candidate Cards",
+        "> 先看状态，再看故事。未完成筛选或 claim 核验的对象都不是推荐。",
+        "",
+    ]
+    cards = view["candidate_cards"]
+    if not cards:
+        lines.extend([
+            "## 0 个候选",
+            "- 本轮没有形成具备有效证据路径的唯一候选；不得用行业关键词或知名公司凑数。",
+        ])
+        return "\n".join(lines)
+    for index, card in enumerate(cards, 1):
+        ticker = f" · {card['ticker']}" if card["ticker"] else ""
+        lines.extend([
+            f"## {index}. {card['candidate']}{ticker}",
+            f"- **候选状态**: `{card['candidate_state']}` ｜ 升级资格: "
+            f"`{card['promotion_eligibility']}` ｜ P1 `{card['screen_status']}` ｜ "
+            f"P2 `{card['claim_verification_status']}`。",
+            f"- **价值路径**: {card['relation_type']} / {card['origin_crux']}；"
+            f"经济暴露: {card['economic_exposure']}。",
+            f"- **预期差**: {card['expectation_gap']}。",
+            f"- **定价锚**: {card['pricing_anchor']}。",
+            f"- **催化 / 反证**: {card['catalyst']} / {card['falsifier']}。",
+            f"- **证据边界**: 隔离 `{card['isolation_status']}`；独立价值路径 "
+            f"{card['path_count']} 条，路径之间不得拼接证据晋级。",
+        ])
+        if card["blocking_reasons"]:
+            lines.append(f"- **阻塞原因**: {', '.join(card['blocking_reasons'])}。")
+        lines.extend([
+            f"- **下一动作**: `{card['next_action_code']}` — {card['next_action']}",
+            "",
+        ])
+    return "\n".join(lines).rstrip()
+
+
+def render_audit(state):
+    """Render the complete evidence ledger for explicit audit use."""
+    return _render_audit(state, include_title=True)
+
+
+def render(state, view="full"):
+    """Render a deterministic brief, candidate-card, audit, or full report."""
+    model = build_report_view_model(state)
+    if view == "brief":
+        return _render_decision_brief(model)
+    if view == "cards":
+        return _render_candidate_cards(model)
+    if view == "audit":
+        return render_audit(state)
+    if view != "full":
+        raise ValueError("unknown report view: expected brief, cards, audit, or full")
+    return "\n\n".join([
+        _render_decision_brief(model),
+        _render_candidate_cards(model),
+        "# Audit Appendix\n"
+        "<details><summary>展开完整证据、状态、来源与运行审计</summary>\n\n"
+        + _render_audit(state, include_title=False)
+        + "\n\n</details>",
+    ])
 
 
 if __name__ == "__main__":
