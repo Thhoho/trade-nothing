@@ -1,0 +1,167 @@
+{
+  "schema_version": "trade-nothing.frozen-corpus.v1",
+  "corpus_id": "v014-cross-theme-primary-extracts",
+  "description": "Mixed as-of primary-source extracts with cross-theme decoys. Inclusion is not an evaluator label.",
+  "documents": [
+    {
+      "doc_id": "DOC-NYCB-Q4-2023",
+      "date": "2024-01-31",
+      "publisher": "New York Community Bancorp / SEC",
+      "title": "NYCB fourth-quarter 2023 results and capital actions",
+      "url": "https://www.sec.gov/Archives/edgar/data/910073/000091007324000034/nycb4q2023earningsrelease.htm",
+      "body": "NYCB recorded a $552 million provision for credit losses versus $62 million in Q3 and $185 million of net charge-offs, driven by two loans. Non-performing assets were 0.38% of assets; the allowance was $992 million and 232% of non-performing loans. The common dividend was cut to $0.05 as the bank accelerated capital building after crossing $100 billion in assets."
+    },
+    {
+      "doc_id": "DOC-FED-FSR-OCT2023",
+      "date": "2023-10-20",
+      "publisher": "Federal Reserve Board",
+      "title": "Financial Stability Report near-term risks",
+      "url": "https://www.federalreserve.gov/publications/2023-october-financial-stability-report-near-term-risks.htm",
+      "body": "Market contacts viewed commercial real estate as a potential stress trigger because of rates, lower property values, and structural office-demand changes. Small and regional banks were viewed as more vulnerable because of higher commercial real-estate concentration."
+    },
+    {
+      "doc_id": "DOC-FDIC-Q3-2023",
+      "date": "2023-11-29",
+      "publisher": "Federal Deposit Insurance Corporation",
+      "title": "Third-quarter 2023 banking profile",
+      "url": "https://www.fdic.gov/news/speeches/2023/spnov2923.html",
+      "body": "Noncurrent non-owner-occupied commercial-real-estate loans rose 36.4% sequentially and the noncurrent rate was the highest since Q3 2014. Industry unrealized securities losses were $683.9 billion, while deposit outflows were moderating."
+    },
+    {
+      "doc_id": "DOC-OCC-FALL-2023",
+      "date": "2023-12-07",
+      "publisher": "Office of the Comptroller of the Currency",
+      "title": "Fall 2023 supervisory risk perspective",
+      "url": "https://www.occ.treas.gov/news-issuances/news-releases/2023/nr-occ-2023-135.html",
+      "body": "The OCC said credit risk was increasing due partly to higher rates and commercial real estate, while the overall federal banking system remained sound."
+    },
+    {
+      "doc_id": "DOC-MARKET-REGIONAL-BANK-PRICES",
+      "date": "2024-02-07",
+      "publisher": "Yahoo Finance and contemporaneous exchange archives",
+      "title": "Regional-bank market observations on 2024-02-07",
+      "url": "https://finance.yahoo.com/",
+      "body": "Unadjusted contemporaneous USD closes: NYCB 4.90, KRE 46.849998474121094, WAL 57.810001373291016. NYCB later completed a reverse split; 4.90 uses the contemporaneous pre-split price convention."
+    },
+    {
+      "doc_id": "DOC-UNCTAD-RED-SEA",
+      "date": "2024-01-26",
+      "publisher": "UN Trade and Development",
+      "title": "Red Sea, Black Sea and Panama Canal trade disruptions",
+      "url": "https://unctad.org/news/red-sea-black-sea-and-panama-canal-unctad-raises-alarm-global-trade-disruptions",
+      "body": "Weekly container-ship transits had fallen 67% and major carriers had suspended Suez transits. Average Shanghai container spot rates had risen 122% since early December; Shanghai-Europe rates were up 256%. Longer routes increase fuel, insurance, labor, and vessel-capacity requirements."
+    },
+    {
+      "doc_id": "DOC-MAERSK-JAN30",
+      "date": "2024-01-30",
+      "publisher": "A.P. Moller - Maersk",
+      "title": "Red Sea and Gulf of Aden operational update",
+      "url": "https://www.maersk.com/news/articles/2024/01/24/red-sea-gulf-aden-service-updates",
+      "body": "Maersk said security risk remained significantly high, cancelled some bookings, and expected delays and significant network disruption."
+    },
+    {
+      "doc_id": "DOC-HAPAG-JAN23",
+      "date": "2024-01-23",
+      "publisher": "Hapag-Lloyd",
+      "title": "Suez Canal situation frequently asked questions",
+      "url": "https://www.hapag-lloyd.com/en/services-information/news/2023/12/faq-for-the-suez-canal-situation.html",
+      "body": "Hapag-Lloyd continued Cape of Good Hope diversions until further notice because the Red Sea remained unsafe."
+    },
+    {
+      "doc_id": "DOC-IMF-JAN-REGIONAL",
+      "date": "2024-01-31",
+      "publisher": "International Monetary Fund",
+      "title": "January 2024 regional economic update",
+      "url": "https://www.imf.org/-/media/files/publications/reo/mcd-cca/2024/update/january/english/text.pdf",
+      "body": "As of January 21, ten-day cumulative Suez shipping volume was almost 50% below the prior year. Europe and Mediterranean to China freight costs had risen more than 400% since mid-November, reflecting insurance and longer-route costs."
+    },
+    {
+      "doc_id": "DOC-YF-RED-SEA-PRICES",
+      "date": "2024-01-31",
+      "publisher": "Yahoo Finance",
+      "title": "Shipping market observations on 2024-01-31",
+      "url": "https://finance.yahoo.com/",
+      "body": "Unadjusted contemporaneous USD closes: ZIM 15.00, MATX 112.02999877929688, AMKBY 9.180000305175781."
+    },
+    {
+      "doc_id": "DOC-LLY-Q1-2024",
+      "date": "2024-04-30",
+      "publisher": "Eli Lilly",
+      "title": "Eli Lilly first-quarter 2024 results",
+      "url": "https://investor.lilly.com/node/50666",
+      "body": "Q1 2024 revenue rose 26%; new-product revenue increased by $1.79 billion to $2.39 billion, led by Mounjaro and Zepbound. Lilly raised full-year revenue guidance by $2 billion while still describing supply constraints and a manufacturing expansion plan."
+    },
+    {
+      "doc_id": "DOC-NVO-Q1-2024",
+      "date": "2024-05-02",
+      "publisher": "Novo Nordisk",
+      "title": "Novo Nordisk first-quarter 2024 results",
+      "url": "https://www.novonordisk.com/investors/financial-results.html",
+      "body": "Novo Nordisk announced results for the first three months of 2024 and showed continued obesity-care growth. Its investor material described a gradual increase in Wegovy supply rather than unconstrained availability."
+    },
+    {
+      "doc_id": "DOC-NVO-CATALENT-SITES",
+      "date": "2024-02-05",
+      "publisher": "Novo Nordisk",
+      "title": "Agreement to acquire three Catalent fill-finish sites",
+      "url": "https://www.novonordisk.com/news-and-media/news-and-ir-materials/news-details.html?id=167017",
+      "body": "Novo Nordisk agreed to acquire three fill-finish sites from Novo Holdings after Novo Holdings' planned Catalent acquisition. Closing depended on the Catalent transaction and approvals; additional filling capacity was expected gradually from 2026 onward."
+    },
+    {
+      "doc_id": "DOC-CATALENT-DEAL",
+      "date": "2024-02-05",
+      "publisher": "Catalent",
+      "title": "Novo Holdings agreement to acquire Catalent",
+      "url": "https://www.catalent.com/catalent-news/novo-holdings-to-acquire-catalent/",
+      "body": "Novo Holdings agreed to acquire Catalent for $63.50 per share; three fill-finish sites were intended for sale to Novo Nordisk. The announced price represented a 16.5% premium to Catalent's February 2 close and 47.5% to its 60-day VWAP."
+    },
+    {
+      "doc_id": "DOC-MARKET-GLP1-PRICES",
+      "date": "2024-05-02",
+      "publisher": "Yahoo Finance and ChartExchange archive",
+      "title": "GLP-1 related market observations on 2024-05-02",
+      "url": "https://chartexchange.com/symbol/nyse-ctlt/historical/",
+      "body": "Unadjusted contemporaneous USD closes: LLY 755.9099731445312, NVO 124.0199966430664, CTLT 56.34."
+    },
+    {
+      "doc_id": "DOC-IEA-ELECTRICITY-2024",
+      "date": "2024-01-24",
+      "publisher": "International Energy Agency",
+      "title": "Electricity 2024 executive summary",
+      "url": "https://www.iea.org/reports/electricity-2024/executive-summary",
+      "body": "The IEA estimated data-center, AI, and crypto electricity consumption could more than double from 460 TWh in 2022 to over 1,000 TWh in 2026."
+    },
+    {
+      "doc_id": "DOC-CEG-MSFT-PPA",
+      "date": "2024-09-20",
+      "publisher": "Constellation Energy",
+      "title": "Twenty-year Microsoft PPA supports Crane restart",
+      "url": "https://investors.constellationenergy.com/news-releases/news-release-details/constellation-launch-crane-clean-energy-center-restoring-jobs",
+      "body": "Constellation announced a 20-year Microsoft PPA supporting restart of the 835 MW Crane Clean Energy Center. The restart targeted 2028 and required NRC approval plus state and local permits; Constellation expected about $1.6 billion of restart investment."
+    },
+    {
+      "doc_id": "DOC-FERC-SUSQUEHANNA",
+      "date": "2024-11-01",
+      "publisher": "Federal Energy Regulatory Commission",
+      "title": "Order on Susquehanna co-located load agreement",
+      "url": "https://www.ferc.gov/sites/default/files/2024-11/20241101-3061_ER24-2172-000.pdf",
+      "body": "FERC rejected without prejudice an amended PJM interconnection agreement increasing co-located load from 300 MW to 480 MW. The proceeding addressed tariff, reliability, cost-allocation, and service-obligation questions for co-located load."
+    },
+    {
+      "doc_id": "DOC-WULF-CORE42",
+      "date": "2024-12-23",
+      "publisher": "TeraWulf",
+      "title": "More than 70 MW of data-center infrastructure for Core42",
+      "url": "https://investors.terawulf.com/news-events/press-releases/detail/99/terawulf-to-deliver-over-70-mw-of-data-center-infrastructure-for-g42s-us-operations",
+      "body": "TeraWulf announced long-term leases to deliver more than 70 MW of data-center infrastructure for Core42 and G42 operations."
+    },
+    {
+      "doc_id": "DOC-YF-AI-POWER-PRICES",
+      "date": "2025-01-31",
+      "publisher": "Yahoo Finance",
+      "title": "AI power infrastructure market observations on 2025-01-31",
+      "url": "https://finance.yahoo.com/",
+      "body": "Unadjusted contemporaneous USD closes: CEG 299.9800109863281, WULF 4.769999980926514, ETN 326.44000244140625, VRT 117.0199966430664."
+    }
+  ]
+}

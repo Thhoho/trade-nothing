@@ -186,6 +186,44 @@ corpus, decoy documents, hidden entity/path labels, retrieval logs, and no live 
 filesystem access. Score source recall, novel valid paths, false discoveries, and cost independently
 from report comprehension. Do not merge the two scopes into one headline metric.
 
+## Frozen-corpus discovery pilot
+
+The persisted `benchmarks/v014-discovery-pilot` suite implements that separate scope. It contains
+three as-of cases, three pinned arms, and twenty curator-frozen primary-source extracts mixed across
+themes so that irrelevant but plausible documents act as decoys. It is a retrieval-method pilot,
+not a full-document corpus, live-web universe test, expected-return test, or alpha claim.
+
+Research roles receive only `dispatch.json` plus two host-mediated commands. `corpus_search` returns
+metadata and a short snippet; `corpus_read` returns a body only after search exposed that document
+ID. The gateway applies the case cutoff date, caps queries and distinct documents, logs every event,
+and becomes immutable when its retrieval receipt is finalized. Keep the evaluator-only answer key
+outside every research context.
+
+```bash
+python3 scripts/discovery_benchmark_harness.py validate-suite \
+  --suite benchmarks/v014-discovery-pilot/suite.json
+python3 scripts/discovery_benchmark_harness.py verify-variants \
+  --suite benchmarks/v014-discovery-pilot/suite.json \
+  --source-repo .
+python3 scripts/discovery_benchmark_harness.py init-run \
+  --suite benchmarks/v014-discovery-pilot/suite.json \
+  --case-id ai_power_infrastructure_2025 \
+  --variant v0_14 \
+  --output-dir /private/tmp/ai-power-v014
+python3 scripts/discovery_benchmark_harness.py search \
+  --run-dir /private/tmp/ai-power-v014 \
+  --query 'data center power interconnection regulation' --limit 5
+python3 scripts/discovery_benchmark_harness.py read \
+  --run-dir /private/tmp/ai-power-v014 --doc-id DOC-FERC-SUSQUEHANNA
+python3 scripts/discovery_benchmark_harness.py finalize-retrieval \
+  --run-dir /private/tmp/ai-power-v014
+```
+
+The host must mediate those calls rather than exposing the CLI, repository, corpus path, or answer
+key to the research model. Store the report, retrieval log, retrieval receipt, host engine receipt,
+result, and later blind assessment together. Only after all nine case/variant pairs are complete may
+`score` produce a comparison-ready summary.
+
 ## Metrics
 
 An assessor records integer counts. The harness derives rates and cost-normalized metrics:
