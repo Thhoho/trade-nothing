@@ -2,6 +2,7 @@
 """Offline regression tests for the two-sided CandidateScreen gate."""
 import copy
 import os
+import re
 import tempfile
 import unittest
 
@@ -15,11 +16,13 @@ AS_OF = "2026-07-10"
 
 
 def citation(path, source=None, date="2026-07-01", tier="primary"):
+    publisher = source or f"Source {path}"
+    publisher_slug = re.sub(r"[^a-z0-9]+", "-", publisher.lower()).strip("-")
     return {
         "claim": f"screen evidence {path}",
         "number": "1",
-        "source": source or f"Source {path}",
-        "url": f"https://example.com/screen/{path}",
+        "source": publisher,
+        "url": f"https://fixture-{publisher_slug}.org/screen/{path}",
         "date": date,
         "source_tier": tier,
     }
@@ -47,7 +50,7 @@ def state_with_seed():
             "current_value": "excludes disclosed contract",
             "comparison_value": "includes contract contribution",
             "source": "Source seed-a",
-            "source_url": "https://example.com/screen/seed-a",
+            "source_url": "https://fixture-source-seed-a.org/screen/seed-a",
             "source_claim": "screen evidence seed-a",
         },
         "catalyst": "contract disclosure",
@@ -64,6 +67,7 @@ def state_with_seed():
         "maturity": "READY_FOR_SCREENING",
     }]
     st["frame_contract"] = {"as_of_date": AS_OF}
+    st["runtime_contract"] = {"isolation_status": "verified"}
     st["cruxes"]["C1"].update({
         "first_contested": 1,
         "contested_history": [0.35, 0.35, 0.35],
@@ -182,6 +186,38 @@ class CandidateScreenEngineTests(unittest.TestCase):
         screen = st["candidate_screens"][0]
         self.assertEqual(screen["status"], "WATCHLIST")
         self.assertIn("screen_isolation_unverified", screen["gaps"])
+
+    def test_claimed_verified_isolation_is_capped_by_runtime_attestation(self):
+        st = state_with_seed()
+        st["runtime_contract"]["isolation_status"] = "unverified"
+        audit = screen_engine.evaluate_batch(
+            st, payload("Analyst"), payload("Skeptic"), AS_OF,
+            isolation_status="verified",
+        )
+        screen = st["candidate_screens"][0]
+        self.assertEqual(screen["status"], "WATCHLIST")
+        self.assertEqual(screen["claimed_isolation_status"], "verified")
+        self.assertEqual(screen["runtime_isolation_status"], "unverified")
+        self.assertEqual(screen["isolation_status"], "unverified")
+        self.assertIn("screen_isolation_claim_exceeds_runtime", screen["gaps"])
+        self.assertEqual(audit["effective_isolation_status"], "unverified")
+
+    def test_reserved_example_urls_cannot_satisfy_candidate_screen(self):
+        st = state_with_seed()
+        analyst = payload("Analyst")
+        skeptic = payload("Skeptic")
+        for packet in (analyst, skeptic):
+            for question in packet["candidate_screens"][0]["questions"]:
+                question["evidence"][0]["url"] = (
+                    f"https://www.example.com/{question['dimension'].lower()}"
+                )
+        screen_engine.evaluate_batch(
+            st, analyst, skeptic, AS_OF, isolation_status="verified"
+        )
+        screen = st["candidate_screens"][0]
+        self.assertEqual(screen["status"], "WATCHLIST")
+        self.assertEqual(screen["source_gate"]["n_unique_urls"], 0)
+        self.assertIn("total_unique_urls", screen["gaps"])
 
     def test_bilateral_critical_no_rejects_candidate(self):
         st = state_with_seed()
@@ -318,7 +354,10 @@ class CandidateScreenReportTests(unittest.TestCase):
         self.assertIn("CandidateScreen", md)
         self.assertIn("DRAFT_REQUIRES_SOURCE_VERIFICATION", md)
         self.assertIn("P2 PENDING", md)
-        self.assertIn("https://example.com/screen/analyst-economic_exposure", md)
+        self.assertIn(
+            "https://fixture-analyst-economic-exposure.org/screen/analyst-economic_exposure",
+            md,
+        )
 
 
 if __name__ == "__main__":

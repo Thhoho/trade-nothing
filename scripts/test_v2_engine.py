@@ -18,7 +18,7 @@ def citation(path, claim="claim", number="1", tier="primary"):
         "claim": claim,
         "number": number,
         "source": "Test Source",
-        "url": f"https://example.com/{path}",
+        "url": f"https://fixture-research.org/{path}",
         "date": "2026-07-10",
         "source_tier": tier,
     }
@@ -135,8 +135,15 @@ class EvidenceGateTests(unittest.TestCase):
         st = state()
         bad = {
             "claim": "x", "number": "1", "source": "Test",
-            "url": "https://example.com", "date": "2026-07",
+            "url": "https://fixture-research.org", "date": "2026-07",
         }
+        crux_engine.submit_round(st, 1, {"C1": {"signal": -1, "citations": [bad]}})
+        self.assertEqual(st["cruxes"]["C1"]["p_history"][-1], 0.5)
+
+    def test_reserved_example_path_is_rejected(self):
+        st = state()
+        bad = citation("placeholder")
+        bad["url"] = "https://www.example.com/specific-page"
         crux_engine.submit_round(st, 1, {"C1": {"signal": -1, "citations": [bad]}})
         self.assertEqual(st["cruxes"]["C1"]["p_history"][-1], 0.5)
 
@@ -271,7 +278,7 @@ class OrchestratorTests(unittest.TestCase):
     def test_sourced_status_is_forbidden_during_framing(self):
         frame = self.frame()
         frame["premise_audit"][0].update({
-            "status": "SOURCED", "source_url": "https://example.com", "as_of": "2026-07-11",
+            "status": "SOURCED", "source_url": "https://fixture-research.org", "as_of": "2026-07-11",
         })
         result = orchestrator.cmd_init("bad-source", frame)
         self.assertEqual(result["status"], "frame_rejected")
@@ -280,7 +287,7 @@ class OrchestratorTests(unittest.TestCase):
     def test_url_claim_stays_unverified_and_requires_concrete_url(self):
         frame = self.frame()
         frame["premise_audit"][0].update({
-            "status": "URL_CLAIMED_UNVERIFIED", "source_url": "https://example.com",
+            "status": "URL_CLAIMED_UNVERIFIED", "source_url": "https://fixture-research.org",
             "as_of": "2026-07-11",
         })
         result = orchestrator.cmd_init("bad-url-claim", frame)
@@ -310,6 +317,19 @@ class OrchestratorTests(unittest.TestCase):
         self.assertEqual(stored["cruxes"]["C1"]["catalyst_window"]["expected_by"], "2026-10-31")
         self.assertEqual(stored["question_type"], "CONJUNCTIVE")
         self.assertEqual(stored["logic_graph"]["root_id"], "Q1")
+
+    def test_framer_cannot_self_attest_runtime_isolation(self):
+        frame = self.frame()
+        frame["isolation_status"] = "verified"
+        orchestrator.cmd_init("ignored-frame-isolation", frame)
+        stored = orchestrator._load("ignored-frame-isolation")
+        self.assertEqual(stored["runtime_contract"]["isolation_status"], "unverified")
+        self.assertEqual(
+            stored["runtime_contract"]["frame_isolation_claim_ignored"], "verified"
+        )
+        orchestrator.cmd_init("host-runtime-isolation", frame, runtime_isolation="verified")
+        host_stored = orchestrator._load("host-runtime-isolation")
+        self.assertEqual(host_stored["runtime_contract"]["isolation_status"], "verified")
 
     def test_universe_search_without_pricing_crux_is_rejected(self):
         frame = self.frame()

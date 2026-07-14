@@ -59,7 +59,29 @@ def is_concrete_url(url):
         return False
     if p.scheme not in ("http", "https") or not p.netloc:
         return False
+    if is_placeholder_url(url):
+        return False
     return bool((p.path and p.path != "/") or p.query)
+
+
+def is_placeholder_url(url):
+    """Reject IANA-reserved examples and local/test hosts from research evidence."""
+    try:
+        host = (urlparse(str(url or "").strip()).hostname or "").lower().rstrip(".")
+    except Exception:
+        return True
+    if not host:
+        return True
+    reserved = {"example.com", "example.org", "example.net", "localhost", "0.0.0.0"}
+    if (host in reserved
+            or any(host.endswith(f".{item}") for item in {
+                "example.com", "example.org", "example.net",
+            })
+            or host.startswith("127.")):
+        return True
+    return any(host.endswith(suffix) for suffix in (
+        ".example", ".invalid", ".localhost", ".test",
+    ))
 
 
 def valid_citation(c):
@@ -79,6 +101,21 @@ def citation_source_identity(c):
     if p.query:
         normalized_url += f"?{p.query}"
     return normalized_url
+
+
+def citation_publisher_identity(c):
+    """Conservative publisher identity derived from URL, not agent-supplied labels."""
+    if not valid_citation(c):
+        return ""
+    host = (urlparse(c.get("url", "").strip()).hostname or "").lower().rstrip(".")
+    if host.startswith("www."):
+        host = host[4:]
+    labels = host.split(".")
+    multi_label_suffixes = {"co.uk", "com.au", "co.jp", "com.cn", "com.hk"}
+    suffix = ".".join(labels[-2:]) if len(labels) >= 2 else host
+    if suffix in multi_label_suffixes and len(labels) >= 3:
+        return ".".join(labels[-3:])
+    return suffix
 
 
 def citation_identity(c):
@@ -516,7 +553,7 @@ if __name__ == "__main__":
         active = [cid for cid, cx in st["cruxes"].items() if not cx["retired"]]
         active_per_round.append(len(active))
         js = {cid: {"signal": SIG[cid].get(r, 0.0), "best_bull": "(略)", "best_bear": "(略)",
-                    "citations": ([{"claim": f"demo-{cid}-r{r}", "number": "1", "source": "demo", "url": f"https://example.com/source/{cid}/{r}", "date": "2026"}]
+                    "citations": ([{"claim": f"demo-{cid}-r{r}", "number": "1", "source": "demo", "url": f"https://fixture-research.org/source/{cid}/{r}", "date": "2026"}]
                                   if SIG[cid].get(r, 0.0) != 0 else [])}
               for cid in st["cruxes"]}
         conv = submit_round(st, r, js)

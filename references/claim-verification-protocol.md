@@ -26,8 +26,8 @@ Analyst and Candidate Skeptic.
     {
       "snapshot_id": "SS-...",
       "status": "OK",
-      "source_url": "https://example.com/specific-page",
-      "final_url": "https://example.com/specific-page",
+      "source_url": "https://issuer.example.invalid/specific-page",
+      "final_url": "https://issuer.example.invalid/specific-page",
       "retrieved_at": "YYYY-MM-DDTHH:MM:SSZ",
       "http_status": 200,
       "content_type": "text/html",
@@ -41,6 +41,7 @@ Analyst and Candidate Skeptic.
 }
 ~~~
 
+The `.invalid` values above are schema placeholders and are never admissible evidence.
 The engine recomputes text_sha256 and snapshot_id. A mismatch rejects the
 snapshot. Source and final URLs must be concrete public HTTP(S) URLs.
 

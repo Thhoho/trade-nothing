@@ -10,7 +10,7 @@ import research_output
 def citation(path):
     return {
         "claim": f"claim {path}", "number": "1", "source": f"Source {path}",
-        "url": f"https://example.com/evidence/{path}", "date": "2026-07-10",
+        "url": f"https://fixture-research.org/evidence/{path}", "date": "2026-07-10",
         "source_tier": "primary",
     }
 
@@ -84,7 +84,7 @@ class ResearchOutputTests(unittest.TestCase):
                 "as_of_date": "2026-07-10", "anchor_type": "EMBEDDED_EXPECTATION",
                 "metric": "consensus EBITDA", "current_value": "excludes constrained asset",
                 "comparison_value": "includes constrained asset contribution",
-                "source": "Source s-a", "source_url": "https://example.com/evidence/s-a",
+                "source": "Source s-a", "source_url": "https://fixture-research.org/evidence/s-a",
                 "source_claim": "claim s-a",
             },
             "catalyst": "event", "catalyst_window": {

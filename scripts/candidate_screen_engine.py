@@ -164,7 +164,7 @@ def _question_map(screen):
 
 
 def _source_org(citation):
-    return _norm(citation.get("source"))
+    return crux_engine.citation_publisher_identity(citation)
 
 
 def _primary(citation):
@@ -355,8 +355,19 @@ def evaluate_batch(state, analyst_payload, skeptic_payload, as_of_date=None, iso
     """Evaluate up to three paired candidate screens and persist idempotently."""
     as_of_date = normalize_as_of(as_of_date)
     as_of = _parse_date(as_of_date)
-    isolation_status = _text(isolation_status).lower()
-    if isolation_status not in {"verified", "degraded", "unverified"}:
+    claimed_isolation_status = _text(isolation_status).lower()
+    if claimed_isolation_status not in {"verified", "degraded", "unverified"}:
+        claimed_isolation_status = "unverified"
+    runtime_isolation_status = _text(
+        state.get("runtime_contract", {}).get("isolation_status")
+    ).lower()
+    if runtime_isolation_status not in {"verified", "degraded", "unverified"}:
+        runtime_isolation_status = "unverified"
+    if claimed_isolation_status == runtime_isolation_status == "verified":
+        isolation_status = "verified"
+    elif "degraded" in {claimed_isolation_status, runtime_isolation_status}:
+        isolation_status = "degraded"
+    else:
         isolation_status = "unverified"
     analyst_map = _screen_map(analyst_payload)
     skeptic_map = _screen_map(skeptic_payload)
@@ -370,6 +381,9 @@ def evaluate_batch(state, analyst_payload, skeptic_payload, as_of_date=None, iso
     requested_ids = list(dict.fromkeys(list(analyst_map) + list(skeptic_map)))[:MAX_BATCH]
     audit = {
         "as_of_date": as_of_date,
+        "claimed_isolation_status": claimed_isolation_status,
+        "runtime_isolation_status": runtime_isolation_status,
+        "effective_isolation_status": isolation_status,
         "submitted_seed_ids": requested_ids,
         "evaluated": 0,
         "unknown_seed_ids": [],
@@ -411,6 +425,8 @@ def evaluate_batch(state, analyst_payload, skeptic_payload, as_of_date=None, iso
         gaps += [name for name, passed in source_gate["checks"].items() if not passed]
         if isolation_status != "verified":
             gaps.append("screen_isolation_unverified")
+        if claimed_isolation_status == "verified" and runtime_isolation_status != "verified":
+            gaps.append("screen_isolation_claim_exceeds_runtime")
         screen = {
             "screen_id": _screen_id(seed_id, as_of_date),
             "seed_id": seed_id,
@@ -418,6 +434,8 @@ def evaluate_batch(state, analyst_payload, skeptic_payload, as_of_date=None, iso
             "candidate": seed.get("candidate"),
             "ticker": seed.get("ticker"),
             "as_of_date": as_of_date,
+            "claimed_isolation_status": claimed_isolation_status,
+            "runtime_isolation_status": runtime_isolation_status,
             "isolation_status": isolation_status,
             "status": status,
             "dimensions": dimensions,

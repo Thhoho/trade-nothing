@@ -795,7 +795,7 @@ def cmd_runtime_failure(topic, stage, reason):
         ),
     }
 
-def cmd_init(topic, frame):
+def cmd_init(topic, frame, runtime_isolation="unverified"):
     issues = _validate_frame(frame)
     if issues:
         return {
@@ -837,9 +837,13 @@ def cmd_init(topic, frame):
     state["suggested_max_rounds"] = max_rounds
     state["config"]["MAX_ROUNDS"] = max_rounds
     state["negative_priors"] = _active_memory(topic)
+    runtime_isolation = str(runtime_isolation or "unverified").lower()
+    if runtime_isolation not in {"verified", "degraded", "unverified"}:
+        runtime_isolation = "unverified"
     state["runtime_contract"] = {
         "host_enforced_isolation_required": True,
-        "isolation_status": frame.get("isolation_status", "unverified"),
+        "isolation_status": runtime_isolation,
+        "frame_isolation_claim_ignored": frame.get("isolation_status"),
         "single_model_fallback": "degraded",
         "artifact_policy": _frame_artifact_policy(),
     }
@@ -1298,6 +1302,8 @@ def main():
     ap.add_argument("--as-of", default=""); ap.add_argument("--seed-id", default="")
     ap.add_argument("--screen-isolation", default="unverified",
                     choices=["verified", "degraded", "unverified"])
+    ap.add_argument("--runtime-isolation", default="unverified",
+                    choices=["verified", "degraded", "unverified"])
     ap.add_argument("--snapshots", default=""); ap.add_argument("--verifier", default="")
     ap.add_argument("--claim-id", default="")
     ap.add_argument("--challenge-only", action="store_true",
@@ -1311,7 +1317,7 @@ def main():
     if a.selftest:
         return selftest()
     if a.frame:  out = cmd_frame(a.topic)
-    elif a.init: out = cmd_init(a.topic, _jload(a.frame_json))
+    elif a.init: out = cmd_init(a.topic, _jload(a.frame_json), a.runtime_isolation)
     elif a.submit: out = cmd_submit(a.topic, _jload(a.det), _jload(a.inq), _jload(a.judge))
     elif a.report: out = cmd_report(a.topic, challenge_only=a.challenge_only)
     elif a.resolution_memo: out = cmd_resolution_memo(a.topic)
@@ -1402,11 +1408,11 @@ def selftest():
         for cid in score_ids:
             s = FREEROAM[r][1] if (r in FREEROAM and cid == FREEROAM[r][0]) else SIG.get(cid,{}).get(r,0.0)
             cs[cid] = {"signal": s, "rationale":"(selftest)","best_bull":"(略)","best_bear":"(略)",
-                       "citations":([{"claim":f"{cid}-r{r}","number":"1","source":"demo","url":f"https://example.com/source/{cid}/{r}","date":"2026-06"}]
+                       "citations":([{"claim":f"{cid}-r{r}","number":"1","source":"demo","url":f"https://fixture-research.org/source/{cid}/{r}","date":"2026-06"}]
                                     if s != 0 else [])}
         judge = {"round": r, "crux_signals": cs, "new_cruxes": new}
         det = {"evidence_chain": [{"claim_node": "[Vision Node: selftest | Constraint: x]",
-                                   "source": "demo, https://example.com/source, 2026"}]}
+                                   "source": "demo, https://fixture-research.org/source, 2026"}]}
         inq = {"lethal_attack_vectors": [{"attack": "[Audit Attack | Target: selftest]",
                                            "evidence_audit": "demo"}]}
         res = cmd_submit(topic, det, inq, judge)

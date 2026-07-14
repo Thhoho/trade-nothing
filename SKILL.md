@@ -201,6 +201,8 @@ python3 scripts/deepthink_orchestrator_v2.py --frame --topic "TARGET"
 python3 scripts/deepthink_orchestrator_v2.py --init --topic "TARGET" --frame-json '<framer_output>'
 #    → status=frame_rejected when premise_audit, unit_of_analysis, falsifiers, concrete catalyst
 #      windows, or No-Edge basis are missing. Never repair or bypass this gate by hand.
+#    A host with physically isolated contexts may additionally pass --runtime-isolation verified.
+#    Framer JSON cannot self-attest this field; default is unverified.
 
 # Runtime failure receipt (non-formal; use after a bounded stage timeout, never as a report)
 python3 scripts/deepthink_orchestrator_v2.py --runtime-failure --topic "TARGET" \
@@ -312,6 +314,10 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > default continuation, not an optional appendix. Zero screenable candidates is a valid result.
 > Additional batches require an explicit `--screen`; do not inflate the batch merely to produce
 > more names.
+> IANA example/test hosts, localhost, and loopback URLs are invalid evidence even when they contain
+> a path. Source-organization diversity is derived from publisher domains, not agent-written
+> `source` labels. A `--screen-isolation verified` claim is capped by the run's host isolation
+> attestation; it cannot upgrade an `unverified` runtime.
 
 > **Source-content integrity:** capture each decisive URL with `scripts/evidence_snapshot.py`
 > or an equivalent host fetcher, then run `agents/claim_verifier.md` independently. SUPPORTS and

@@ -67,10 +67,10 @@ class EvidenceSnapshotTests(unittest.TestCase):
     def test_html_snapshot_is_deterministic_and_excludes_script(self):
         body = b"<html><head><title>Source</title></head><body><p>Revenue was 10.</p><script>fake 99</script></body></html>"
         a = evidence_snapshot.snapshot_from_bytes(
-            "https://example.com/filing/a", body, retrieved_at="2026-07-10T00:00:00+00:00"
+            "https://fixture-research.org/filing/a", body, retrieved_at="2026-07-10T00:00:00+00:00"
         )
         b = evidence_snapshot.snapshot_from_bytes(
-            "https://example.com/filing/a", body, retrieved_at="2026-07-11T00:00:00+00:00"
+            "https://fixture-research.org/filing/a", body, retrieved_at="2026-07-11T00:00:00+00:00"
         )
         self.assertEqual(a["snapshot_id"], b["snapshot_id"])
         self.assertEqual(a["text_sha256"], b["text_sha256"])
@@ -107,7 +107,7 @@ class ClaimVerificationEngineTests(unittest.TestCase):
     def test_snapshot_fetch_errors_are_not_silently_dropped(self):
         st = screened_state()
         packet = claim_engine.build_verifier_packet(
-            st, {"snapshots": [], "errors": [{"url": "https://example.com/fail", "error": "timeout"}]}
+            st, {"snapshots": [], "errors": [{"url": "https://fixture-research.org/fail", "error": "timeout"}]}
         )
         self.assertIn("snapshot_fetch_error:timeout", {
             item["reason"] for item in packet["rejected_snapshots"]

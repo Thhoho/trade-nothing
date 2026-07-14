@@ -76,6 +76,12 @@ breadth, causal directness, structured pricing-anchor completeness, and an obser
 These are research-priority features, not expected return, conviction, position size, or a trade
 ranking. Zero selected candidates is valid; do not fill the batch with lower-state leads.
 
+Evidence on `example.com`, `example.org`, `example.net`, `.test`, `.invalid`, localhost, or
+loopback hosts is synthetic and must be dropped. Independent source organizations are counted from
+publisher domains, not the submitted `source` string. Screen isolation is effective only when both
+the run-level host attestation and the screen submission claim are `verified`; the submission
+cannot promote itself above the runtime.
+
 ## Deterministic combination
 
 For each dimension:
