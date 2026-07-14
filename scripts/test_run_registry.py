@@ -78,6 +78,24 @@ class RunRegistryTests(unittest.TestCase):
         self.assertEqual(loaded["topic"], "Read-only status")
         self.assertFalse(acquire.called)
 
+    def test_execution_summary_counts_structured_receipts_without_transcripts(self):
+        manifest = run_registry.create_manifest("Metrics")
+        run_registry.save_checkpoint(manifest["run_id"], "round-1", {
+            "submitted": True,
+            "roles": {
+                "detective": {"exit_code": 0, "payload_sha256": "a", "elapsed_seconds": 2},
+                "inquisitor": {"exit_code": 1, "payload_sha256": "", "elapsed_seconds": 3,
+                               "error_code": "resource_exhausted_429"},
+            },
+        })
+        summary = run_registry.execution_summary(manifest["run_id"])
+        self.assertEqual(summary["checkpoint_count"], 1)
+        self.assertEqual(summary["submitted_rounds"], 1)
+        self.assertEqual(summary["role_attempts"], 2)
+        self.assertEqual(summary["role_successes"], 1)
+        self.assertEqual(summary["elapsed_seconds"], 5.0)
+        self.assertEqual(summary["last_error_code"], "resource_exhausted_429")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

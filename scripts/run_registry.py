@@ -197,7 +197,9 @@ def stage_envelope(result, *, context=None, budget=None, persist=True):
     if result.get("reason"):
         blockers.append(str(result["reason"]))
     artifact_paths = {}
-    for key in ("audit_state_path", "receipt_path", "report_path", "state_path"):
+    for key in (
+        "audit_state_path", "receipt_path", "report_path", "state_path", "checkpoint_path"
+    ):
         if result.get(key):
             artifact_paths[key] = result[key]
     envelope = {
@@ -219,12 +221,52 @@ def stage_envelope(result, *, context=None, budget=None, persist=True):
         manifest["stage"] = envelope["stage"]
         manifest["latest_envelope"] = {
             key: envelope[key]
-            for key in ("schema", "run_id", "stage", "status", "blockers", "budget")
+            for key in (
+                "schema", "run_id", "stage", "status", "next_action", "blockers",
+                "artifact_paths", "budget",
+            )
         }
         if status.startswith("paused_") or status.startswith("blocked_runtime"):
             manifest["failure_count"] = int(manifest.get("failure_count", 0)) + 1
         save_json(manifest_path(run_id), manifest)
     return envelope
+
+
+def execution_summary(run_id):
+    root = checkpoint_dir(run_id)
+    summary = {
+        "checkpoint_count": 0,
+        "submitted_rounds": 0,
+        "role_attempts": 0,
+        "role_successes": 0,
+        "elapsed_seconds": 0.0,
+        "last_error_code": "",
+    }
+    if not os.path.isdir(root):
+        return summary
+    for name in sorted(os.listdir(root)):
+        if not name.endswith(".json"):
+            continue
+        checkpoint = load_json_safe(os.path.join(root, name), default={})
+        if not isinstance(checkpoint, dict):
+            continue
+        summary["checkpoint_count"] += 1
+        if checkpoint.get("submitted"):
+            summary["submitted_rounds"] += 1
+        records = list((checkpoint.get("roles") or {}).values())
+        if isinstance(checkpoint.get("judge"), dict):
+            records.append(checkpoint["judge"])
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            summary["role_attempts"] += 1
+            summary["elapsed_seconds"] += float(record.get("elapsed_seconds") or 0)
+            if record.get("exit_code") == 0 and record.get("payload_sha256"):
+                summary["role_successes"] += 1
+            if record.get("error_code"):
+                summary["last_error_code"] = str(record["error_code"])
+    summary["elapsed_seconds"] = round(summary["elapsed_seconds"], 3)
+    return summary
 
 
 def canonical_json_hash(value):

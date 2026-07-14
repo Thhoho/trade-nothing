@@ -132,7 +132,7 @@ def _checkpoint_role_valid(record, prompt):
     )
 
 
-def _pause(context, stage_id, checkpoint, missing_roles, reason):
+def _pause(context, stage_id, checkpoint, missing_roles, reason, budget=None):
     checkpoint["status"] = "paused_runtime_failure"
     checkpoint["missing_roles"] = missing_roles
     checkpoint["reason"] = reason
@@ -150,10 +150,10 @@ def _pause(context, stage_id, checkpoint, missing_roles, reason):
             f"保留成功角色，仅重跑 {', '.join(missing_roles)}；"
             f"额度或运行时恢复后执行 resume --run-id {context['run_id']}。"
         ),
-    }, context=context)
+    }, context=context, budget=budget)
 
 
-def execute_round(context, *, agy_bin, timeout_seconds, allow_agent_tools=False):
+def execute_round(context, *, agy_bin, timeout_seconds, allow_agent_tools=False, budget=None):
     run_registry.bind_context(context)
     state = load_json_safe(context["state_path"], default=None)
     if not isinstance(state, dict):
@@ -186,7 +186,8 @@ def execute_round(context, *, agy_bin, timeout_seconds, allow_agent_tools=False)
         role: _prompt_hash(prompt) for role, prompt in role_prompts.items()
     }:
         return _pause(
-            context, stage_id, checkpoint, ["manual_review"], "checkpoint_prompt_hash_mismatch"
+            context, stage_id, checkpoint, ["manual_review"],
+            "checkpoint_prompt_hash_mismatch", budget
         )
     records = checkpoint.setdefault("roles", {})
     missing = [
@@ -218,7 +219,7 @@ def execute_round(context, *, agy_bin, timeout_seconds, allow_agent_tools=False)
             if any(records.get(role, {}).get("resource_exhausted") for role in failed)
             else "isolated_role_failure"
         )
-        return _pause(context, stage_id, checkpoint, failed, reason)
+        return _pause(context, stage_id, checkpoint, failed, reason, budget)
 
     detective = records["detective"]["payload"]
     inquisitor = records["inquisitor"]["payload"]
@@ -246,7 +247,7 @@ def execute_round(context, *, agy_bin, timeout_seconds, allow_agent_tools=False)
             "resource_exhausted_429"
             if judge_record.get("resource_exhausted") else "judge_failure"
         )
-        return _pause(context, stage_id, checkpoint, ["judge"], reason)
+        return _pause(context, stage_id, checkpoint, ["judge"], reason, budget)
 
     result = orchestrator.cmd_submit(
         context["topic"], detective, inquisitor, judge_record["payload"]
@@ -255,7 +256,7 @@ def execute_round(context, *, agy_bin, timeout_seconds, allow_agent_tools=False)
     checkpoint["submit_result"] = result
     checkpoint["status"] = result.get("status")
     run_registry.save_checkpoint(context["run_id"], stage_id, checkpoint)
-    return run_registry.stage_envelope(result, context=context)
+    return run_registry.stage_envelope(result, context=context, budget=budget)
 
 
 def continue_run(context, *, agy_bin, timeout_seconds, allow_agent_tools=False,
@@ -275,6 +276,7 @@ def continue_run(context, *, agy_bin, timeout_seconds, allow_agent_tools=False,
             last = execute_round(
                 context, agy_bin=agy_bin, timeout_seconds=timeout_seconds,
                 allow_agent_tools=allow_agent_tools,
+                budget={"round_budget": round_budget, "rounds_used": completed},
             )
         status = last.get("status")
         raw = last.get("result", {})
@@ -352,6 +354,11 @@ def main():
             "rounds_completed": len(state.get("rounds", [])) if isinstance(state, dict) else 0,
             "last_convergence": state.get("last_convergence", {}) if isinstance(state, dict) else {},
             "latest_envelope": context.get("latest_envelope", {}),
+            "execution_summary": run_registry.execution_summary(context["run_id"]),
+            "instruction": (
+                (context.get("latest_envelope") or {}).get("next_action")
+                or f"执行 resume --run-id {context['run_id']} 继续。"
+            ),
         }
         print(json.dumps(run_registry.stage_envelope(out, context=context, persist=False),
                          ensure_ascii=False, indent=2))
