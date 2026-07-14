@@ -10,10 +10,20 @@ import benchmark_harness as harness
 
 
 def suite():
+    prompt_hash = "c" * 64
     return {
         "schema_version": harness.SUITE_SCHEMA,
         "suite_id": "v013-smoke",
         "variants": ["single_agent", "v0_12", "v0_13"],
+        "variant_manifest": {
+            variant: {
+                "runner_kind": "PROMPT_ONLY",
+                "engine_version": f"prompt:{prompt_hash}",
+                "instruction_path": f"arms/{variant}.md",
+                "instruction_sha256": prompt_hash,
+            }
+            for variant in ("single_agent", "v0_12", "v0_13")
+        },
         "evaluation_scope": "CLOSED_PACKET_REASONING",
         "research_access": {
             "external_search_allowed": False,
@@ -39,13 +49,32 @@ def suite():
 
 
 def result(variant, tokens=5000, artifact_path="artifact.md", artifact_sha256="a" * 64):
+    validated = harness.validate_suite(suite())
+    variant_contract = validated["variant_manifest"][variant]
+    receipt = {
+        "verified_by_host": True,
+        "host_invocation_id": f"HOST-{variant}",
+        "runner_kind": variant_contract["runner_kind"],
+        "engine_version": variant_contract["engine_version"],
+        "variant_contract_sha256": variant_contract["variant_contract_sha256"],
+    }
+    if variant_contract["runner_kind"] == "PROMPT_ONLY":
+        receipt["instruction_sha256"] = variant_contract["instruction_sha256"]
+    else:
+        receipt.update({
+            "git_commit": variant_contract["git_commit"],
+            "entrypoint_sha256": variant_contract["entrypoint_sha256"],
+            "orchestrator_sha256": variant_contract["orchestrator_sha256"],
+        })
     return {
         "schema_version": harness.RESULT_SCHEMA,
         "case_id": "case_universe_01",
         "variant": variant,
-        "suite_contract_sha256": harness.validate_suite(suite())["suite_contract_sha256"],
+        "suite_contract_sha256": validated["suite_contract_sha256"],
+        "variant_contract_sha256": variant_contract["variant_contract_sha256"],
         "execution_id": f"EXEC-{variant}",
-        "engine_version": variant,
+        "engine_version": variant_contract["engine_version"],
+        "engine_receipt": receipt,
         "completion_status": "COMPLETE",
         "artifact_path": artifact_path,
         "artifact_sha256": artifact_sha256,
@@ -97,12 +126,53 @@ class BenchmarkHarnessTests(unittest.TestCase):
         self.assertEqual(validated["variants"], ["single_agent", "v0_12", "v0_14"])
         self.assertEqual(validated["evaluation_scope"], "CLOSED_PACKET_REASONING")
         self.assertTrue(all(case["budget"]["max_searches"] == 0 for case in validated["cases"]))
+        self.assertEqual(
+            validated["variant_manifest"]["v0_12"]["git_commit"],
+            "b8514c77b329e67a95d8224ec36aaff479a27f5d",
+        )
+        self.assertEqual(
+            validated["variant_manifest"]["v0_14"]["git_commit"],
+            "a5793317e0aa4110282c2d3cd3fb23be07bf5304",
+        )
 
     def test_closed_packet_suite_rejects_fake_search_budget(self):
         data = suite()
         data["cases"][0]["budget"]["max_searches"] = 1
         with self.assertRaisesRegex(ValueError, "must be 0"):
             harness.validate_suite(data)
+
+    def test_result_must_bind_pinned_variant_engine(self):
+        validated = harness.validate_suite(suite())
+        case = validated["cases"][0]
+        data = result("v0_13")
+        data["engine_version"] = "latest"
+        with self.assertRaisesRegex(ValueError, "pinned variant"):
+            harness.validate_result(data, case, validated)
+
+    def test_result_must_bind_variant_contract(self):
+        validated = harness.validate_suite(suite())
+        case = validated["cases"][0]
+        data = result("v0_13")
+        data["variant_contract_sha256"] = "d" * 64
+        with self.assertRaisesRegex(ValueError, "variant contract"):
+            harness.validate_result(data, case, validated)
+
+    def test_result_requires_host_verified_engine_receipt(self):
+        validated = harness.validate_suite(suite())
+        case = validated["cases"][0]
+        data = result("v0_13")
+        data["engine_receipt"]["verified_by_host"] = False
+        with self.assertRaisesRegex(ValueError, "host-verified"):
+            harness.validate_result(data, case, validated)
+
+    def test_canonical_git_variant_pins_are_real(self):
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        suite_path = os.path.join(
+            repo_root, "benchmarks", "v014-six-case", "suite.json"
+        )
+        data = harness._load_json(suite_path)
+        verified = harness.verify_git_variants(data, repo_root)
+        self.assertEqual([item["variant"] for item in verified], ["v0_12", "v0_14"])
 
     def test_dispatch_contains_one_case_and_no_assessor_material(self):
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -111,11 +181,13 @@ class BenchmarkHarnessTests(unittest.TestCase):
         )
         data = harness._load_json(suite_path)
         dispatch = harness.materialize_case_dispatch(
-            data, suite_path, "ai_power_infrastructure_2025"
+            data, suite_path, "ai_power_infrastructure_2025", "single_agent"
         )
         encoded = json.dumps(dispatch, ensure_ascii=False).lower()
         self.assertEqual(dispatch["schema_version"], harness.DISPATCH_SCHEMA)
         self.assertEqual(dispatch["case"]["case_id"], "ai_power_infrastructure_2025")
+        self.assertEqual(dispatch["variant"], "single_agent")
+        self.assertIn("one investment researcher", dispatch["method_instruction"])
         self.assertEqual(len(dispatch["evidence_packets"]), 1)
         self.assertNotIn("answer-key", encoded)
         self.assertNotIn("major_paths", encoded)
@@ -133,7 +205,7 @@ class BenchmarkHarnessTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "outside the suite"):
             harness.write_case_dispatch(
-                data, suite_path, "ai_power_infrastructure_2025", forbidden
+                data, suite_path, "ai_power_infrastructure_2025", "single_agent", forbidden
             )
 
     def test_suite_rejects_answer_leakage(self):
@@ -145,19 +217,15 @@ class BenchmarkHarnessTests(unittest.TestCase):
     def test_result_cannot_score_itself(self):
         data = result("v0_13")
         data["assessment"] = {"great": True}
-        case = harness.validate_suite(suite())["cases"][0]
+        validated = harness.validate_suite(suite())
+        case = validated["cases"][0]
         with self.assertRaisesRegex(ValueError, "own assessment"):
-            harness.validate_result(
-                data, case, suite()["variants"],
-                harness.validate_suite(suite())["suite_contract_sha256"],
-            )
+            harness.validate_result(data, case, validated)
 
     def test_blind_assessment_must_bind_exact_artifact(self):
-        case = harness.validate_suite(suite())["cases"][0]
-        run = harness.validate_result(
-            result("v0_13"), case, suite()["variants"],
-            harness.validate_suite(suite())["suite_contract_sha256"],
-        )
+        validated = harness.validate_suite(suite())
+        case = validated["cases"][0]
+        run = harness.validate_result(result("v0_13"), case, validated)
         review = assessment("v0_13")
         review["artifact_sha256"] = "b" * 64
         with self.assertRaisesRegex(ValueError, "exact result artifact"):
@@ -236,7 +304,17 @@ class BenchmarkHarnessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             evidence_dir = os.path.join(root, "evidence")
             os.makedirs(evidence_dir)
+            arms_dir = os.path.join(root, "arms")
+            os.makedirs(arms_dir)
             data = suite()
+            for variant in data["variants"]:
+                path = os.path.join(arms_dir, f"{variant}.md")
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write("baseline")
+                with open(path, "rb") as handle:
+                    arm_hash = hashlib.sha256(handle.read()).hexdigest()
+                data["variant_manifest"][variant]["instruction_sha256"] = arm_hash
+                data["variant_manifest"][variant]["engine_version"] = f"prompt:{arm_hash}"
             for evidence_id, filename in (("SNAP-A", "snap-a.json"), ("SNAP-B", "snap-b.json")):
                 packet = {
                     "packet_id": evidence_id,

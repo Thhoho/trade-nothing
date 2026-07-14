@@ -1,7 +1,33 @@
 {
-  "schema_version": "trade-nothing.benchmark-suite.v2",
+  "schema_version": "trade-nothing.benchmark-suite.v3",
   "suite_id": "v014-six-case",
   "variants": ["single_agent", "v0_12", "v0_14"],
+  "variant_manifest": {
+    "single_agent": {
+      "runner_kind": "PROMPT_ONLY",
+      "engine_version": "prompt:7f6b6adce6ebcf093691c2d9a334b2b55369f854a7d57162ddaf911ad4a3a2f8",
+      "instruction_path": "arms/single_agent.md",
+      "instruction_sha256": "7f6b6adce6ebcf093691c2d9a334b2b55369f854a7d57162ddaf911ad4a3a2f8"
+    },
+    "v0_12": {
+      "runner_kind": "GIT_SKILL_SNAPSHOT",
+      "engine_version": "git:b8514c77b329e67a95d8224ec36aaff479a27f5d",
+      "git_commit": "b8514c77b329e67a95d8224ec36aaff479a27f5d",
+      "entrypoint_path": "SKILL.md",
+      "entrypoint_sha256": "b06736e3099c37c3ea23a6c6d88070bd6b162fbbe0225045559d665a1a10985e",
+      "orchestrator_path": "scripts/deepthink_orchestrator_v2.py",
+      "orchestrator_sha256": "f975716a7eba43e56f4d7b59b87dfddf9d0bc5d4dfd258ccb1f128147983f1c6"
+    },
+    "v0_14": {
+      "runner_kind": "GIT_SKILL_SNAPSHOT",
+      "engine_version": "git:a5793317e0aa4110282c2d3cd3fb23be07bf5304",
+      "git_commit": "a5793317e0aa4110282c2d3cd3fb23be07bf5304",
+      "entrypoint_path": "SKILL.md",
+      "entrypoint_sha256": "b452842aecc71d81128a499f67d23f8f1a00bf80b0a7f69b2afd2f62f49a09d0",
+      "orchestrator_path": "scripts/deepthink_orchestrator_v2.py",
+      "orchestrator_sha256": "831f9dd98f59ce9c0690c22f2142d2e32f742ce4ca4e922b39893189ee62f7e5"
+    }
+  },
   "evaluation_scope": "CLOSED_PACKET_REASONING",
   "research_access": {"external_search_allowed": false, "filesystem_allowed": false},
   "evidence_manifest": {

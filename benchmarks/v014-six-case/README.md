@@ -25,18 +25,34 @@ python3 scripts/benchmark_harness.py validate-suite \
   --suite benchmarks/v014-six-case/suite.json
 ```
 
+Verify that pinned skill commits and file hashes exist in the canonical Git object database:
+
+```bash
+python3 scripts/benchmark_harness.py verify-variants \
+  --suite benchmarks/v014-six-case/suite.json \
+  --source-repo /path/to/canonical/trade-nothing
+```
+
 Materialize one arm input into a separate runtime directory:
 
 ```bash
 python3 scripts/benchmark_harness.py materialize-case \
   --suite benchmarks/v014-six-case/suite.json \
   --case-id ai_power_infrastructure_2025 \
+  --variant single_agent \
   --output /private/tmp/ai_power_infrastructure_2025.dispatch.json
 ```
 
 The command refuses to write inside this suite directory and refuses to overwrite an existing
 packet. The resulting file binds the suite contract hash, exactly one case, and only that case's
 frozen evidence. The evaluator answer key remains physically separate.
+
+Every arm is pinned in `variant_manifest`: the structured single-agent instruction is content-hashed;
+the two skill arms bind full Git commits plus entrypoint/orchestrator hashes. A result must bind both
+the suite contract and its exact variant contract, and its `engine_version` must match the pin.
+Results must also include a host-verified engine receipt binding the actual instruction or Git file
+hashes and a unique host invocation ID. The receipt prevents accidental version drift; it is not a
+cryptographic defense against a malicious host.
 
 Installed skill copies also contain this benchmark for reproducibility. A benchmark research arm
 must run without filesystem/tool access or external search and receive only the generated dispatch

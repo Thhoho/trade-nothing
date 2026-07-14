@@ -13,8 +13,9 @@ Keep four artifacts physically separate:
    variant. It must not contain expected answers, future returns, major-path labels, or evaluator
    rubrics. Validation rejects missing, changed, path-traversing, or post-as-of packets.
 2. **Single-case dispatch**: the generated research input containing exactly one case, its bound
-   evidence packet(s), the suite contract hash, and no assessor material. Generate it outside the
-   suite directory; never give a research arm repository or benchmark-directory access.
+   evidence packet(s), the suite contract hash, an exact variant contract, and no assessor material.
+   Generate it outside the suite directory; never give a research arm repository or
+   benchmark-directory access.
 3. **Research result**: exact artifact hash, engine version, completion status, usage, and recovery
    count. The research system must not include a self-assessment.
 4. **Blind assessment**: a human or independent evaluator scores the already-frozen artifact and
@@ -26,6 +27,16 @@ write each research input into a separate runtime directory. Copy the printed
 identifiers, paths, and packet hashes. Run `score` only after every declared case/variant pair has
 both a result and a blind assessment.
 
+`variant_manifest` is mandatory. A prompt-only baseline binds its instruction path and SHA-256. A
+skill arm binds a full Git commit plus the hashes of its entrypoint and orchestrator. Variant labels
+without executable pins are not experiments.
+
+Before running, use `verify-variants --source-repo <canonical repo>` to resolve every pinned file from
+the Git object database and compare its hash. Every result must include a host-verified
+`engine_receipt` binding runner kind, engine version, variant contract, actual file hashes, and a
+unique host invocation ID. This catches accidental drift; it does not protect against a malicious
+host fabricating receipts.
+
 The benchmark suite is shipped in installed skill copies for reproducibility. Therefore research
 arms must run without filesystem/tool access and receive only the generated dispatch. Prompt-only
 instructions such as “do not read assessor files” do not qualify as blind isolation.
@@ -34,6 +45,7 @@ instructions such as “do not read assessor files” do not qualify as blind is
 python3 scripts/benchmark_harness.py materialize-case \
   --suite benchmarks/v014-six-case/suite.json \
   --case-id ai_power_infrastructure_2025 \
+  --variant single_agent \
   --output /private/tmp/ai_power_infrastructure_2025.dispatch.json
 ```
 
@@ -41,9 +53,35 @@ Minimal suite:
 
 ```json
 {
-  "schema_version": "trade-nothing.benchmark-suite.v2",
+  "schema_version": "trade-nothing.benchmark-suite.v3",
   "suite_id": "v014-six-case",
   "variants": ["single_agent", "v0_12", "v0_14"],
+  "variant_manifest": {
+    "single_agent": {
+      "runner_kind": "PROMPT_ONLY",
+      "engine_version": "prompt:<instruction sha256>",
+      "instruction_path": "arms/single_agent.md",
+      "instruction_sha256": "64 lowercase hex characters"
+    },
+    "v0_12": {
+      "runner_kind": "GIT_SKILL_SNAPSHOT",
+      "engine_version": "git:<full commit sha>",
+      "git_commit": "40 lowercase hex characters",
+      "entrypoint_path": "SKILL.md",
+      "entrypoint_sha256": "64 lowercase hex characters",
+      "orchestrator_path": "scripts/deepthink_orchestrator_v2.py",
+      "orchestrator_sha256": "64 lowercase hex characters"
+    },
+    "v0_14": {
+      "runner_kind": "GIT_SKILL_SNAPSHOT",
+      "engine_version": "git:<full commit sha>",
+      "git_commit": "40 lowercase hex characters",
+      "entrypoint_path": "SKILL.md",
+      "entrypoint_sha256": "64 lowercase hex characters",
+      "orchestrator_path": "scripts/deepthink_orchestrator_v2.py",
+      "orchestrator_sha256": "64 lowercase hex characters"
+    }
+  },
   "evaluation_scope": "CLOSED_PACKET_REASONING",
   "research_access": {"external_search_allowed": false, "filesystem_allowed": false},
   "evidence_manifest": {
@@ -73,8 +111,19 @@ Minimal result:
   "case_id": "universe_01",
   "variant": "v0_14",
   "suite_contract_sha256": "hash printed by validate-suite",
+  "variant_contract_sha256": "hash embedded in the arm dispatch",
   "execution_id": "RUN-OR-BASELINE-ID",
-  "engine_version": "git-sha-or-baseline-version",
+  "engine_version": "exact engine_version from the arm manifest",
+  "engine_receipt": {
+    "verified_by_host": true,
+    "host_invocation_id": "unique host-side invocation id",
+    "runner_kind": "GIT_SKILL_SNAPSHOT",
+    "engine_version": "exact engine_version from the arm manifest",
+    "variant_contract_sha256": "exact arm contract hash",
+    "git_commit": "exact pinned commit",
+    "entrypoint_sha256": "exact pinned entrypoint hash",
+    "orchestrator_sha256": "exact pinned orchestrator hash"
+  },
   "completion_status": "COMPLETE",
   "artifact_path": "universe_01__v0_13.report.md",
   "artifact_sha256": "64 lowercase hex characters",

@@ -12,13 +12,14 @@ import argparse
 import hashlib
 import json
 import re
+import subprocess
 from collections import defaultdict
 from datetime import date
 from pathlib import Path, PurePosixPath
 
 
-SUITE_SCHEMA = "trade-nothing.benchmark-suite.v2"
-DISPATCH_SCHEMA = "trade-nothing.benchmark-dispatch.v2"
+SUITE_SCHEMA = "trade-nothing.benchmark-suite.v3"
+DISPATCH_SCHEMA = "trade-nothing.benchmark-dispatch.v3"
 RESULT_SCHEMA = "trade-nothing.benchmark-result.v1"
 ASSESSMENT_SCHEMA = "trade-nothing.benchmark-assessment.v1"
 SUMMARY_SCHEMA = "trade-nothing.benchmark-summary.v1"
@@ -26,6 +27,7 @@ QUESTION_TYPES = {
     "CONJUNCTIVE", "DISJUNCTIVE", "CAUSAL_CHAIN", "COMPARATIVE", "UNIVERSE_SEARCH"
 }
 EVALUATION_SCOPES = {"CLOSED_PACKET_REASONING"}
+VARIANT_KINDS = {"PROMPT_ONLY", "GIT_SKILL_SNAPSHOT"}
 STATUS_VALUES = {"COMPLETE", "FAILED", "PAUSED_BUDGET", "RUNTIME_FAILURE"}
 LEAKAGE_KEYS = {
     "gold", "gold_answer", "expected_answer", "expected_outcome", "major_paths",
@@ -107,6 +109,14 @@ def _walk_keys(value):
             yield from _walk_keys(child)
 
 
+def _safe_relative_path(value, field):
+    relative_path = _require_text(value, field)
+    pure_path = PurePosixPath(relative_path)
+    if pure_path.is_absolute() or ".." in pure_path.parts:
+        raise ValueError(f"{field} must remain inside its declared root")
+    return relative_path
+
+
 def validate_suite(suite):
     if suite.get("schema_version") != SUITE_SCHEMA:
         raise ValueError(f"schema_version must be {SUITE_SCHEMA}")
@@ -121,6 +131,80 @@ def validate_suite(suite):
         raise ValueError("variants must be unique")
     if any(not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,31}", item) for item in variants):
         raise ValueError("variants must use lowercase letters, numbers, underscores, or hyphens")
+    variant_manifest = suite.get("variant_manifest")
+    if not isinstance(variant_manifest, dict) or set(variant_manifest) != set(variants):
+        raise ValueError("variant_manifest keys must exactly match variants")
+    normalized_variants = {}
+    for variant in variants:
+        entry = variant_manifest[variant]
+        if not isinstance(entry, dict):
+            raise ValueError(f"variant_manifest.{variant} must be an object")
+        runner_kind = _require_text(
+            entry.get("runner_kind"), f"variant_manifest.{variant}.runner_kind"
+        ).upper()
+        if runner_kind not in VARIANT_KINDS:
+            raise ValueError(f"variant_manifest.{variant}.runner_kind is unsupported")
+        engine_version = _require_text(
+            entry.get("engine_version"), f"variant_manifest.{variant}.engine_version"
+        )
+        if runner_kind == "PROMPT_ONLY":
+            instruction_sha256 = _sha256(
+                entry.get("instruction_sha256"),
+                f"variant_manifest.{variant}.instruction_sha256",
+            )
+            normalized_entry = {
+                "runner_kind": runner_kind,
+                "engine_version": engine_version,
+                "instruction_path": _safe_relative_path(
+                    entry.get("instruction_path"),
+                    f"variant_manifest.{variant}.instruction_path",
+                ),
+                "instruction_sha256": instruction_sha256,
+            }
+            if engine_version != f"prompt:{instruction_sha256}":
+                raise ValueError(
+                    f"variant_manifest.{variant}.engine_version must bind instruction_sha256"
+                )
+        else:
+            git_commit = _require_text(
+                entry.get("git_commit"), f"variant_manifest.{variant}.git_commit"
+            ).lower()
+            if not re.fullmatch(r"[0-9a-f]{40}", git_commit):
+                raise ValueError(f"variant_manifest.{variant}.git_commit must be a full git sha")
+            normalized_entry = {
+                "runner_kind": runner_kind,
+                "engine_version": engine_version,
+                "git_commit": git_commit,
+                "entrypoint_path": _safe_relative_path(
+                    entry.get("entrypoint_path"),
+                    f"variant_manifest.{variant}.entrypoint_path",
+                ),
+                "entrypoint_sha256": _sha256(
+                    entry.get("entrypoint_sha256"),
+                    f"variant_manifest.{variant}.entrypoint_sha256",
+                ),
+                "orchestrator_path": _safe_relative_path(
+                    entry.get("orchestrator_path"),
+                    f"variant_manifest.{variant}.orchestrator_path",
+                ),
+                "orchestrator_sha256": _sha256(
+                    entry.get("orchestrator_sha256"),
+                    f"variant_manifest.{variant}.orchestrator_sha256",
+                ),
+            }
+            if engine_version != f"git:{git_commit}":
+                raise ValueError(
+                    f"variant_manifest.{variant}.engine_version must bind git_commit"
+                )
+        variant_contract_sha256 = hashlib.sha256(
+            json.dumps(
+                normalized_entry, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+        ).hexdigest()
+        normalized_variants[variant] = {
+            **normalized_entry,
+            "variant_contract_sha256": variant_contract_sha256,
+        }
     evaluation_scope = _require_text(
         suite.get("evaluation_scope"), "evaluation_scope"
     ).upper()
@@ -147,10 +231,9 @@ def validate_suite(suite):
         evidence_id = _require_text(evidence_id, "evidence_manifest key")
         if not isinstance(entry, dict):
             raise ValueError(f"evidence_manifest.{evidence_id} must be an object")
-        relative_path = _require_text(entry.get("path"), f"evidence_manifest.{evidence_id}.path")
-        pure_path = PurePosixPath(relative_path)
-        if pure_path.is_absolute() or ".." in pure_path.parts:
-            raise ValueError(f"evidence_manifest.{evidence_id}.path must remain inside suite directory")
+        relative_path = _safe_relative_path(
+            entry.get("path"), f"evidence_manifest.{evidence_id}.path"
+        )
         normalized_manifest[evidence_id] = {
             "path": relative_path,
             "sha256": _sha256(
@@ -228,6 +311,7 @@ def validate_suite(suite):
         "schema_version": SUITE_SCHEMA,
         "suite_id": suite_id,
         "variants": variants,
+        "variant_manifest": normalized_variants,
         "evaluation_scope": evaluation_scope,
         "research_access": research_access,
         "cases": normalized,
@@ -242,6 +326,7 @@ def validate_suite(suite):
         **suite,
         "suite_id": suite_id,
         "variants": variants,
+        "variant_manifest": normalized_variants,
         "evaluation_scope": evaluation_scope,
         "research_access": research_access,
         "cases": normalized,
@@ -253,6 +338,14 @@ def validate_suite(suite):
 def validate_evidence_files(suite, suite_path):
     suite = validate_suite(suite)
     root = Path(suite_path).resolve().parent
+    for variant, entry in suite["variant_manifest"].items():
+        if entry["runner_kind"] != "PROMPT_ONLY":
+            continue
+        instruction_path = (root / entry["instruction_path"]).resolve()
+        if not instruction_path.is_relative_to(root) or not instruction_path.is_file():
+            raise ValueError(f"variant instruction is missing or escapes suite: {variant}")
+        if _artifact_hash(instruction_path) != entry["instruction_sha256"]:
+            raise ValueError(f"variant instruction hash mismatch: {variant}")
     packet_dates = {}
     for case in suite["cases"]:
         for evidence_id in case["frozen_evidence"]:
@@ -285,12 +378,49 @@ def validate_evidence_files(suite, suite_path):
     return suite
 
 
-def materialize_case_dispatch(suite, suite_path, case_id):
+def verify_git_variants(suite, source_repo):
+    """Verify pinned Git arm files against the canonical object database."""
+    suite = validate_suite(suite)
+    repo = Path(source_repo).resolve()
+    if not repo.is_dir():
+        raise ValueError(f"source repo is not a directory: {repo}")
+    verified = []
+    for variant, entry in suite["variant_manifest"].items():
+        if entry["runner_kind"] != "GIT_SKILL_SNAPSHOT":
+            continue
+        for path_field, hash_field in (
+            ("entrypoint_path", "entrypoint_sha256"),
+            ("orchestrator_path", "orchestrator_sha256"),
+        ):
+            spec = f"{entry['git_commit']}:{entry[path_field]}"
+            completed = subprocess.run(
+                ["git", "-C", str(repo), "show", spec],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if completed.returncode != 0:
+                detail = completed.stderr.decode("utf-8", errors="replace").strip()
+                raise ValueError(f"cannot read pinned variant {variant} {spec}: {detail}")
+            actual = hashlib.sha256(completed.stdout).hexdigest()
+            if actual != entry[hash_field]:
+                raise ValueError(f"pinned variant file hash mismatch: {variant} {entry[path_field]}")
+        verified.append({
+            "variant": variant,
+            "engine_version": entry["engine_version"],
+            "variant_contract_sha256": entry["variant_contract_sha256"],
+        })
+    return verified
+
+
+def materialize_case_dispatch(suite, suite_path, case_id, variant):
     """Build the only payload a research arm is allowed to receive."""
     suite = validate_evidence_files(suite, suite_path)
     selected = [case for case in suite["cases"] if case["case_id"] == case_id]
     if not selected:
         raise ValueError(f"unknown case_id: {case_id}")
+    if variant not in suite["variant_manifest"]:
+        raise ValueError(f"unknown variant: {variant}")
     case = selected[0]
     root = Path(suite_path).resolve().parent
     packets = []
@@ -302,11 +432,20 @@ def materialize_case_dispatch(suite, suite_path, case_id):
             "sha256": entry["sha256"],
             "packet": packet,
         })
+    variant_contract = suite["variant_manifest"][variant]
+    method_instruction = None
+    if variant_contract["runner_kind"] == "PROMPT_ONLY":
+        method_instruction = (
+            root / variant_contract["instruction_path"]
+        ).read_text(encoding="utf-8")
     dispatch = {
         "schema_version": DISPATCH_SCHEMA,
         "suite_id": suite["suite_id"],
         "evaluation_scope": suite["evaluation_scope"],
         "suite_contract_sha256": suite["suite_contract_sha256"],
+        "variant": variant,
+        "variant_contract": variant_contract,
+        "method_instruction": method_instruction,
         "case": case,
         "evidence_packets": packets,
         "research_constraints": {
@@ -324,7 +463,7 @@ def materialize_case_dispatch(suite, suite_path, case_id):
     return dispatch
 
 
-def write_case_dispatch(suite, suite_path, case_id, output_path):
+def write_case_dispatch(suite, suite_path, case_id, variant, output_path):
     """Write a dispatch outside the suite tree so assessor files are not adjacent."""
     suite_root = Path(suite_path).resolve().parent
     output = Path(output_path).resolve()
@@ -334,7 +473,7 @@ def write_case_dispatch(suite, suite_path, case_id, output_path):
         raise ValueError(f"dispatch output already exists: {output}")
     if not output.parent.is_dir():
         raise ValueError(f"dispatch output directory does not exist: {output.parent}")
-    dispatch = materialize_case_dispatch(suite, suite_path, case_id)
+    dispatch = materialize_case_dispatch(suite, suite_path, case_id, variant)
     encoded = (
         json.dumps(dispatch, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     ).encode("utf-8")
@@ -343,18 +482,47 @@ def write_case_dispatch(suite, suite_path, case_id, output_path):
     return dispatch, hashlib.sha256(encoded).hexdigest()
 
 
-def validate_result(result, case, variants, suite_contract_sha256):
+def validate_result(result, case, suite):
     if result.get("schema_version") != RESULT_SCHEMA:
         raise ValueError(f"result schema_version must be {RESULT_SCHEMA}")
     case_id = _require_text(result.get("case_id"), "result.case_id")
     variant = _require_text(result.get("variant"), "result.variant")
     if case_id != case["case_id"]:
         raise ValueError("result.case_id does not match suite case")
-    if variant not in variants:
+    if variant not in suite["variants"]:
         raise ValueError(f"result.variant is not declared in suite: {variant}")
     bound_suite = _sha256(result.get("suite_contract_sha256"), "result.suite_contract_sha256")
-    if bound_suite != suite_contract_sha256:
+    if bound_suite != suite["suite_contract_sha256"]:
         raise ValueError("result is not bound to the exact suite/evidence contract")
+    variant_contract = suite["variant_manifest"][variant]
+    bound_variant = _sha256(
+        result.get("variant_contract_sha256"), "result.variant_contract_sha256"
+    )
+    if bound_variant != variant_contract["variant_contract_sha256"]:
+        raise ValueError("result is not bound to the exact variant contract")
+    engine_version = _require_text(result.get("engine_version"), "result.engine_version")
+    if engine_version != variant_contract["engine_version"]:
+        raise ValueError("result.engine_version does not match the pinned variant")
+    engine_receipt = result.get("engine_receipt")
+    if not isinstance(engine_receipt, dict) or engine_receipt.get("verified_by_host") is not True:
+        raise ValueError("result.engine_receipt must be host-verified")
+    receipt_expected = {
+        "runner_kind": variant_contract["runner_kind"],
+        "engine_version": variant_contract["engine_version"],
+        "variant_contract_sha256": variant_contract["variant_contract_sha256"],
+    }
+    if variant_contract["runner_kind"] == "PROMPT_ONLY":
+        receipt_expected["instruction_sha256"] = variant_contract["instruction_sha256"]
+    else:
+        receipt_expected.update({
+            "git_commit": variant_contract["git_commit"],
+            "entrypoint_sha256": variant_contract["entrypoint_sha256"],
+            "orchestrator_sha256": variant_contract["orchestrator_sha256"],
+        })
+    for field, expected in receipt_expected.items():
+        if engine_receipt.get(field) != expected:
+            raise ValueError(f"result.engine_receipt.{field} does not match variant contract")
+    _require_text(engine_receipt.get("host_invocation_id"), "engine_receipt.host_invocation_id")
     status = _require_text(result.get("completion_status"), "result.completion_status").upper()
     if status not in STATUS_VALUES:
         raise ValueError(f"unsupported completion_status: {status}")
@@ -373,9 +541,11 @@ def validate_result(result, case, variants, suite_contract_sha256):
         "case_id": case_id,
         "variant": variant,
         "suite_contract_sha256": bound_suite,
+        "variant_contract_sha256": bound_variant,
         "completion_status": status,
         "execution_id": _require_text(result.get("execution_id"), "result.execution_id"),
-        "engine_version": _require_text(result.get("engine_version"), "result.engine_version"),
+        "engine_version": engine_version,
+        "engine_receipt": engine_receipt,
         "artifact_path": _require_text(result.get("artifact_path"), "result.artifact_path"),
         "artifact_sha256": _sha256(result.get("artifact_sha256"), "result.artifact_sha256"),
         "usage": normalized_usage,
@@ -447,8 +617,7 @@ def score_suite(suite, results_dir):
                 continue
             try:
                 result = validate_result(
-                    _load_json(result_path), case, suite["variants"],
-                    suite["suite_contract_sha256"],
+                    _load_json(result_path), case, suite,
                 )
                 artifact_path = Path(result["artifact_path"])
                 if not artifact_path.is_absolute():
@@ -595,7 +764,11 @@ def main():
     dispatch_cmd = sub.add_parser("materialize-case")
     dispatch_cmd.add_argument("--suite", required=True)
     dispatch_cmd.add_argument("--case-id", required=True)
+    dispatch_cmd.add_argument("--variant", required=True)
     dispatch_cmd.add_argument("--output", required=True)
+    verify_cmd = sub.add_parser("verify-variants")
+    verify_cmd.add_argument("--suite", required=True)
+    verify_cmd.add_argument("--source-repo", required=True)
     score_cmd = sub.add_parser("score")
     score_cmd.add_argument("--suite", required=True)
     score_cmd.add_argument("--results-dir", required=True)
@@ -616,14 +789,26 @@ def main():
         return
     if args.command == "materialize-case":
         dispatch, dispatch_hash = write_case_dispatch(
-            suite, args.suite, args.case_id, args.output
+            suite, args.suite, args.case_id, args.variant, args.output
         )
         print(json.dumps({
             "status": "MATERIALIZED",
             "case_id": dispatch["case"]["case_id"],
+            "variant": dispatch["variant"],
+            "variant_contract_sha256": dispatch["variant_contract"][
+                "variant_contract_sha256"
+            ],
             "suite_contract_sha256": dispatch["suite_contract_sha256"],
             "dispatch_sha256": dispatch_hash,
             "output": str(Path(args.output).resolve()),
+        }, ensure_ascii=False, indent=2))
+        return
+    if args.command == "verify-variants":
+        verified = verify_git_variants(suite, args.source_repo)
+        print(json.dumps({
+            "status": "VERIFIED",
+            "suite_contract_sha256": suite["suite_contract_sha256"],
+            "git_variants": verified,
         }, ensure_ascii=False, indent=2))
         return
     summary = score_suite(suite, args.results_dir)
