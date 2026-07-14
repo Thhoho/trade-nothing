@@ -73,6 +73,10 @@ Each agent may submit at most three seeds per round.
   monitorable origin crux with the minimum source count, a converged root thesis, and a structured
   catalyst date inside the root research horizon.
 
+Independent seed sources are counted by final publisher domain, never by the agent-written
+`source` label. Search/grounding redirect wrappers must be resolved to the final publisher URL;
+otherwise the evidence and any pricing anchor bound to it are rejected.
+
 Fail closed without deleting the lead:
 
 - `BLOCKED_ORIGIN_CRUX`: the origin crux is untested, unsettled, or source-thin.

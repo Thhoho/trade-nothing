@@ -363,12 +363,12 @@ def evaluate_batch(state, analyst_payload, skeptic_payload, as_of_date=None, iso
     ).lower()
     if runtime_isolation_status not in {"verified", "degraded", "unverified"}:
         runtime_isolation_status = "unverified"
-    if claimed_isolation_status == runtime_isolation_status == "verified":
-        isolation_status = "verified"
+    if "unverified" in {claimed_isolation_status, runtime_isolation_status}:
+        isolation_status = "unverified"
     elif "degraded" in {claimed_isolation_status, runtime_isolation_status}:
         isolation_status = "degraded"
     else:
-        isolation_status = "unverified"
+        isolation_status = "verified"
     analyst_map = _screen_map(analyst_payload)
     skeptic_map = _screen_map(skeptic_payload)
     eligible = {

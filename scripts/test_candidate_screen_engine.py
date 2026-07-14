@@ -202,6 +202,16 @@ class CandidateScreenEngineTests(unittest.TestCase):
         self.assertIn("screen_isolation_claim_exceeds_runtime", screen["gaps"])
         self.assertEqual(audit["effective_isolation_status"], "unverified")
 
+    def test_unverified_runtime_is_worse_than_degraded_screen_claim(self):
+        st = state_with_seed()
+        st["runtime_contract"]["isolation_status"] = "unverified"
+        audit = screen_engine.evaluate_batch(
+            st, payload("Analyst"), payload("Skeptic"), AS_OF,
+            isolation_status="degraded",
+        )
+        self.assertEqual(audit["effective_isolation_status"], "unverified")
+        self.assertEqual(st["candidate_screens"][0]["isolation_status"], "unverified")
+
     def test_reserved_example_urls_cannot_satisfy_candidate_screen(self):
         st = state_with_seed()
         analyst = payload("Analyst")

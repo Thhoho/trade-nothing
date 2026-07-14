@@ -147,6 +147,15 @@ class EvidenceGateTests(unittest.TestCase):
         crux_engine.submit_round(st, 1, {"C1": {"signal": -1, "citations": [bad]}})
         self.assertEqual(st["cruxes"]["C1"]["p_history"][-1], 0.5)
 
+    def test_grounding_redirect_is_not_a_direct_source(self):
+        st = state()
+        bad = citation("redirect")
+        bad["url"] = (
+            "https://vertexaisearch.cloud.google.com/grounding-api-redirect/opaque-token"
+        )
+        crux_engine.submit_round(st, 1, {"C1": {"signal": 1, "citations": [bad]}})
+        self.assertEqual(st["cruxes"]["C1"]["p_history"][-1], 0.5)
+
     def test_strong_signal_without_number_is_capped(self):
         st = state()
         crux_engine.submit_round(

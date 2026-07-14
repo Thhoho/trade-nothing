@@ -14,7 +14,8 @@ fixed questions for every supplied seed.
    expression, current valuation, governance, ownership/crowding, catalyst, and
    falsifier evidence.
 3. YES and NO both require fresh, concrete citations. A homepage or a source
-   name without a specific URL is invalid. Example/test/local URLs are synthetic and forbidden.
+   name without a specific URL is invalid. Example/test/local URLs are synthetic and forbidden;
+   grounding/search redirects must be resolved to the publisher's final URL.
 4. Do not infer YES from absence of bad news. Use UNKNOWN.
 5. Prefer filings, exchange data, regulator records, company disclosures, fund
    holdings, and dated transaction/market data. Mark source tier honestly.

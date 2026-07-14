@@ -433,7 +433,7 @@ def assess_seed(state, seed):
 
 
 def _source_organization(citation):
-    return _norm(citation.get("source")) if isinstance(citation, dict) else ""
+    return crux_engine.citation_publisher_identity(citation) if isinstance(citation, dict) else ""
 
 
 def _latest_screen(state, seed_id):

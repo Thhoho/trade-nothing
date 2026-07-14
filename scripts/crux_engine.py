@@ -59,7 +59,7 @@ def is_concrete_url(url):
         return False
     if p.scheme not in ("http", "https") or not p.netloc:
         return False
-    if is_placeholder_url(url):
+    if is_placeholder_url(url) or is_redirect_wrapper_url(url):
         return False
     return bool((p.path and p.path != "/") or p.query)
 
@@ -82,6 +82,21 @@ def is_placeholder_url(url):
     return any(host.endswith(suffix) for suffix in (
         ".example", ".invalid", ".localhost", ".test",
     ))
+
+
+def is_redirect_wrapper_url(url):
+    """Reject search/grounding redirect wrappers that hide the actual publisher URL."""
+    try:
+        parsed = urlparse(str(url or "").strip())
+    except Exception:
+        return True
+    host = (parsed.hostname or "").lower().rstrip(".")
+    path = parsed.path or ""
+    return (
+        (host == "vertexaisearch.cloud.google.com" and path.startswith("/grounding-api-redirect"))
+        or (host in {"google.com", "www.google.com"} and path == "/url")
+        or (host in {"bing.com", "www.bing.com"} and path.startswith("/ck/"))
+    )
 
 
 def valid_citation(c):

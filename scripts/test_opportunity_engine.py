@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Offline regression tests for evidence-backed OpportunitySeed harvesting."""
 import os
+import re
 import tempfile
 import unittest
 
@@ -11,11 +12,12 @@ import report_v2
 
 
 def citation(path, claim="candidate captures the bottleneck", number="1"):
+    publisher_slug = re.sub(r"[^a-z0-9]+", "-", path.lower()).strip("-")
     return {
         "claim": claim,
         "number": number,
         "source": f"Test Source {path}",
-        "url": f"https://fixture-research.org/research/{path}",
+        "url": f"https://fixture-{publisher_slug}.org/research/evidence",
         "date": "2026-07-10",
         "source_tier": "primary",
     }
@@ -165,7 +167,7 @@ class OpportunityEngineTests(unittest.TestCase):
         st = research_state()
         evidence = citation("anchor-source")
         wrong_anchor = dict(seed(evidence)["pricing_anchor"])
-        wrong_anchor["source_url"] = "https://fixture-research.org/research/not-submitted"
+        wrong_anchor["source_url"] = "https://fixture-not-submitted.org/research/evidence"
         opportunity_engine.harvest_round(
             st, 1,
             detective_payload(evidence, seed(evidence, pricing_anchor=wrong_anchor)),
@@ -311,7 +313,7 @@ class OpportunityReportTests(unittest.TestCase):
         self.assertIn("Asset Owner", md)
         self.assertIn("未筛选不等于机会", md)
         self.assertIn("Thesis 升级资格", md)
-        self.assertIn("https://fixture-research.org/research/report", md)
+        self.assertIn("https://fixture-report.org/research/evidence", md)
         self.assertNotIn("全量工作数据", md)
         self.assertNotIn("待 deep 模型写入", md)
 

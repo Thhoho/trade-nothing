@@ -315,7 +315,8 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > Additional batches require an explicit `--screen`; do not inflate the batch merely to produce
 > more names.
 > IANA example/test hosts, localhost, and loopback URLs are invalid evidence even when they contain
-> a path. Source-organization diversity is derived from publisher domains, not agent-written
+> a path. Google/Vertex/Bing grounding redirect wrappers are also invalid: resolve and store the
+> publisher's final URL. Source-organization diversity is derived from publisher domains, not agent-written
 > `source` labels. A `--screen-isolation verified` claim is capped by the run's host isolation
 > attestation; it cannot upgrade an `unverified` runtime.
 

@@ -82,6 +82,11 @@ publisher domains, not the submitted `source` string. Screen isolation is effect
 the run-level host attestation and the screen submission claim are `verified`; the submission
 cannot promote itself above the runtime.
 
+Search and grounding redirect wrappers (including Vertex grounding redirects, Google `/url`, and
+Bing `/ck/`) are not publisher evidence. Resolve them to the final issuer, regulator, filing,
+dataset, exchange, or article URL before submission. If the final URL is unavailable, answer
+`UNKNOWN`.
+
 ## Deterministic combination
 
 For each dimension:

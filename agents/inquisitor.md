@@ -38,7 +38,9 @@ Attack the Detective's nodes exclusively through these three vectors:
 5. **Source Integrity for v2**:
    Every numeric kill trigger, threshold, bottom price, and evidence audit must be traceable
    to a concrete URL with date. Do not cite homepages or bare domains. If a death-path number
-   cannot be sourced, write the mechanism without the number.
+   cannot be sourced, write the mechanism without the number. Resolve Google/Vertex/Bing grounding
+   redirects to the final publisher URL; redirect wrappers, example/test hosts, and agent-written
+   source labels do not establish source independence.
 
 6. **Per-crux Evidence Contract for v2**:
    Assign every v2 attack to an OPEN `crux_id` in `crux_attacks`. A free-roam attack

@@ -43,7 +43,9 @@ Evaluate the target through these three sequential layers:
 6. **Source Integrity for v2**:
    Every sourced claim must include organization, date, and a concrete URL to the specific
    article/filing/API endpoint. Do not cite homepages or bare domains. If you cannot find a
-   concrete URL, omit the number rather than inventing a source.
+   concrete URL, omit the number rather than inventing a source. Resolve Google/Vertex/Bing
+   grounding redirects to the final publisher URL; redirect wrappers, example/test hosts, and
+   agent-written source labels do not establish source independence.
 
 7. **Per-crux Evidence Contract for v2**:
    Every v2 claim must be assigned to an OPEN `crux_id`. Put structured citations in
