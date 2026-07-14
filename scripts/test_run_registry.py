@@ -69,13 +69,14 @@ class RunRegistryTests(unittest.TestCase):
         self.assertEqual(stored["failure_count"], 1)
         self.assertLess(len(json.dumps(envelope)), 10000)
 
-    def test_manifest_can_be_read_when_advisory_lock_is_not_writable(self):
+    def test_manifest_read_does_not_attempt_advisory_write_lock(self):
         manifest = run_registry.create_manifest("Read-only status")
         with mock.patch.object(
-            utils.CrossPlatformFileLock, "acquire", side_effect=PermissionError("read only")
-        ):
+            utils.CrossPlatformFileLock, "acquire", side_effect=AssertionError("must not lock")
+        ) as acquire:
             loaded = run_registry.load_manifest(manifest["run_id"])
         self.assertEqual(loaded["topic"], "Read-only status")
+        self.assertFalse(acquire.called)
 
 
 if __name__ == "__main__":

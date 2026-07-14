@@ -353,7 +353,7 @@ def main():
             "last_convergence": state.get("last_convergence", {}) if isinstance(state, dict) else {},
             "latest_envelope": context.get("latest_envelope", {}),
         }
-        print(json.dumps(run_registry.stage_envelope(out, context=context),
+        print(json.dumps(run_registry.stage_envelope(out, context=context, persist=False),
                          ensure_ascii=False, indent=2))
         return
     if args.command == "adopt":

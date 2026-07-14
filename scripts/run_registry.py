@@ -185,7 +185,7 @@ def _stage_for_status(status):
     return "control"
 
 
-def stage_envelope(result, *, context=None, budget=None):
+def stage_envelope(result, *, context=None, budget=None, persist=True):
     result = dict(result or {})
     context = context or {}
     status = str(result.get("status") or "unknown")
@@ -213,7 +213,7 @@ def stage_envelope(result, *, context=None, budget=None):
         "result": result,
     }
     run_id = context.get("run_id")
-    if run_id:
+    if run_id and persist:
         manifest = load_manifest(run_id)
         manifest["updated_at"] = _now()
         manifest["stage"] = envelope["stage"]
