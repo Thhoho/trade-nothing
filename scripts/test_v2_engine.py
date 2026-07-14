@@ -551,7 +551,7 @@ class ReportSafetyTests(unittest.TestCase):
         self.assertTrue(outcome["report_render_valid"])
         self.assertTrue(outcome["research_state_valid"])
         self.assertEqual(outcome["promotion_eligibility"][0]["promotion_eligibility"], "BLOCKED")
-        self.assertIn("missing_pricing_anchor", outcome["promotion_eligibility"][0]["blocking_reasons"])
+        self.assertIn("missing_structured_pricing_anchor", outcome["promotion_eligibility"][0]["blocking_reasons"])
 
     def test_report_exposes_provisional_framing_premises(self):
         st = converged_state()

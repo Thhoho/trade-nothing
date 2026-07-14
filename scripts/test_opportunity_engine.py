@@ -40,7 +40,16 @@ def seed(evidence, candidate="Asset Owner", ticker="AO", **overrides):
         "causal_path": "constraint persists -> scarce input reprices -> owner captures rent",
         "economic_exposure": "owns the scarce input",
         "why_market_may_miss": "coverage tracks downstream volume, not input scarcity",
-        "pricing_anchor": "consensus segment EBITDA excludes the signed capacity contract",
+        "pricing_anchor": {
+            "as_of_date": "2026-07-10",
+            "anchor_type": "EMBEDDED_EXPECTATION",
+            "metric": "consensus segment EBITDA",
+            "current_value": "excludes signed capacity contract",
+            "comparison_value": "includes disclosed contract contribution",
+            "source": evidence["source"],
+            "source_url": evidence["url"],
+            "source_claim": evidence["claim"],
+        },
         "catalyst": "new capacity contract disclosure",
         "catalyst_window": {
             "event": "new capacity contract disclosure",
@@ -125,24 +134,60 @@ class OpportunityEngineTests(unittest.TestCase):
         self.assertEqual(opportunity_engine.assess_seed(st, stored)["screening_status"],
                          "READY_FOR_SCREENING")
 
-    def test_missing_pricing_anchor_cannot_be_ready_for_screening(self):
+    def test_narrative_pricing_anchor_cannot_be_ready_for_screening(self):
         st = research_state()
         first = citation("anchor-a")
         second = citation("anchor-b")
         opportunity_engine.harvest_round(
-            st, 1, detective_payload(first, seed(first, pricing_anchor="")), {}
+            st, 1, detective_payload(
+                first,
+                seed(first, pricing_anchor="the market underestimates the contract"),
+            ), {}
         )
         opportunity_engine.harvest_round(
-            st, 2, {}, inquisitor_payload(second, seed(second, pricing_anchor=""))
+            st, 2, {}, inquisitor_payload(
+                second,
+                seed(second, pricing_anchor="consensus has not noticed the bottleneck"),
+            )
         )
         stored = st["opportunity_seeds"][0]
+        self.assertEqual(stored["pricing_anchor"], {})
         self.assertEqual(opportunity_engine.evidence_maturity(stored), "EVIDENCE_BACKED")
         assessment = opportunity_engine.assess_seed(st, stored)
         self.assertEqual(assessment["screening_status"], "EVIDENCE_BACKED")
-        self.assertIn("missing_pricing_anchor", assessment["blockers"])
+        self.assertIn("missing_structured_pricing_anchor", assessment["blockers"])
         self.assertEqual(
             opportunity_engine.promotion_assessment(st, stored)["promotion_eligibility"],
             "BLOCKED",
+        )
+
+    def test_pricing_anchor_must_reuse_same_round_seed_evidence_url(self):
+        st = research_state()
+        evidence = citation("anchor-source")
+        wrong_anchor = dict(seed(evidence)["pricing_anchor"])
+        wrong_anchor["source_url"] = "https://example.com/research/not-submitted"
+        opportunity_engine.harvest_round(
+            st, 1,
+            detective_payload(evidence, seed(evidence, pricing_anchor=wrong_anchor)),
+            {},
+        )
+        stored = st["opportunity_seeds"][0]
+        self.assertEqual(stored["pricing_anchor"]["source_url"], "")
+        blockers = opportunity_engine.seed_contract_blockers(stored)
+        self.assertIn("pricing_anchor_missing_source_url", blockers)
+        self.assertIn("pricing_anchor_invalid_source_url", blockers)
+
+    def test_complete_structured_pricing_anchor_satisfies_seed_contract(self):
+        st = research_state()
+        evidence = citation("anchor-valid")
+        opportunity_engine.harvest_round(
+            st, 1, detective_payload(evidence, seed(evidence)), {}
+        )
+        stored = st["opportunity_seeds"][0]
+        self.assertEqual(opportunity_engine.pricing_anchor_blockers(stored), [])
+        self.assertNotIn(
+            "missing_structured_pricing_anchor",
+            opportunity_engine.seed_contract_blockers(stored),
         )
 
     def test_same_ticker_is_one_entity_but_paths_stay_separate(self):

@@ -39,7 +39,16 @@ def state_with_seed():
         "causal_path": "constraint persists -> rent shifts to owner",
         "economic_exposure": "owner reports input-linked revenue",
         "why_market_may_miss": "consensus tracks downstream volume",
-        "pricing_anchor": "consensus EBITDA excludes the disclosed contract",
+        "pricing_anchor": {
+            "as_of_date": AS_OF,
+            "anchor_type": "EMBEDDED_EXPECTATION",
+            "metric": "consensus EBITDA",
+            "current_value": "excludes disclosed contract",
+            "comparison_value": "includes contract contribution",
+            "source": "Source seed-a",
+            "source_url": "https://example.com/screen/seed-a",
+            "source_claim": "screen evidence seed-a",
+        },
         "catalyst": "contract disclosure",
         "catalyst_window": {
             "event": "contract disclosure",

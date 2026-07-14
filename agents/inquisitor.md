@@ -106,7 +106,16 @@ Your response must be a valid JSON matching this schema exactly:
       "causal_path": "<failure path -> value transfer -> candidate exposure>",
       "economic_exposure": "<how the candidate captures or loses economics; blank if unknown>",
       "why_market_may_miss": "<specific pricing or attention gap; blank if unknown>",
-      "pricing_anchor": "<observable as-of valuation, embedded expectation, contract price, capacity/earnings assumption, or relative benchmark; blank if unknown>",
+      "pricing_anchor": {
+        "as_of_date": "YYYY-MM-DD",
+        "anchor_type": "ABSOLUTE_VALUATION|RELATIVE_VALUATION|EMBEDDED_EXPECTATION|CONTRACT_PRICE|CAPACITY_OR_EARNINGS|MARKET_PRICE",
+        "metric": "<observable metric>",
+        "current_value": "<current price, multiple, or embedded assumption>",
+        "comparison_value": "<peer, historical, contract, or thesis-implied comparison>",
+        "source": "<organization>",
+        "source_url": "<must exactly match one evidence URL below>",
+        "source_claim": "<what that evidence establishes>"
+      },
       "catalyst": "<observable event; blank if unknown>",
       "catalyst_window": {
         "event": "<observable event>",

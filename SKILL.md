@@ -289,6 +289,8 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > economic exposure, structured catalyst window, falsifier, and two independent source
 > organizations. Only the deterministic `VERIFIED_FOR_HUMAN` state may be offered for human DRAFT
 > Thesis creation; report validity, root actionability, or human rationale cannot bypass this gate.
+> Read `references/pricing-gap-protocol.md` before emitting candidate pricing anchors; narrative
+> claims such as “the market underestimates this” do not satisfy the structured as-of anchor gate.
 
 > **CandidateScreen integrity:** screen only after root-thesis convergence. Run
 > `agents/candidate_analyst.md` and `agents/candidate_skeptic.md` in isolated contexts on the

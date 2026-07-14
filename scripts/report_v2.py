@@ -419,7 +419,7 @@ def render(state):
         L.append(f"- **价值传导**: {_clean(seed.get('causal_path'))}")
         L.append(f"- **经济暴露**: {_clean(seed.get('economic_exposure'))}")
         L.append(f"- **市场可能漏看**: {_clean(seed.get('why_market_may_miss'))}")
-        L.append(f"- **定价锚**: {_clean(seed.get('pricing_anchor'))}")
+        L.append(f"- **定价锚**: {opportunity_engine.pricing_anchor_text(seed.get('pricing_anchor'))}")
         L.append(f"- **催化 / 证伪**: {_clean(seed.get('catalyst'))} / {_clean(seed.get('falsifier'))}")
         promotion = seed.get("promotion", {})
         L.append(f"- **Thesis 升级资格**: `{promotion.get('promotion_eligibility', 'BLOCKED')}`")

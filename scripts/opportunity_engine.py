@@ -36,10 +36,18 @@ TEXT_FIELDS = (
     "causal_path",
     "economic_exposure",
     "why_market_may_miss",
-    "pricing_anchor",
     "catalyst",
     "falsifier",
 )
+
+PRICING_ANCHOR_TYPES = {
+    "ABSOLUTE_VALUATION",
+    "RELATIVE_VALUATION",
+    "EMBEDDED_EXPECTATION",
+    "CONTRACT_PRICE",
+    "CAPACITY_OR_EARNINGS",
+    "MARKET_PRICE",
+}
 
 READY = "READY_FOR_SCREENING"
 EVIDENCE_BACKED = "EVIDENCE_BACKED"
@@ -172,7 +180,7 @@ def _normalize_seed(raw, state, agent_name, round_num, allowed, audit):
         "causal_path": causal_path,
         "economic_exposure": _text(raw.get("economic_exposure")),
         "why_market_may_miss": _text(raw.get("why_market_may_miss")),
-        "pricing_anchor": _text(raw.get("pricing_anchor")),
+        "pricing_anchor": _normalize_pricing_anchor(raw.get("pricing_anchor"), accepted),
         "catalyst": _text(raw.get("catalyst")),
         "catalyst_window": _normalize_catalyst_window(raw.get("catalyst_window")),
         "falsifier": _text(raw.get("falsifier")),
@@ -209,6 +217,98 @@ def _normalize_catalyst_window(value):
     return {"event": event, "expected_by": expected_by, "date_status": status}
 
 
+def _normalize_pricing_anchor(value, evidence=None):
+    if not isinstance(value, dict):
+        return {}
+    as_of_date = _text(value.get("as_of_date"))
+    try:
+        if as_of_date:
+            date.fromisoformat(as_of_date)
+    except ValueError:
+        as_of_date = ""
+    anchor_type = _text(value.get("anchor_type")).upper()
+    if anchor_type not in PRICING_ANCHOR_TYPES:
+        anchor_type = ""
+    source_url = _text(value.get("source_url"))
+    evidence_urls = {
+        crux_engine.citation_source_identity(item)
+        for item in evidence or [] if crux_engine.valid_citation(item)
+    }
+    source_identity = crux_engine.citation_source_identity({
+        "claim": value.get("source_claim") or "pricing anchor",
+        "source": value.get("source") or "pricing anchor source",
+        "date": as_of_date,
+        "url": source_url,
+    }) if source_url and as_of_date else ""
+    if evidence is not None and source_identity not in evidence_urls:
+        source_url = ""
+    normalized = {
+        "as_of_date": as_of_date,
+        "anchor_type": anchor_type,
+        "metric": _text(value.get("metric")),
+        "current_value": _text(value.get("current_value")),
+        "comparison_value": _text(value.get("comparison_value")),
+        "source": _text(value.get("source")),
+        "source_url": source_url,
+        "source_claim": _text(value.get("source_claim")),
+    }
+    return normalized if any(normalized.values()) else {}
+
+
+def pricing_anchor_blockers(seed):
+    anchor = seed.get("pricing_anchor")
+    if not isinstance(anchor, dict) or not anchor:
+        return ["missing_structured_pricing_anchor"]
+    blockers = []
+    required = {
+        "as_of_date": "pricing_anchor_missing_as_of",
+        "anchor_type": "pricing_anchor_missing_type",
+        "metric": "pricing_anchor_missing_metric",
+        "current_value": "pricing_anchor_missing_current_value",
+        "comparison_value": "pricing_anchor_missing_comparison_value",
+        "source": "pricing_anchor_missing_source",
+        "source_url": "pricing_anchor_missing_source_url",
+        "source_claim": "pricing_anchor_missing_source_claim",
+    }
+    for field, reason in required.items():
+        if not _text(anchor.get(field)):
+            blockers.append(reason)
+    if _text(anchor.get("anchor_type")).upper() not in PRICING_ANCHOR_TYPES:
+        blockers.append("pricing_anchor_invalid_type")
+    try:
+        date.fromisoformat(_text(anchor.get("as_of_date")))
+    except ValueError:
+        blockers.append("pricing_anchor_invalid_as_of")
+    if not crux_engine.is_concrete_url(_text(anchor.get("source_url"))):
+        blockers.append("pricing_anchor_invalid_source_url")
+    evidence_urls = {
+        crux_engine.citation_source_identity(item)
+        for item in seed.get("evidence", []) if crux_engine.valid_citation(item)
+    }
+    anchor_identity = ""
+    if crux_engine.is_concrete_url(_text(anchor.get("source_url"))):
+        anchor_identity = crux_engine.citation_source_identity({
+            "claim": anchor.get("source_claim") or "pricing anchor",
+            "source": anchor.get("source") or "pricing anchor source",
+            "date": anchor.get("as_of_date"),
+            "url": anchor.get("source_url"),
+        })
+    if anchor_identity and anchor_identity not in evidence_urls:
+        blockers.append("pricing_anchor_source_not_seed_evidence")
+    return blockers
+
+
+def pricing_anchor_text(anchor):
+    if not isinstance(anchor, dict) or not anchor:
+        return "—"
+    return (
+        f"{_text(anchor.get('metric'))}: {_text(anchor.get('current_value'))} vs "
+        f"{_text(anchor.get('comparison_value'))} | {_text(anchor.get('anchor_type'))} | "
+        f"as-of {_text(anchor.get('as_of_date'))} | {_text(anchor.get('source'))} "
+        f"{_text(anchor.get('source_url'))}"
+    )
+
+
 def evidence_maturity(seed):
     sources = {
         _source_organization(c)
@@ -226,13 +326,13 @@ def seed_contract_blockers(seed):
     required = {
         "economic_exposure": "missing_economic_exposure",
         "why_market_may_miss": "missing_expectation_gap",
-        "pricing_anchor": "missing_pricing_anchor",
         "catalyst": "missing_catalyst",
         "falsifier": "missing_falsifier",
     }
     for field, reason in required.items():
         if not _text(seed.get(field)):
             blockers.append(reason)
+    blockers.extend(pricing_anchor_blockers(seed))
     window = seed.get("catalyst_window")
     window = window if isinstance(window, dict) else {}
     if not (_text(window.get("event")) and _text(window.get("expected_by"))
@@ -487,6 +587,16 @@ def _merge(existing, incoming):
     elif incoming_window and incoming_window != current_window:
         variants = existing.setdefault("field_variants", {}).setdefault("catalyst_window", [])
         for item in (current_window, incoming_window):
+            if item and item not in variants:
+                variants.append(item)
+
+    incoming_anchor = incoming.get("pricing_anchor")
+    current_anchor = existing.get("pricing_anchor")
+    if incoming_anchor and not current_anchor:
+        existing["pricing_anchor"] = incoming_anchor
+    elif incoming_anchor and incoming_anchor != current_anchor:
+        variants = existing.setdefault("field_variants", {}).setdefault("pricing_anchor", [])
+        for item in (current_anchor, incoming_anchor):
             if item and item not in variants:
                 variants.append(item)
 

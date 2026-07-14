@@ -29,7 +29,16 @@ Each agent may submit at most three seeds per round.
   "causal_path": "<crux outcome -> value transfer -> candidate exposure>",
   "economic_exposure": "<how the candidate captures or loses economics; blank if unknown>",
   "why_market_may_miss": "<specific pricing or attention gap; blank if unknown>",
-  "pricing_anchor": "<observable as-of valuation, embedded expectation, contract price, or relative benchmark; blank if unknown>",
+  "pricing_anchor": {
+    "as_of_date": "YYYY-MM-DD",
+    "anchor_type": "ABSOLUTE_VALUATION|RELATIVE_VALUATION|EMBEDDED_EXPECTATION|CONTRACT_PRICE|CAPACITY_OR_EARNINGS|MARKET_PRICE",
+    "metric": "<observable metric>",
+    "current_value": "<current price, multiple, or embedded assumption>",
+    "comparison_value": "<peer, historical, contract, or thesis-implied comparison>",
+    "source": "<organization>",
+    "source_url": "<must exactly match one same-round seed evidence URL>",
+    "source_claim": "<what the source establishes>"
+  },
   "catalyst": "<observable event; blank if unknown>",
   "catalyst_window": {
     "event": "<observable event>",
@@ -57,7 +66,9 @@ Each agent may submit at most three seeds per round.
   exposure, expectation gap, pricing anchor, catalyst, structured catalyst window, and falsifier.
   A narrative such as “the market underestimates this” is not a pricing anchor. Use an observable
   as-of valuation, embedded expectation, contract price, capacity/earnings assumption, or relative
-  benchmark. This is not yet screen eligibility.
+  benchmark. The anchor URL must exactly match same-round, same-crux seed evidence. This is not
+  yet screen eligibility. Read `references/pricing-gap-protocol.md` before emitting a structured
+  pricing anchor.
 - `READY_FOR_SCREENING`: the evidence-ready path also requires a contested and settled or
   monitorable origin crux with the minimum source count, a converged root thesis, and a structured
   catalyst date inside the root research horizon.
