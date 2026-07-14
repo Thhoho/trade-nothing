@@ -236,7 +236,13 @@ class CrossPlatformFileLock:
 
 
 def load_json_safe(filepath: str, default=None):
-    """Load JSON with graceful fallback on missing/corrupt files with lock."""
+    """Load JSON with a lock, falling back to atomic-file read in read-only contexts.
+
+    Writers use same-directory temporary files plus ``os.replace``, so when a caller cannot
+    create the advisory lock directory it can still observe either the previous or next complete
+    JSON document. This keeps read-only status/report commands from silently returning an empty
+    object after a lock timeout.
+    """
     if default is None:
         default = {}
     if not os.path.exists(filepath):
@@ -246,8 +252,12 @@ def load_json_safe(filepath: str, default=None):
         with lock:
             with open(filepath, "r", encoding="utf-8") as f:
                 return json.load(f)
-    except (json.JSONDecodeError, IOError):
-        return default
+    except (json.JSONDecodeError, IOError, TimeoutError):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return default
 
 
 def save_json(filepath: str, data, ensure_dir: bool = True):

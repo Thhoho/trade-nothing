@@ -4,8 +4,10 @@ import json
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 import run_registry
+import utils
 from utils import save_json
 
 
@@ -66,6 +68,14 @@ class RunRegistryTests(unittest.TestCase):
         stored = run_registry.load_manifest(manifest["run_id"])
         self.assertEqual(stored["failure_count"], 1)
         self.assertLess(len(json.dumps(envelope)), 10000)
+
+    def test_manifest_can_be_read_when_advisory_lock_is_not_writable(self):
+        manifest = run_registry.create_manifest("Read-only status")
+        with mock.patch.object(
+            utils.CrossPlatformFileLock, "acquire", side_effect=PermissionError("read only")
+        ):
+            loaded = run_registry.load_manifest(manifest["run_id"])
+        self.assertEqual(loaded["topic"], "Read-only status")
 
 
 if __name__ == "__main__":
