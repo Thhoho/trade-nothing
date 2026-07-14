@@ -39,6 +39,7 @@ def state_with_seed():
         "causal_path": "constraint persists -> rent shifts to owner",
         "economic_exposure": "owner reports input-linked revenue",
         "why_market_may_miss": "consensus tracks downstream volume",
+        "pricing_anchor": "consensus EBITDA excludes the disclosed contract",
         "catalyst": "contract disclosure",
         "catalyst_window": {
             "event": "contract disclosure",
@@ -116,6 +117,8 @@ class CandidateScreenEngineTests(unittest.TestCase):
         self.assertTrue(all(v["state"] == "SUPPORTED" for v in screen["dimensions"].values()))
         self.assertEqual(screen["promotion_packet"]["status"], "DRAFT_REQUIRES_SOURCE_VERIFICATION")
         self.assertIn("页面快照", screen["promotion_packet"]["required_next_step"])
+        self.assertEqual(st["opportunity_seeds"][0]["candidate_state"], "THESIS_CANDIDATE")
+        self.assertEqual(st["opportunity_seeds"][0]["promotion_eligibility"], "BLOCKED")
 
     def test_same_source_organization_does_not_corroborate(self):
         st = state_with_seed()

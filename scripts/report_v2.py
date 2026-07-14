@@ -131,6 +131,7 @@ def _extract_raw_material(state):
 def render(state):
     if state.get("last_convergence", {}).get("decision") != "converge":
         raise ValueError("formal report blocked: engine state is not converged")
+    opportunity_engine.refresh_candidate_states(state)
     rd = crux_engine.report_data(state)
     topic = state.get("topic", "")
 
@@ -181,6 +182,8 @@ def render(state):
         assessment = opportunity_engine.assess_seed(state, item)
         item["screening_status"] = assessment["screening_status"]
         item["screening_blockers"] = assessment["blockers"]
+        item["promotion"] = opportunity_engine.promotion_assessment(state, item)
+        item["candidate_state"] = item["promotion"]["candidate_state"]
         item["entity_id"] = opportunity_engine.entity_id(item)
         item["_screen"] = (
             latest_screens.get(item.get("seed_id"))
@@ -276,7 +279,7 @@ def render(state):
     L.append(f"- 博弈深度: {n_rounds} 轮 ｜ 唯一可复核来源: {rd['n_unique_sources']} 个"
              f" ｜ 其中一级来源: {rd['n_primary_sources']} 个")
     opportunity_counts = opportunity_engine.summary(state)
-    L.append(f"- 宝藏线索: {opportunity_counts['opportunity_seed_count']} 条证据路径 → "
+    L.append(f"- 候选线索: {opportunity_counts['opportunity_seed_count']} 条证据路径 → "
              f"{opportunity_counts['unique_candidate_count']} 个唯一候选 ｜ "
              f"其中 {opportunity_counts['ready_for_screening_count']} 个当前可进入二次筛选")
     screen_counts = candidate_screen_engine.summary(state)
@@ -376,11 +379,12 @@ def render(state):
     L.append("")
 
     # Deterministic opportunity layer. These are screening inputs, not recommendations.
-    L.append("### A.3 · 宝藏地图（研究候选，不是投资建议）")
+    L.append("### A.3 · 候选线索地图（未筛选不等于机会）")
     L.append("- 根命题的研究状态与候选线索相互独立：即使根命题为 `NO_EDGE`，"
              "通过证据反查的替代者、竞争者或瓶颈所有者仍会保留。")
     L.append("- `READY_FOR_SCREENING` 只允许进入双边 CandidateScreen；`THESIS_CANDIDATE` 还必须通过"
              "页面快照与 claim 对齐，才会生成需要人工确认的新 Thesis 草稿。")
+    L.append("- 只有 `VERIFIED_FOR_HUMAN` 可供人工建立独立 DRAFT Thesis；报告通过不代表候选可升级。")
     if not opportunities:
         L.append("- 本轮没有通过证据反查的候选；不以行业主题词或无来源公司名凑数。")
     relation_labels = {
@@ -394,8 +398,8 @@ def render(state):
     }
     for index, seed in enumerate(opportunities[:10], 1):
         ticker = f" · {seed['ticker']}" if seed.get("ticker") else ""
-        effective_status = seed.get("screening_status", opportunity_engine.EVIDENCE_BACKED)
-        status_icon = "✅" if effective_status == opportunity_engine.READY else "⛔"
+        effective_status = seed.get("candidate_state", opportunity_engine.EVIDENCE_BACKED)
+        status_icon = "✅" if effective_status == opportunity_engine.VERIFIED_FOR_HUMAN else "⛔"
         screen = seed.get("_screen")
         screen_status = screen.get("status") if screen else "UNSCREENED"
         claim_status = screen.get("claim_verification_status", "PENDING") if screen else "NOT_APPLICABLE"
@@ -415,9 +419,13 @@ def render(state):
         L.append(f"- **价值传导**: {_clean(seed.get('causal_path'))}")
         L.append(f"- **经济暴露**: {_clean(seed.get('economic_exposure'))}")
         L.append(f"- **市场可能漏看**: {_clean(seed.get('why_market_may_miss'))}")
+        L.append(f"- **定价锚**: {_clean(seed.get('pricing_anchor'))}")
         L.append(f"- **催化 / 证伪**: {_clean(seed.get('catalyst'))} / {_clean(seed.get('falsifier'))}")
-        if seed.get("screening_blockers"):
-            L.append(f"- **当前阻塞**: {', '.join(seed['screening_blockers'])}")
+        promotion = seed.get("promotion", {})
+        L.append(f"- **Thesis 升级资格**: `{promotion.get('promotion_eligibility', 'BLOCKED')}`")
+        blockers = promotion.get("blocking_reasons") or seed.get("screening_blockers") or []
+        if blockers:
+            L.append(f"- **当前阻塞**: {', '.join(blockers)}")
         L.append(f"- **证据**: {refs_text}")
         if seed.get("field_variants"):
             L.append(f"- **冲突提醒**: 跨轮字段存在 {len(seed['field_variants'])} 处不同表述，二次筛选时必须对读。")
@@ -549,7 +557,7 @@ def render(state):
         L.append(f"- **{item['id']} {item['status']}**: 监控 {trigger}；"
                  f"证伪 {item.get('falsifier') or '—'}。{ref_text}")
     L.append("")
-    L.append("### 宝藏线索边界")
+    L.append("### 候选线索边界")
     L.append(f"- 证据路径已按唯一候选去重展示；当前只有 "
              f"{opportunity_counts['ready_for_screening_count']} 个候选具备双边筛查资格。")
     L.append("- 未完成 CandidateScreen 与页面快照对齐的候选，均不得表述为投资结论。")

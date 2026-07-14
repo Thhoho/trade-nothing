@@ -14,7 +14,7 @@ def citation(path, claim="candidate captures the bottleneck", number="1"):
     return {
         "claim": claim,
         "number": number,
-        "source": "Test Source",
+        "source": f"Test Source {path}",
         "url": f"https://example.com/research/{path}",
         "date": "2026-07-10",
         "source_tier": "primary",
@@ -40,6 +40,7 @@ def seed(evidence, candidate="Asset Owner", ticker="AO", **overrides):
         "causal_path": "constraint persists -> scarce input reprices -> owner captures rent",
         "economic_exposure": "owns the scarce input",
         "why_market_may_miss": "coverage tracks downstream volume, not input scarcity",
+        "pricing_anchor": "consensus segment EBITDA excludes the signed capacity contract",
         "catalyst": "new capacity contract disclosure",
         "catalyst_window": {
             "event": "new capacity contract disclosure",
@@ -123,6 +124,26 @@ class OpportunityEngineTests(unittest.TestCase):
         self.assertEqual(opportunity_engine.summary(st)["ready_for_screening_count"], 1)
         self.assertEqual(opportunity_engine.assess_seed(st, stored)["screening_status"],
                          "READY_FOR_SCREENING")
+
+    def test_missing_pricing_anchor_cannot_be_ready_for_screening(self):
+        st = research_state()
+        first = citation("anchor-a")
+        second = citation("anchor-b")
+        opportunity_engine.harvest_round(
+            st, 1, detective_payload(first, seed(first, pricing_anchor="")), {}
+        )
+        opportunity_engine.harvest_round(
+            st, 2, {}, inquisitor_payload(second, seed(second, pricing_anchor=""))
+        )
+        stored = st["opportunity_seeds"][0]
+        self.assertEqual(opportunity_engine.evidence_maturity(stored), "EVIDENCE_BACKED")
+        assessment = opportunity_engine.assess_seed(st, stored)
+        self.assertEqual(assessment["screening_status"], "EVIDENCE_BACKED")
+        self.assertIn("missing_pricing_anchor", assessment["blockers"])
+        self.assertEqual(
+            opportunity_engine.promotion_assessment(st, stored)["promotion_eligibility"],
+            "BLOCKED",
+        )
 
     def test_same_ticker_is_one_entity_but_paths_stay_separate(self):
         st = research_state()
@@ -241,9 +262,10 @@ class OpportunityReportTests(unittest.TestCase):
         md = report_v2.render(st)
         self.assertIn("Edge: **NO_EDGE**", md)
         self.assertNotIn("NO_EDGE / AVOID", md)
-        self.assertIn("A.3 · 宝藏地图", md)
+        self.assertIn("A.3 · 候选线索地图", md)
         self.assertIn("Asset Owner", md)
-        self.assertIn("不是投资建议", md)
+        self.assertIn("未筛选不等于机会", md)
+        self.assertIn("Thesis 升级资格", md)
         self.assertIn("https://example.com/research/report", md)
         self.assertNotIn("全量工作数据", md)
         self.assertNotIn("待 deep 模型写入", md)

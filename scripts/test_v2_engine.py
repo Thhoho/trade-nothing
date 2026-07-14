@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Offline regression tests for the v2 evidence and report safety gates."""
 import os
+import json
 import tempfile
 import unittest
 
@@ -511,6 +512,46 @@ class ReportSafetyTests(unittest.TestCase):
             handle.flush()
             errors, _ = validate_report_v2.validate_report(handle.name)
         self.assertTrue(any("semantic leak" in item for item in errors))
+
+    def test_validator_separates_report_validity_from_blocked_promotion(self):
+        st = converged_state()
+        st["cruxes"]["C1"].update({
+            "first_contested": 1,
+            "contested_history": [0.5, 0.5, 0.5],
+            "status": "MONITORABLE",
+            "retired": True,
+            "citations": [citation("state-a"), citation("state-b")],
+        })
+        st["opportunity_seeds"] = [{
+            "seed_id": "OS-MISSING-ANCHOR",
+            "candidate": "Unscreened Asset",
+            "ticker": "UA",
+            "asset_type": "LISTED_EQUITY",
+            "relation_type": "BOTTLENECK_OWNER",
+            "origin_crux": "C1",
+            "causal_path": "constraint -> rent -> owner",
+            "economic_exposure": "owner captures rent",
+            "why_market_may_miss": "coverage misses the segment",
+            "pricing_anchor": "",
+            "catalyst": "contract filing",
+            "catalyst_window": {"event": "contract filing", "expected_by": "2026-10-10", "date_status": "REVIEW_CHECKPOINT"},
+            "falsifier": "contract fails",
+            "evidence": [citation("seed-a"), citation("seed-b")],
+        }]
+        md = report_v2.render(st)
+        with tempfile.NamedTemporaryFile("w", suffix=".md", encoding="utf-8") as report_handle, \
+                tempfile.NamedTemporaryFile("w", suffix=".json", encoding="utf-8") as state_handle:
+            report_handle.write(md)
+            report_handle.flush()
+            json.dump(st, state_handle)
+            state_handle.flush()
+            outcome = validate_report_v2.validate_report_outcomes(
+                report_handle.name, state_handle.name
+            )
+        self.assertTrue(outcome["report_render_valid"])
+        self.assertTrue(outcome["research_state_valid"])
+        self.assertEqual(outcome["promotion_eligibility"][0]["promotion_eligibility"], "BLOCKED")
+        self.assertIn("missing_pricing_anchor", outcome["promotion_eligibility"][0]["blocking_reasons"])
 
     def test_report_exposes_provisional_framing_premises(self):
         st = converged_state()

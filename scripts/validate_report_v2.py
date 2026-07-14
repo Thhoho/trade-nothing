@@ -18,6 +18,7 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 import crux_engine
+import opportunity_engine
 
 
 REF_RE = re.compile(r"^- \[(\d+)\].*?(https?://\S+)\s*$")
@@ -111,21 +112,83 @@ def validate_report(path, state_path=""):
     return errors, warnings
 
 
+def validate_report_outcomes(path, state_path=""):
+    """Separate Markdown validity, state consistency, and candidate promotion eligibility."""
+    render_errors, warnings = validate_report(path, state_path)
+    result = {
+        "report_render_valid": not render_errors,
+        "report_errors": render_errors,
+        "research_state_valid": None,
+        "state_errors": [],
+        "promotion_eligibility": [],
+        "warnings": warnings,
+    }
+    if not state_path:
+        return result
+    try:
+        with open(state_path, encoding="utf-8") as handle:
+            state = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        result["research_state_valid"] = False
+        result["state_errors"].append(f"Cannot load state: {exc}")
+        return result
+
+    if state.get("last_convergence", {}).get("decision") != "converge":
+        result["state_errors"].append("Formal report state is not converged.")
+    for seed in state.get("opportunity_seeds", []):
+        if not isinstance(seed, dict) or not seed.get("seed_id"):
+            result["state_errors"].append("Opportunity seed is missing seed_id.")
+            continue
+        assessment = opportunity_engine.promotion_assessment(state, seed)
+        stored_state = str(seed.get("candidate_state") or "")
+        if stored_state and stored_state != assessment["candidate_state"]:
+            result["state_errors"].append(
+                f"{seed['seed_id']} candidate_state drift: stored={stored_state}, "
+                f"derived={assessment['candidate_state']}"
+            )
+        stored_eligibility = str(seed.get("promotion_eligibility") or "")
+        if stored_eligibility and stored_eligibility != assessment["promotion_eligibility"]:
+            result["state_errors"].append(
+                f"{seed['seed_id']} promotion eligibility drift: stored={stored_eligibility}, "
+                f"derived={assessment['promotion_eligibility']}"
+            )
+        result["promotion_eligibility"].append({
+            "seed_id": seed["seed_id"],
+            "candidate": str(seed.get("candidate") or ""),
+            **assessment,
+        })
+    result["research_state_valid"] = not result["state_errors"]
+    return result
+
+
 def main():
     ap = argparse.ArgumentParser(description="Validate Trade Nothing v2 report quality gates.")
     ap.add_argument("--report", required=True)
     ap.add_argument("--state", default="")
     args = ap.parse_args()
 
-    errors, warnings = validate_report(args.report, args.state)
-    for w in warnings:
+    outcome = validate_report_outcomes(args.report, args.state)
+    for w in outcome["warnings"]:
         print(f"WARNING: {w}")
-    if errors:
+    print("REPORT_RENDER_VALID: " + ("PASS" if outcome["report_render_valid"] else "FAIL"))
+    if outcome["research_state_valid"] is None:
+        print("RESEARCH_STATE_VALID: NOT_EVALUATED (pass --state)")
+    else:
+        print("RESEARCH_STATE_VALID: " + ("PASS" if outcome["research_state_valid"] else "FAIL"))
+    if outcome["promotion_eligibility"]:
+        for item in outcome["promotion_eligibility"]:
+            blockers = ",".join(item["blocking_reasons"]) or "none"
+            print(
+                f"PROMOTION_ELIGIBILITY {item['seed_id']} {item['candidate']}: "
+                f"{item['promotion_eligibility']} | state={item['candidate_state']} | blockers={blockers}"
+            )
+    else:
+        print("PROMOTION_ELIGIBILITY: NO_CANDIDATES")
+    if outcome["report_errors"] or outcome["state_errors"]:
         print("FAILED")
-        for e in errors:
+        for e in outcome["report_errors"] + outcome["state_errors"]:
             print(f"- {e}")
         raise SystemExit(2)
-    print("PASSED")
 
 
 if __name__ == "__main__":

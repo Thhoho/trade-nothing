@@ -29,6 +29,7 @@ Each agent may submit at most three seeds per round.
   "causal_path": "<crux outcome -> value transfer -> candidate exposure>",
   "economic_exposure": "<how the candidate captures or loses economics; blank if unknown>",
   "why_market_may_miss": "<specific pricing or attention gap; blank if unknown>",
+  "pricing_anchor": "<observable as-of valuation, embedded expectation, contract price, or relative benchmark; blank if unknown>",
   "catalyst": "<observable event; blank if unknown>",
   "catalyst_window": {
     "event": "<observable event>",
@@ -52,8 +53,11 @@ Each agent may submit at most three seeds per round.
 ## Evidence maturity and screening eligibility
 
 - `EVIDENCE_BACKED`: at least one agent-backed concrete citation.
-- Evidence-ready path: at least two distinct concrete source URLs, plus a
-  non-empty economic exposure and falsifier. This is not yet screen eligibility.
+- Evidence-ready path: at least two distinct source organizations, plus non-empty economic
+  exposure, expectation gap, pricing anchor, catalyst, structured catalyst window, and falsifier.
+  A narrative such as “the market underestimates this” is not a pricing anchor. Use an observable
+  as-of valuation, embedded expectation, contract price, capacity/earnings assumption, or relative
+  benchmark. This is not yet screen eligibility.
 - `READY_FOR_SCREENING`: the evidence-ready path also requires a contested and settled or
   monitorable origin crux with the minimum source count, a converged root thesis, and a structured
   catalyst date inside the root research horizon.
@@ -69,6 +73,16 @@ Fail closed without deleting the lead:
 “investable.” Run Candidate Analyst and Candidate Skeptic using
 `references/candidate-screen-protocol.md`. Valuation, liquidity, governance,
 crowding, and catalyst timing must pass that separate evidence gate.
+
+## Cross-system candidate state
+
+Use only the deterministic projection emitted by `opportunity_engine.promotion_assessment()`:
+
+`EVIDENCE_BACKED -> READY_FOR_SCREENING -> WATCHLIST | REJECTED | THESIS_CANDIDATE -> VERIFIED_FOR_HUMAN`
+
+Only `VERIFIED_FOR_HUMAN` may be offered to a human for creation of a fresh DRAFT Thesis. It
+requires a `THESIS_CANDIDATE` screen, verified screen isolation, snapshot-bound claim verification,
+and a `DRAFT_REQUIRES_HUMAN` promotion packet. Human rationale cannot override a lower state.
 
 ## Entity de-duplication
 

@@ -36,6 +36,7 @@ TEXT_FIELDS = (
     "causal_path",
     "economic_exposure",
     "why_market_may_miss",
+    "pricing_anchor",
     "catalyst",
     "falsifier",
 )
@@ -46,6 +47,10 @@ BLOCKED_ORIGIN = "BLOCKED_ORIGIN_CRUX"
 BLOCKED_ROOT = "BLOCKED_ROOT_UNCONVERGED"
 NEEDS_CATALYST = "NEEDS_CATALYST_CHECK"
 OUT_OF_HORIZON = "OUT_OF_HORIZON_LEAD"
+WATCHLIST = "WATCHLIST"
+REJECTED = "REJECTED"
+THESIS_CANDIDATE = "THESIS_CANDIDATE"
+VERIFIED_FOR_HUMAN = "VERIFIED_FOR_HUMAN"
 
 
 def _text(value):
@@ -167,6 +172,7 @@ def _normalize_seed(raw, state, agent_name, round_num, allowed, audit):
         "causal_path": causal_path,
         "economic_exposure": _text(raw.get("economic_exposure")),
         "why_market_may_miss": _text(raw.get("why_market_may_miss")),
+        "pricing_anchor": _text(raw.get("pricing_anchor")),
         "catalyst": _text(raw.get("catalyst")),
         "catalyst_window": _normalize_catalyst_window(raw.get("catalyst_window")),
         "falsifier": _text(raw.get("falsifier")),
@@ -205,13 +211,36 @@ def _normalize_catalyst_window(value):
 
 def evidence_maturity(seed):
     sources = {
-        crux_engine.citation_source_identity(c)
+        _source_organization(c)
         for c in seed.get("evidence", [])
-        if crux_engine.valid_citation(c)
+        if crux_engine.valid_citation(c) and _source_organization(c)
     }
-    if len(sources) >= 2 and _text(seed.get("economic_exposure")) and _text(seed.get("falsifier")):
+    if len(sources) >= 2 and not seed_contract_blockers(seed):
         return READY
     return EVIDENCE_BACKED
+
+
+def seed_contract_blockers(seed):
+    """Return deterministic fields missing before CandidateScreen dispatch."""
+    blockers = []
+    required = {
+        "economic_exposure": "missing_economic_exposure",
+        "why_market_may_miss": "missing_expectation_gap",
+        "pricing_anchor": "missing_pricing_anchor",
+        "catalyst": "missing_catalyst",
+        "falsifier": "missing_falsifier",
+    }
+    for field, reason in required.items():
+        if not _text(seed.get(field)):
+            blockers.append(reason)
+    window = seed.get("catalyst_window")
+    window = window if isinstance(window, dict) else {}
+    if not (_text(window.get("event")) and _text(window.get("expected_by"))
+            and _text(window.get("date_status")).upper() in {
+                "REVIEW_CHECKPOINT", "DATE_CLAIMED_UNVERIFIED"
+            }):
+        blockers.append("catalyst_window_incomplete")
+    return blockers
 
 
 def maturity(seed):
@@ -265,10 +294,18 @@ def assess_seed(state, seed):
     evidence_state = evidence_maturity(seed)
     blockers = []
     if evidence_state != READY:
+        seed_blockers = seed_contract_blockers(seed)
+        sources = {
+            _source_organization(c)
+            for c in seed.get("evidence", [])
+            if crux_engine.valid_citation(c) and _source_organization(c)
+        }
+        if len(sources) < 2:
+            seed_blockers.append("insufficient_independent_seed_sources")
         return {
             "evidence_maturity": evidence_state,
             "screening_status": EVIDENCE_BACKED,
-            "blockers": ["seed_evidence_incomplete"],
+            "blockers": list(dict.fromkeys(seed_blockers or ["seed_evidence_incomplete"])),
             "origin_status": state.get("cruxes", {}).get(seed.get("origin_crux"), {}).get("status"),
         }
     origin_blockers = _origin_gate(state, seed)
@@ -293,6 +330,92 @@ def assess_seed(state, seed):
         "blockers": catalyst_blockers,
         "origin_status": state.get("cruxes", {}).get(seed.get("origin_crux"), {}).get("status"),
     }
+
+
+def _source_organization(citation):
+    return _norm(citation.get("source")) if isinstance(citation, dict) else ""
+
+
+def _latest_screen(state, seed_id):
+    latest = None
+    for screen in state.get("candidate_screens", []):
+        if not isinstance(screen, dict) or screen.get("seed_id") != seed_id:
+            continue
+        order = (str(screen.get("as_of_date") or ""), str(screen.get("screen_id") or ""))
+        current = (
+            str((latest or {}).get("as_of_date") or ""),
+            str((latest or {}).get("screen_id") or ""),
+        )
+        if latest is None or order >= current:
+            latest = screen
+    return latest
+
+
+def candidate_state(state, seed):
+    """Project one non-inheritable candidate maturity state from engine evidence."""
+    screen = _latest_screen(state, seed.get("seed_id"))
+    if screen:
+        screen_status = _text(screen.get("status")).upper()
+        if screen_status == THESIS_CANDIDATE:
+            packet = screen.get("promotion_packet") or {}
+            if (screen.get("claim_verification_status") == "VERIFIED"
+                    and packet.get("status") == "DRAFT_REQUIRES_HUMAN"):
+                return VERIFIED_FOR_HUMAN
+            return THESIS_CANDIDATE
+        if screen_status in {WATCHLIST, REJECTED}:
+            return screen_status
+    assessment = assess_seed(state, seed)
+    if assessment["screening_status"] == READY:
+        return READY
+    return EVIDENCE_BACKED
+
+
+def promotion_assessment(state, seed):
+    """Return the only cross-system Thesis-promotion contract."""
+    state_name = candidate_state(state, seed)
+    screen = _latest_screen(state, seed.get("seed_id"))
+    blockers = list(seed_contract_blockers(seed))
+    if state_name == EVIDENCE_BACKED:
+        blockers.extend(assess_seed(state, seed).get("blockers", []))
+    elif state_name == READY:
+        blockers.append("candidate_screen_required")
+    elif state_name == WATCHLIST:
+        blockers.append("candidate_screen_watchlist")
+        blockers.extend((screen or {}).get("gaps", []))
+    elif state_name == REJECTED:
+        blockers.append("candidate_screen_rejected")
+        blockers.extend((screen or {}).get("critical_rejections", []))
+    elif state_name == THESIS_CANDIDATE:
+        claim_status = (screen or {}).get("claim_verification_status", "PENDING")
+        blockers.append(f"claim_verification_{str(claim_status).lower()}")
+        blockers.extend((screen or {}).get("claim_verification_gaps", []))
+        blockers.extend((screen or {}).get("claim_contradictions", []))
+    if screen and screen.get("isolation_status") != "verified":
+        blockers.append("candidate_screen_isolation_unverified")
+    eligible = state_name == VERIFIED_FOR_HUMAN and not blockers
+    if state_name == VERIFIED_FOR_HUMAN and not eligible:
+        blockers.append("verified_candidate_contract_incomplete")
+    return {
+        "candidate_state": state_name,
+        "promotion_eligibility": "VERIFIED_FOR_HUMAN" if eligible else "BLOCKED",
+        "eligible": eligible,
+        "blocking_reasons": list(dict.fromkeys(str(item) for item in blockers if item)),
+        "screen_id": (screen or {}).get("screen_id"),
+        "claim_verification_status": (screen or {}).get("claim_verification_status", "NOT_APPLICABLE"),
+    }
+
+
+def refresh_candidate_states(state):
+    """Materialize current projections for portable artifacts without trusting LLM labels."""
+    for seed in state.get("opportunity_seeds", []):
+        if not isinstance(seed, dict) or not seed.get("seed_id"):
+            continue
+        promotion = promotion_assessment(state, seed)
+        seed["maturity"] = evidence_maturity(seed)
+        seed["candidate_state"] = promotion["candidate_state"]
+        seed["promotion_eligibility"] = promotion["promotion_eligibility"]
+        seed["promotion_blockers"] = promotion["blocking_reasons"]
+    return state
 
 
 def entity_views(state):
@@ -432,6 +555,7 @@ def harvest_round(state, round_num, detective=None, inquisitor=None):
         _norm(s.get("candidate")),
         s.get("relation_type", ""),
     ))
+    refresh_candidate_states(state)
     audit.update(summary(state))
     return audit
 

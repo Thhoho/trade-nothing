@@ -80,6 +80,7 @@ class ResearchOutputTests(unittest.TestCase):
             "asset_type": "LISTED_EQUITY", "relation_type": "BOTTLENECK_OWNER",
             "origin_crux": "C2", "causal_path": "constraint -> rent",
             "economic_exposure": "owns constraint", "why_market_may_miss": "ignored",
+            "pricing_anchor": "consensus EBITDA excludes the constrained asset",
             "catalyst": "event", "catalyst_window": {
                 "event": "event", "expected_by": "2026-10-10",
                 "date_status": "REVIEW_CHECKPOINT"},

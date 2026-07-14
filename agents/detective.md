@@ -123,6 +123,7 @@ Your response must be a valid JSON matching this schema exactly:
       "causal_path": "<crux outcome -> value transfer -> candidate exposure>",
       "economic_exposure": "<how the candidate captures or loses economics; blank if unknown>",
       "why_market_may_miss": "<specific pricing or attention gap; blank if unknown>",
+      "pricing_anchor": "<observable as-of valuation, embedded expectation, contract price, capacity/earnings assumption, or relative benchmark; blank if unknown>",
       "catalyst": "<observable event; blank if unknown>",
       "catalyst_window": {
         "event": "<observable event>",

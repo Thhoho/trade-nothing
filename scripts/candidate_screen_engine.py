@@ -371,6 +371,7 @@ def evaluate_batch(state, analyst_payload, skeptic_payload, as_of_date=None, iso
         audit["evaluated"] += 1
 
     screens.sort(key=lambda s: (s.get("as_of_date", ""), s.get("seed_id", "")))
+    opportunity_engine.refresh_candidate_states(state)
     audit.update(summary(state))
     return audit
 

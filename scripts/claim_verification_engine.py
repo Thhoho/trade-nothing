@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 import candidate_screen_engine
 import crux_engine
 import evidence_snapshot
+import opportunity_engine
 
 
 VERDICTS = {"SUPPORTS", "CONTRADICTS", "INSUFFICIENT"}
@@ -390,6 +391,7 @@ def apply_verifier_results(state, snapshots_payload, verifier_payload, seed_id=N
             manifests.append(_manifest(snapshot))
             manifest_ids.add(snapshot["snapshot_id"])
     _recompute_screen_states(state)
+    opportunity_engine.refresh_candidate_states(state)
     return {
         "accepted_verifications": accepted,
         "unknown_claim_ids": unknown,

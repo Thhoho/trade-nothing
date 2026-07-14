@@ -123,6 +123,8 @@ class ClaimVerificationEngineTests(unittest.TestCase):
         self.assertEqual(screen["claim_verification_status"], "VERIFIED")
         self.assertEqual(screen["promotion_packet"]["status"], "DRAFT_REQUIRES_HUMAN")
         self.assertEqual(audit["verified_thesis_candidate_count"], 1)
+        self.assertEqual(st["opportunity_seeds"][0]["candidate_state"], "VERIFIED_FOR_HUMAN")
+        self.assertEqual(st["opportunity_seeds"][0]["promotion_eligibility"], "VERIFIED_FOR_HUMAN")
         self.assertTrue(st["source_snapshots"])
         self.assertNotIn("text", st["source_snapshots"][0])
         self.assertNotIn("text", st["claim_verifications"][0]["snapshot_manifest"])

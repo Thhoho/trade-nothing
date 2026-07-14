@@ -285,6 +285,10 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > convergence, and a structured catalyst inside the root horizon. Report and default dispatch group
 > exact duplicate entities without combining evidence across paths. Read
 > `references/opportunity-protocol.md` for the exact schema and admission rules.
+> A seed cannot reach `READY_FOR_SCREENING` without an observable pricing anchor, expectation gap,
+> economic exposure, structured catalyst window, falsifier, and two independent source
+> organizations. Only the deterministic `VERIFIED_FOR_HUMAN` state may be offered for human DRAFT
+> Thesis creation; report validity, root actionability, or human rationale cannot bypass this gate.
 
 > **CandidateScreen integrity:** screen only after root-thesis convergence. Run
 > `agents/candidate_analyst.md` and `agents/candidate_skeptic.md` in isolated contexts on the
@@ -405,3 +409,4 @@ copied with the skill.
 > 10. **`fuse_break` 禁止正式报告和自动续跑，但必须提供非正式 Resolution Memo；扩展轮次必须由用户显式授权。**
 > 11. **Framer 必须由父上下文内联执行，禁止派生子代理和搜索；任何阶段超时必须输出非正式 runtime failure memo，禁止无界等待、伪造输出或自动重试。**
 > 12. **题型、逻辑图和 crux 角色决定总命题聚合方式；`NO_EDGE`、证据方向与可行动性必须分开，禁止恢复 `NO_EDGE / AVOID`。**
+> 13. **报告合法、根问题 `READY_FOR_SCREENING` 与候选可升级是三件事；只有候选级 `VERIFIED_FOR_HUMAN` 可以进入人工 DRAFT Thesis。**
