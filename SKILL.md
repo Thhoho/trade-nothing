@@ -188,6 +188,26 @@ Override via `TRADE_NOTHING_MODEL_DEEP` / `TRADE_NOTHING_MODEL_FAST`.
 
 When receiving `-deepthink2 "target/topic"`, run this orchestrator-driven loop:
 
+For Antigravity, prefer the resumable host runner after producing the Framer JSON inline. It creates
+an immutable `run_id`, runs Detective/Inquisitor in separate OS processes, checkpoints successful
+roles, dispatches Judge separately, and never retries a failed role automatically:
+
+```bash
+python3 scripts/deepthink_host_runner.py start --topic "TARGET" \
+  --frame-json '<framer_output>' --round-budget 1
+# Continue only after the caller authorizes more runtime/research budget:
+python3 scripts/deepthink_host_runner.py resume --run-id "RUN-..." --round-budget 1
+# Adopt a pre-v0.12 state once, then address it only by run_id:
+python3 scripts/deepthink_host_runner.py adopt --state-path "/.../v2_state.json"
+```
+
+Use `--allow-agent-tools` only after explicit authorization. The default one-round budget is
+intentional. A 429, timeout, invalid JSON, or one-sided failure returns a stage envelope and retains
+the successful role payload; resume reruns only the missing role. Read
+`references/run-resume-protocol.md` before adopting or recovering a run. The manual commands below
+remain a runtime-agnostic fallback; once a run has an id, do not mix topic-based and run-id-based
+addressing.
+
 ```bash
 # 1. Framing gate (DEEP, runs once) — question type + connected logic graph + 2-5 cruxes
 python3 scripts/deepthink_orchestrator_v2.py --frame --topic "TARGET"
@@ -370,6 +390,11 @@ python3 scripts/evidence_snapshot.py --url "SPECIFIC_URL" --output snapshots.jso
 python3 scripts/deepthink_orchestrator_v2.py --verify-claims --topic "Topic Name" --snapshots snapshots.json
 python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "Topic Name" \
   --snapshots snapshots.json --verifier '<json>' --verifier-isolation verified
+
+# Create/adopt immutable run identity for low-level manual orchestration
+python3 scripts/deepthink_orchestrator_v2.py --create-run --topic "Topic Name"
+python3 scripts/deepthink_orchestrator_v2.py --adopt-run --state-path "/.../v2_state.json"
+# Thereafter replace --topic with --run-id RUN-... on low-level commands.
 
 # Consensus distance calculation
 python3 scripts/consensus_distance.py --code 300118 --target 12.5

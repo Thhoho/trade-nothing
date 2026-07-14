@@ -35,6 +35,7 @@ import opportunity_engine
 import candidate_screen_engine
 import claim_verification_engine
 import research_output
+import run_registry
 from utils import get_scratch_dir, get_output_dir, get_evolution_path, load_json_safe, save_json
 try:
     from model_tiers import model_for
@@ -346,6 +347,9 @@ def _state_dir():
     return os.path.join(get_scratch_dir(), "v2-state")
 
 def _path(topic):
+    override = os.environ.get("TRADE_NOTHING_STATE_PATH", "").strip()
+    if override:
+        return os.path.abspath(os.path.expanduser(override))
     return os.path.join(_state_dir(), f"{_slug(topic)}_v2_state.json")
 
 
@@ -366,6 +370,8 @@ def _load(topic):
 
 def _save(topic, state):
     state.setdefault("runtime", {})["state_path"] = _path(topic)
+    if os.environ.get("TRADE_NOTHING_RUN_ID"):
+        state["runtime"]["run_id"] = os.environ["TRADE_NOTHING_RUN_ID"]
     save_json(_path(topic), state)
 
 
@@ -1302,8 +1308,12 @@ def main():
     g.add_argument("--verify-claims", action="store_true")
     g.add_argument("--submit-verification", action="store_true")
     g.add_argument("--runtime-failure", action="store_true")
+    g.add_argument("--create-run", action="store_true")
+    g.add_argument("--adopt-run", action="store_true")
     g.add_argument("--selftest", action="store_true")
     ap.add_argument("--topic", default="")
+    ap.add_argument("--run-id", default="")
+    ap.add_argument("--state-path", default="")
     ap.add_argument("--frame-json", default="")
     ap.add_argument("--det", default=""); ap.add_argument("--inq", default=""); ap.add_argument("--judge", default="")
     ap.add_argument("--analyst", default=""); ap.add_argument("--skeptic", default="")
@@ -1325,6 +1335,44 @@ def main():
     a = ap.parse_args()
     if a.selftest:
         return selftest()
+    if a.create_run or a.adopt_run:
+        try:
+            manifest = (
+                run_registry.adopt_manifest(a.topic, a.state_path)
+                if a.adopt_run
+                else run_registry.create_manifest(
+                    a.topic, state_path=a.state_path,
+                    runtime_isolation=a.runtime_isolation,
+                )
+            )
+            out = {
+                "status": "run_adopted" if a.adopt_run else "run_created",
+                "topic": manifest["topic"],
+                "run_id": manifest["run_id"],
+                "state_path": manifest["state_path"],
+                "instruction": (
+                    "后续命令只传 --run-id；不要再用自然语言 topic 寻址。"
+                ),
+            }
+            print(json.dumps(run_registry.stage_envelope(out, context=manifest),
+                             ensure_ascii=False, indent=2))
+            return
+        except ValueError as exc:
+            print(json.dumps({"status": "run_identity_error", "reason": str(exc)},
+                             ensure_ascii=False, indent=2))
+            return
+    context = None
+    try:
+        context = run_registry.resolve_context(
+            run_id=a.run_id, state_path=a.state_path, topic=a.topic
+        )
+        if context:
+            run_registry.bind_context(context)
+            a.topic = context["topic"]
+    except ValueError as exc:
+        print(json.dumps({"status": "run_identity_error", "reason": str(exc)},
+                         ensure_ascii=False, indent=2))
+        return
     if a.frame:  out = cmd_frame(a.topic)
     elif a.init: out = cmd_init(a.topic, _jload(a.frame_json), a.runtime_isolation)
     elif a.submit: out = cmd_submit(a.topic, _jload(a.det), _jload(a.inq), _jload(a.judge))
@@ -1345,6 +1393,8 @@ def main():
         a.verifier_isolation
     )
     elif a.runtime_failure: out = cmd_runtime_failure(a.topic, a.stage, a.reason)
+    if context:
+        out = run_registry.stage_envelope(out, context=context)
     print(json.dumps(out, ensure_ascii=False, indent=2))
 
 

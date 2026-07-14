@@ -22,7 +22,7 @@ sys.path.insert(0, SCRIPT_DIR)
 
 import candidate_screen_engine
 import deepthink_orchestrator_v2 as orchestrator
-from utils import get_scratch_dir, get_skill_dir, save_json
+from utils import get_scratch_dir, save_json
 
 
 def _prompt_sha256(prompt):
@@ -64,6 +64,7 @@ def _run_role(role, prompt, agy_bin, timeout_seconds, workdir, allow_agent_tools
         agy_bin, wrapped_prompt, timeout_seconds, allow_agent_tools=allow_agent_tools
     )
     started = time.monotonic()
+    os.makedirs(workdir, exist_ok=True)
     process = subprocess.Popen(
         command,
         cwd=workdir,
@@ -135,10 +136,14 @@ def run(topic, as_of_date, agy_bin, timeout_seconds, allow_agent_tools=False):
         "analyst": dispatch["analyst_prompt"],
         "skeptic": dispatch["skeptic_prompt"],
     }
+    role_root = os.path.join(
+        get_scratch_dir(), "isolated-work", dispatch["dispatch_id"]
+    )
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         futures = {
             role: pool.submit(
-                _run_role, role, prompt, agy_bin, timeout_seconds, get_skill_dir(),
+                _run_role, role, prompt, agy_bin, timeout_seconds,
+                os.path.join(role_root, role),
                 allow_agent_tools
             )
             for role, prompt in prompts.items()

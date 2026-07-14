@@ -23,7 +23,8 @@ not browse: every factual seed remains `HYPOTHESIS` or `URL_CLAIMED_UNVERIFIED` 
 
 1. Apply a stage-local wall-clock limit; a global CLI timeout is not a substitute.
 2. At the first timeout, stop waiting. Do not automatically retry, because a retry silently doubles
-   cost and may duplicate evidence.
+   cost and may duplicate evidence. The resumable host runner may checkpoint the successful peer
+   role, but must leave the failed role missing.
 3. Record a compact receipt:
 
 ```bash
@@ -33,5 +34,7 @@ python3 scripts/deepthink_orchestrator_v2.py --runtime-failure \
 
 4. The receipt is not a research report. It must not contain transcripts, hidden reasoning, search
 logs, or invented stand-ins for missing agent JSON.
-5. If state already exists, preserve it unchanged. Resume or rerun only after the user explicitly
-authorizes more runtime and research budget.
+5. If state already exists, preserve it unchanged. Resume only after the user explicitly authorizes
+   more runtime and research budget. For a registered run, call
+   `deepthink_host_runner.py resume --run-id RUN-...`; it must validate prompt/payload hashes and
+   rerun only the missing role. Do not reconstruct the role output from transcript text.
