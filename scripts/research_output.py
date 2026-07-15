@@ -7,6 +7,7 @@ Raw agent payloads stay in state for audit and never enter these user views.
 import json
 
 import crux_engine
+import landscape_engine
 import opportunity_engine
 
 
@@ -161,6 +162,7 @@ def build_continuation_packet(state):
             "screening_status": entity["screening_status"],
             "blockers": entity["paths"][0]["assessment"].get("blockers", []),
         })
+    landscape = landscape_engine.summary(state)
     packet = {
         "schema_version": SCHEMA_CONTINUATION,
         "topic": state.get("topic", ""),
@@ -185,6 +187,15 @@ def build_continuation_packet(state):
             "unknown_is_valid": True,
         },
         "open_cruxes": open_views,
+        "landscape_coverage": {
+            key: landscape[key] for key in (
+                "required", "path_count", "unprobed_count", "supported_count",
+                "rejected_count", "unknown_count", "coverage_complete"
+            )
+        },
+        "unprobed_landscape_paths": [
+            item for item in landscape["paths"] if item.get("state") == "UNPROBED"
+        ],
         "deferred_opportunities": opportunities[:10],
         "deferred_new_cruxes": state.get("deferred_cruxes", [])[-10:],
         "resume": {
@@ -222,6 +233,7 @@ def build_resolution_view(state):
             "blockers": entity["paths"][0]["assessment"].get("blockers", []),
         })
     verdict = crux_engine.research_verdict(state)
+    landscape = landscape_engine.summary(state)
     return {
         "schema_version": SCHEMA_RESOLUTION,
         "output_type": "NON_FORMAL_RESOLUTION_MEMO",
@@ -246,6 +258,7 @@ def build_resolution_view(state):
         "blocking_cruxes": open_cruxes,
         "opportunity_entities": entities,
         "opportunity_summary": opportunity_engine.summary(state),
+        "landscape_coverage": landscape,
         "convergence_reason": state.get("last_convergence", {}).get("reason", ""),
         "continuation_packet": build_continuation_packet(state),
         "limitations": [
@@ -288,6 +301,13 @@ def render_resolution_memo(state):
         "",
         "## 已形成方向的 Crux",
     ]
+    landscape = view.get("landscape_coverage", {})
+    if landscape.get("required"):
+        L.insert(13, (
+            f"- Landscape: {landscape['path_count']} 条计划路径；SUPPORTED "
+            f"{landscape['supported_count']} / REJECTED {landscape['rejected_count']} / "
+            f"UNKNOWN {landscape['unknown_count']} / UNPROBED {landscape['unprobed_count']}。"
+        ))
     if not view["settled_cruxes"]:
         L.append("- 无。")
     for item in view["settled_cruxes"]:
@@ -330,6 +350,8 @@ def render_resolution_memo(state):
         "## 下一轮最小补证计划",
         f"- 建议额外轮次: **{packet['resume']['recommended_extra_rounds']}**；必须由用户显式授权恢复，禁止自动续烧 Token。",
         f"- 只允许处理: {', '.join(packet['dispatch_policy']['crux_ids']) or '无'}。",
+        f"- 未覆盖 Landscape 路径: "
+        f"{', '.join(item['path_id'] for item in packet['unprobed_landscape_paths']) or '无'}。",
         "- 每个 agent 最多 10 次搜索、每条 crux 最多 2 次；连续两次没有新增一级证据即返回 UNKNOWN。",
         "- 已解决 crux 不得重派；存在从未质证 crux 时禁用 free-roam；本次续跑禁止新增 crux。",
         "",
@@ -351,6 +373,7 @@ def build_synthesis_packet(state):
         "research_verdict": rd.get("research_verdict"),
         "question_type": rd.get("question_type"),
         "logic_graph": rd.get("logic_graph"),
+        "landscape_coverage": landscape_engine.summary(state),
         "binding_crux": rd.get("binding_crux"),
         "focus_crux": rd.get("focus_crux"),
         "aggregation_rule": rd.get("aggregation_rule"),

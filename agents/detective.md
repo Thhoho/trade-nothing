@@ -60,6 +60,10 @@ Evaluate the target through these three sequential layers:
    this round's `crux_evidence` for the same `origin_crux`. If none qualifies, output `[]`.
    See `references/opportunity-protocol.md`.
 
+9. **Landscape findings (when assigned)**: Return exactly one finding for each assigned path.
+   Keep `path_id` and `linked_crux_id` unchanged. `SUPPORTED` and `REJECTED` must copy evidence
+   exactly from this response's same-crux `crux_evidence`; otherwise return `UNKNOWN`.
+
 ## Output Schema
 
 Your response must be a valid JSON matching this schema exactly:
@@ -115,6 +119,22 @@ Your response must be a valid JSON matching this schema exactly:
       "proof_evidence": "<Under 20 words. A -> B logic.>"
     }
   ],
+  "landscape_findings": [
+    {
+      "path_id": "L1",
+      "linked_crux_id": "C1",
+      "state": "SUPPORTED|REJECTED|UNKNOWN",
+      "rationale": "<what the bounded probe established or could not establish>",
+      "evidence": [{
+        "claim": "<exact copy from same-crux crux_evidence>",
+        "number": null,
+        "source": "<same organization>",
+        "url": "<same URL>",
+        "date": "<same date>",
+        "source_tier": "primary|secondary"
+      }]
+    }
+  ],
   "opportunity_seeds": [
     {
       "candidate": "<concrete company, asset, commodity, or technology>",
@@ -122,6 +142,7 @@ Your response must be a valid JSON matching this schema exactly:
       "asset_type": "LISTED_EQUITY|PRIVATE_COMPANY|COMMODITY|TECHNOLOGY|OTHER",
       "relation_type": "DIRECT_WINNER|SUBSTITUTE_WINNER|COMPETITOR_WINNER|BOTTLENECK_OWNER|INFRA_ASSET_OWNER|SECOND_ORDER|SHORT_CANDIDATE",
       "origin_crux": "C1",
+      "landscape_path_id": "L1",
       "causal_path": "<crux outcome -> value transfer -> candidate exposure>",
       "economic_exposure": "<how the candidate captures or loses economics; blank if unknown>",
       "why_market_may_miss": "<specific pricing or attention gap; blank if unknown>",

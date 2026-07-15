@@ -37,9 +37,12 @@ The brief must render root-thesis truth and candidate maturity independently:
   THESIS_CANDIDATE / VERIFIED_FOR_HUMAN`;
 - cross-system promotion: only `VERIFIED_FOR_HUMAN` is eligible for human review of a new DRAFT
   Thesis.
+- discovery coverage: planned Landscape paths, role probes, aggregate path states, and seed
+  conversion. Do not hide `UNKNOWN` paths or count them as support.
 
 Do not turn `NO_EDGE` into `SHORT`. Do not call a lead, READY seed, WATCHLIST, or unverified
 THESIS_CANDIDATE an opportunity, recommendation, or simulated-trade candidate.
+An opportunity-oriented report is invalid while any Landscape path is `UNPROBED`.
 
 ## Next-action codes
 

@@ -31,6 +31,7 @@ from datetime import date
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 import crux_engine
+import landscape_engine
 import opportunity_engine
 import candidate_screen_engine
 import claim_verification_engine
@@ -316,6 +317,7 @@ def _validate_frame(frame):
         if "PRICING" not in crux_roles:
             issues.append("universe_search_requires_pricing_crux")
     issues.extend(_validate_logic_graph(frame.get("logic_graph"), crux_role_by_id))
+    issues.extend(landscape_engine.validate_frame(frame))
     return sorted(set(issues))
 
 
@@ -650,12 +652,14 @@ def frame_prompt(topic):
             "立题：输出 decision_question / question_type / logic_graph / horizon / as_of_date / "
             "unit_of_analysis / thesis_seed / premise_audit / 2–5 candidate_cruxes(每条带 "
             "logic_role、monitor_anchor、falsifier、catalyst_window) / "
-            "forbidden_consensus / no_edge_precheck / suggested_max_rounds。严格按 framer.md 的 JSON 输出。"
+            "forbidden_consensus / no_edge_precheck / suggested_max_rounds。机会型问题还必须输出 "
+            "5–7 路 entity-agnostic landscape_map。严格按 framer.md 的 JSON 输出。"
             "只返回内联 JSON；禁止创建 Markdown、Google Drive、云文档或自选输出路径。")
 
 def dispatch_prompts(state, round_num):
     policy = _round_policy(state, round_num)
     open_ids = policy["dispatch_cruxes"]
+    landscape_plan = landscape_engine.ensure_round_plan(state, round_num)
     fc = state.get("forbidden_consensus", [])
     lines = []
     for cid in open_ids:
@@ -698,6 +702,26 @@ def dispatch_prompts(state, round_num):
         "  3. evidence 必须逐字复用本 agent 本轮同一 origin_crux 的结构化证据\n"
         "  4. 线索仅进入后续筛选队列，不得给收益率、目标价或仓位"
     )
+    landscape_by_id = {
+        item.get("path_id"): item
+        for item in state.get("landscape_map", {}).get("paths", [])
+        if isinstance(item, dict)
+    }
+
+    def landscape_directive(role):
+        assigned = landscape_plan.get("assignments", {}).get(role, [])
+        if not assigned:
+            return "\n🗺 Landscape Map: 本轮无路径分配；输出 landscape_findings=[]。"
+        packets = [landscape_by_id[path_id] for path_id in assigned if path_id in landscape_by_id]
+        return (
+            "\n🗺 Landscape Map 路径质证（硬分配，每轮最多 2 条）:\n"
+            f"{json.dumps(packets, ensure_ascii=False)}\n"
+            "  1. 每条分配路径恰好返回一个 landscape_findings 项；不得改 path_id 或 linked_crux_id\n"
+            "  2. state 只能 SUPPORTED / REJECTED / UNKNOWN；非 UNKNOWN 必须逐字复用本角色"
+            "同轮、linked_crux_id 下的结构化 evidence/attack\n"
+            "  3. 两条 search_queries 是该路径的查询上限，不得扩写成实体名单后全网撒网\n"
+            "  4. Landscape 是覆盖账本，不是推荐；不得以候选数量替代路径质证"
+        )
     budget_directive = (
         "\n🧮 有界研究预算（硬上限）:\n"
         f"  1. 每个 agent 本轮最多 {min(10, 2 * max(1, len(open_ids)))} 次网页搜索，"
@@ -732,6 +756,7 @@ def dispatch_prompts(state, round_num):
               "硬约束: 每个数据点必须带 来源+具体URL+日期；禁止主页级URL；"
               "不确定性必须明确表达；无来源数字必须省略或置 null；没有新维度时明确写 null。")
     det = (f"[Detective · detective.md · model={model_for('detective')}] Round {round_num}\n{common}\n"
+           f"{landscape_directive('detective')}\n"
            "任务: 对每个 OPEN crux 用**带URL的硬数据**加固多头/反驳空头。\n"
            "额外要求: 输出中必须包含 supply_chain_map 字段描述本轮新发现的产业链节点。\n"
            "输出 detective.md 的 JSON。")
@@ -746,6 +771,7 @@ def dispatch_prompts(state, round_num):
         "本轮禁止新增 crux；将潜在线索留在叙事中，不得让其阻塞当前 run。"
     )
     inq = (f"[Inquisitor · inquisitor.md · model={model_for('inquisitor')}] Round {round_num}\n{common}\n"
+           f"{landscape_directive('inquisitor')}\n"
            f"任务: 对每个 OPEN crux 发起带数据的致命攻击。{new_crux_text}\n"
            f"{free_roam_text}\n输出 inquisitor.md 的 JSON。")
     judge = (f"[Judge · judge.md · model={model_for('judge_scoring')}] Round {round_num}\n"
@@ -754,6 +780,7 @@ def dispatch_prompts(state, round_num):
              "严格按 judge.md 的 JSON 输出。")
     return {"open_cruxes": policy["open_cruxes"], "dispatch_cruxes": open_ids,
             "round_policy": policy,
+            "landscape_assignments": landscape_plan.get("assignments", {}),
             "detective_prompt": det, "inquisitor_prompt": inq, "judge_prompt": judge}
 
 
@@ -873,6 +900,9 @@ def cmd_init(topic, frame, runtime_isolation="unverified"):
         "no_edge_precheck": pre,
         "artifact_policy": _frame_artifact_policy(),
     }
+    landscape = landscape_engine.initialize(frame)
+    if landscape is not None:
+        state["landscape_map"] = landscape
     try:
         max_rounds = int(frame.get("suggested_max_rounds", 6))
     except (TypeError, ValueError):
@@ -891,9 +921,9 @@ def cmd_init(topic, frame, runtime_isolation="unverified"):
         "single_model_fallback": "degraded",
         "artifact_policy": _frame_artifact_policy(),
     }
-    _save(topic, state)
     out = {"status": "dispatch_subagents", "topic": topic, "round": 1, "thesis_seed": state["thesis_seed"]}
     out.update(dispatch_prompts(state, 1))
+    _save(topic, state)
     return out
 
 def cmd_submit(topic, detective, inquisitor, judge):
@@ -927,6 +957,9 @@ def cmd_submit(topic, detective, inquisitor, judge):
         "allowed_scored_cruxes": allowed_scored_cruxes,
         "round_policy": policy,
     }
+    landscape_audit = landscape_engine.ingest_round(
+        state, round_num, detective=detective, inquisitor=inquisitor
+    )
     signals = judge.get("crux_signals", {})
     conv = crux_engine.submit_round(state, round_num, signals)
     state["last_convergence"] = conv
@@ -934,6 +967,7 @@ def cmd_submit(topic, detective, inquisitor, judge):
     state["rounds"][-1]["detective_raw"] = detective
     state["rounds"][-1]["inquisitor_raw"] = inquisitor
     state["rounds"][-1]["judge_raw"] = judge
+    state["rounds"][-1]["landscape_audit"] = landscape_audit
     harvest = opportunity_engine.harvest_round(state, round_num, detective, inquisitor)
     state["rounds"][-1]["opportunity_harvest"] = harvest
     _save(topic, state)
@@ -950,6 +984,7 @@ def cmd_submit(topic, detective, inquisitor, judge):
             "opportunity_seed_count": harvest["opportunity_seed_count"],
             "ready_for_screening_count": harvest["ready_for_screening_count"],
             "opportunity_harvest": harvest,
+            "landscape_coverage": landscape_engine.summary(state),
             "round_policy": policy,
             "admitted_new_cruxes": admitted_new_cruxes,
             "deferred_new_cruxes": deferred_new_cruxes}
@@ -988,6 +1023,7 @@ def cmd_submit(topic, detective, inquisitor, judge):
     else:
         base["status"] = "dispatch_subagents"
         base.update(dispatch_prompts(state, round_num + 1))
+        _save(topic, state)
         base["instruction"] = (f"继续 (Round {round_num+1})，仅对 OPEN crux 派 Detective+Inquisitor，"
                                "再用 Judge 评分后调用 --submit。")
     return base
@@ -1242,7 +1278,6 @@ def cmd_resume_blocked(topic, extra_rounds=0):
         "new_max_rounds": new_max,
         "reason": "explicit_user_authorization_required",
     })
-    _save(topic, state)
     out = {
         "status": "dispatch_subagents",
         "topic": topic,
@@ -1252,6 +1287,7 @@ def cmd_resume_blocked(topic, extra_rounds=0):
         "round": current_round + 1,
     }
     out.update(dispatch_prompts(state, current_round + 1))
+    _save(topic, state)
     out["instruction"] = (
         "只处理 continuation packet 中的 OPEN crux。不要读取历史 transcript；"
         "使用本次 compact prompts，完成后调用 --submit。"
@@ -1274,6 +1310,18 @@ def cmd_report(topic, challenge_only=False, report_view="full", include_synthesi
                 "continuation_packet": resolution.get("continuation_packet"),
                 "audit_state_path": _path(topic),
                 "instruction": "正式报告已物理阻断；改为交付非正式 Resolution Memo。"}
+    landscape = landscape_engine.summary(state)
+    if landscape["required"] and not landscape["coverage_complete"]:
+        return {
+            "status": "blocked_landscape_coverage",
+            "topic": topic,
+            "formal_report_allowed": False,
+            "unprobed_path_ids": [
+                item["path_id"] for item in landscape["paths"]
+                if item.get("state") == "UNPROBED"
+            ],
+            "instruction": "机会型研究仍有未质证路径；禁止正式报告或 EDGE 声明。",
+        }
     rd = crux_engine.report_data(state)
     weak_evidence = [c["id"] for c in rd["cruxes"]
                      if len(c.get("unique_source_urls", [])) < crux_engine.MIN_VALID_CITATIONS]
@@ -1309,6 +1357,7 @@ def cmd_report(topic, challenge_only=False, report_view="full", include_synthesi
             "decision": rd["decision"], "binding_crux": rd["binding_crux"],
             "focus_crux": rd["focus_crux"], "aggregation_rule": rd["aggregation_rule"],
             "research_verdict": rd["research_verdict"],
+            "landscape_coverage": landscape,
             "support_weakest": rd["support_weakest"], "support_mean": rd["support_mean"],
             "n_unique_sources": rd["n_unique_sources"],
             "n_primary_sources": rd["n_primary_sources"],

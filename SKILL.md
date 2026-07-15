@@ -324,6 +324,10 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > convergence, and a structured catalyst inside the root horizon. Report and default dispatch group
 > exact duplicate entities without combining evidence across paths. Read
 > `references/opportunity-protocol.md` for the exact schema and admission rules.
+> Opportunity-oriented frames must also use the entity-agnostic 5–7 path Landscape Map in
+> `references/landscape-map-protocol.md`. Both research roles must probe every path; any `UNPROBED`
+> path blocks convergence and `EDGE_FOUND`. Every mapped OpportunitySeed must bind the matching
+> `landscape_path_id` and `origin_crux`.
 > A seed cannot reach `READY_FOR_SCREENING` without an observable pricing anchor, expectation gap,
 > economic exposure, structured catalyst window, falsifier, and two independent source
 > organizations. Only the deterministic `VERIFIED_FOR_HUMAN` state may be offered for human DRAFT

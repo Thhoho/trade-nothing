@@ -12,7 +12,7 @@
 
 ## Role
 
-Given a raw topic, do six things and nothing else (do not search during framing):
+Given a raw topic, do seven things and nothing else (do not search during framing):
 
 1. **State the research decision** being made (a specific, falsifiable question + horizon).
    Do not turn the framing step into a buy/sell, target-price, return, or sizing output.
@@ -32,6 +32,9 @@ Given a raw topic, do six things and nothing else (do not search during framing)
    `SOURCED` is forbidden here because only later snapshot-bound verification may establish source
    alignment. Never let a plausible URL, regulatory action, project milestone, lead time, market
    share, valuation, or numeric threshold masquerade as an established fact.
+7. **Map the opportunity landscape** for `UNIVERSE_SEARCH`, `COMPARATIVE`, or any frame with an
+   `OPPORTUNITY_PATH` crux. Generate 5–7 entity-agnostic value-transfer hypotheses covering all
+   five required archetypes. Do not name a familiar company and reverse-engineer a path around it.
 
 Also list the **forbidden consensus** (平庸共识禁区) the debaters may not recycle, and a
 **suggested_max_rounds** scaled to contestedness (settled/simple → 3–4; genuinely contested → 6–8).
@@ -97,6 +100,22 @@ Also list the **forbidden consensus** (平庸共识禁区) the debaters may not 
       }
     }
   ],
+  "landscape_map": {
+    "paths": [
+      {
+        "path_id": "L1",
+        "archetype": "DIRECT_CAPTURE | BOTTLENECK_OWNER | ENABLER_OR_INPUT | SUBSTITUTE_OR_AVOIDANCE | ADVERSE_EXPOSURE",
+        "linked_crux_id": "C1",
+        "hypothesis": "<conditional entity-agnostic value-capture or loss path>",
+        "hypothesis_status": "HYPOTHESIS",
+        "value_transfer_chain": ["<demand or shock>", "<constraint or substitution>", "<economic capture>", "<shareholder or asset outcome>"],
+        "economic_capture_test": "<observable test of who receives the economics>",
+        "pricing_question": "<observable as-of expectation or valuation question>",
+        "falsifier": "<observable result that kills this path>",
+        "search_queries": ["<primary-source query 1>", "<primary-source query 2>"]
+      }
+    ]
+  },
   "forbidden_consensus": ["<cliché 1>", "<cliché 2>"],
   "no_edge_precheck": {
     "is_researchable": true,
@@ -121,3 +140,9 @@ Use `REQUIRED_FOR` for conjunctive hinges, `ALTERNATIVE_PATH` for disjunctive pa
 `CAUSAL_PRECEDES` for chain links, `COMPARED_ON` for comparison axes, and `PRICING_FOR`
 for market-expectation or mispricing checks. A researchable `UNIVERSE_SEARCH` must include at
 least one `OPPORTUNITY_PATH` and one `PRICING` crux; without both, the frame is invalid.
+
+For an opportunity frame, return 5–7 landscape paths and include each archetype exactly once or
+more across the map. Every path must link to an existing crux, start as `HYPOTHESIS`, contain 3–6
+value-transfer nodes, and contain exactly two distinct search queries. Set `suggested_max_rounds`
+high enough for both Detective and Inquisitor to probe every path at two paths per role per round,
+plus one verdict-stability round. Omit `landscape_map` only for a pure thesis-challenge frame.

@@ -54,13 +54,14 @@ verify-version:
 test:
 	@echo "🧪 Running deterministic v2 safety and regression gates..."
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_v2_engine.py
+	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_landscape_engine.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_opportunity_engine.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_research_output.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_candidate_screen_engine.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_claim_verification_engine.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_benchmark_harness.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_discovery_benchmark_harness.py
-	python3 -c "import ast,pathlib; [ast.parse(pathlib.Path(p).read_text(encoding='utf-8')) for p in ['$(ROOT_DIR)/scripts/crux_engine.py','$(ROOT_DIR)/scripts/opportunity_engine.py','$(ROOT_DIR)/scripts/candidate_screen_engine.py','$(ROOT_DIR)/scripts/evidence_snapshot.py','$(ROOT_DIR)/scripts/claim_verification_engine.py','$(ROOT_DIR)/scripts/research_output.py','$(ROOT_DIR)/scripts/deepthink_orchestrator_v2.py','$(ROOT_DIR)/scripts/report_v2.py','$(ROOT_DIR)/scripts/validate_report_v2.py','$(ROOT_DIR)/scripts/benchmark_harness.py','$(ROOT_DIR)/scripts/discovery_benchmark_harness.py']]"
+	python3 -c "import ast,pathlib; [ast.parse(pathlib.Path(p).read_text(encoding='utf-8')) for p in ['$(ROOT_DIR)/scripts/crux_engine.py','$(ROOT_DIR)/scripts/landscape_engine.py','$(ROOT_DIR)/scripts/opportunity_engine.py','$(ROOT_DIR)/scripts/candidate_screen_engine.py','$(ROOT_DIR)/scripts/evidence_snapshot.py','$(ROOT_DIR)/scripts/claim_verification_engine.py','$(ROOT_DIR)/scripts/research_output.py','$(ROOT_DIR)/scripts/deepthink_orchestrator_v2.py','$(ROOT_DIR)/scripts/report_v2.py','$(ROOT_DIR)/scripts/validate_report_v2.py','$(ROOT_DIR)/scripts/benchmark_harness.py','$(ROOT_DIR)/scripts/discovery_benchmark_harness.py']]"
 	@echo "🎉 Deterministic v2 gates passed."
 
 test-legacy:

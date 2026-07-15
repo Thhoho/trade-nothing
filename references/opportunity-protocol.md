@@ -9,7 +9,8 @@ sell, return, target-price, or sizing recommendation.
 A seed is admitted only when all of the following hold:
 
 1. It names a concrete candidate and one allowed `relation_type`.
-2. It points to an existing `origin_crux` and states a causal path.
+2. It points to an existing `origin_crux` and states a causal path. In a mapped run it also binds
+   `landscape_path_id`, whose `linked_crux_id` must match `origin_crux`.
 3. At least one citation exactly matches structured evidence submitted by the
    same agent for the same crux in the same round.
 4. The citation contains claim, source, date, and a concrete non-homepage URL.
@@ -26,6 +27,7 @@ Each agent may submit at most three seeds per round.
   "asset_type": "LISTED_EQUITY|PRIVATE_COMPANY|COMMODITY|TECHNOLOGY|OTHER",
   "relation_type": "DIRECT_WINNER|SUBSTITUTE_WINNER|COMPETITOR_WINNER|BOTTLENECK_OWNER|INFRA_ASSET_OWNER|SECOND_ORDER|SHORT_CANDIDATE",
   "origin_crux": "C1",
+  "landscape_path_id": "L1",
   "causal_path": "<crux outcome -> value transfer -> candidate exposure>",
   "economic_exposure": "<how the candidate captures or loses economics; blank if unknown>",
   "why_market_may_miss": "<specific pricing or attention gap; blank if unknown>",
@@ -71,7 +73,8 @@ Each agent may submit at most three seeds per round.
   pricing anchor.
 - `READY_FOR_SCREENING`: the evidence-ready path also requires a contested and settled or
   monitorable origin crux with the minimum source count, a converged root thesis, and a structured
-  catalyst date inside the root research horizon.
+  catalyst date inside the root research horizon. In a mapped run, the bound Landscape path must
+  also be `SUPPORTED`; `UNPROBED`, `REJECTED`, and `UNKNOWN` paths cannot become READY.
 
 Independent seed sources are counted by final publisher domain, never by the agent-written
 `source` label. Search/grounding redirect wrappers must be resolved to the final publisher URL;

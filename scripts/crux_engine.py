@@ -431,6 +431,14 @@ def research_verdict(state, probs=None):
         else:
             reason_code = "NO_DECISIVE_RELATIVE_SEPARATION"
 
+    landscape_paths = [
+        item for item in state.get("landscape_map", {}).get("paths", [])
+        if isinstance(item, dict)
+    ]
+    if any(item.get("state", "UNPROBED") == "UNPROBED" for item in landscape_paths):
+        edge_state = "INSUFFICIENT_EVIDENCE"
+        actionability = "NONE"
+        reason_code = "LANDSCAPE_PATHS_UNPROBED"
     if (edge_state == "EDGE_FOUND"
             and state.get("last_convergence", {}).get("decision") == "converge"):
         actionability = "READY_FOR_SCREENING"
@@ -471,6 +479,15 @@ def convergence(state, round_num):
     if unsettled:
         return not_ready(f"仍有未检验/活跃 crux: {unsettled}（继续，且仅对这些派子智能体）。",
                          unsettled)
+    unprobed_paths = [
+        item.get("path_id")
+        for item in state.get("landscape_map", {}).get("paths", [])
+        if isinstance(item, dict) and item.get("state", "UNPROBED") == "UNPROBED"
+    ]
+    if unprobed_paths:
+        return not_ready(
+            f"Landscape Map 仍有未质证路径: {unprobed_paths}；机会型研究不得收敛或声明 EDGE。"
+        )
     # completeness guard: adversary must have gone "dry" (no new crux for DRY_ROUNDS)
     if round_num - state["max_introduced_round"] < DRY_ROUNDS:
         return not_ready(f"R{state['max_introduced_round']} 才引入新 crux，需再质证 {DRY_ROUNDS} 轮确认审问者已无新攻击面。")

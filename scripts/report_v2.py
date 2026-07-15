@@ -19,6 +19,7 @@ expected return, trade signal, or position-sizing input.
 import os, sys, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import crux_engine
+import landscape_engine
 import opportunity_engine
 import candidate_screen_engine
 import claim_verification_engine
@@ -199,6 +200,7 @@ def _candidate_cards(state):
             "asset_type": _clean(seed.get("asset_type")),
             "relation_type": _clean(seed.get("relation_type")),
             "origin_crux": _clean(seed.get("origin_crux")),
+            "landscape_path_id": _clean(seed.get("landscape_path_id")),
             "candidate_state": candidate_state,
             "promotion_eligibility": promotion["promotion_eligibility"],
             "blocking_reasons": promotion["blocking_reasons"],
@@ -245,6 +247,7 @@ def build_report_view_model(state):
     rd = crux_engine.report_data(state)
     verdict = rd.get("research_verdict", {})
     cards = _candidate_cards(state)
+    landscape = landscape_engine.summary(state)
     survived = [
         item for item in rd["cruxes"] if item.get("status") == "RESOLVED_BULL"
     ]
@@ -312,6 +315,7 @@ def build_report_view_model(state):
         },
         "candidate_counts": counts,
         "candidate_cards": cards,
+        "landscape_map": landscape,
         "next_action": {
             "code": next_action_code,
             "candidate": next_action_candidate,
@@ -338,6 +342,7 @@ def _render_audit(state, include_title=True):
         raise ValueError("formal report blocked: engine state is not converged")
     opportunity_engine.refresh_candidate_states(state)
     rd = crux_engine.report_data(state)
+    landscape = landscape_engine.summary(state)
     topic = state.get("topic", "")
 
     # ═══ Build citation registry (deduped, numbered) ═══
@@ -488,6 +493,12 @@ def _render_audit(state, include_title=True):
     L.append(f"- 候选线索: {opportunity_counts['opportunity_seed_count']} 条证据路径 → "
              f"{opportunity_counts['unique_candidate_count']} 个唯一候选 ｜ "
              f"其中 {opportunity_counts['ready_for_screening_count']} 个当前可进入二次筛选")
+    if landscape["required"]:
+        L.append(
+            f"- Landscape 覆盖: {landscape['path_count']} 条计划路径 ｜ "
+            f"SUPPORTED {landscape['supported_count']} ｜ REJECTED {landscape['rejected_count']} ｜ "
+            f"UNKNOWN {landscape['unknown_count']} ｜ UNPROBED {landscape['unprobed_count']}"
+        )
     screen_counts = candidate_screen_engine.summary(state)
     L.append(f"- 候选预筛: {screen_counts['screened_candidate_count']} 条已完成 ｜ "
              f"THESIS_CANDIDATE {screen_counts['thesis_candidate_count']} ｜ "
@@ -528,10 +539,29 @@ def _render_audit(state, include_title=True):
         L.append("- 警告: 这是旧状态，未保存 premise_audit；不得把假设种子当作事实。")
     L.append("")
 
+    if landscape["required"]:
+        L.append("## 0.2 · Landscape Map 覆盖账本")
+        L.append("- 顺序: 预设路径 → 双角色质证 → 聚合状态 → 候选转化。`UNKNOWN` 代表已查但未定，不是支持。")
+        L.append("")
+        L.append("| 路径 | 原型 | 来源 crux | 状态 | Detective | Inquisitor | 假设 / 经济捕获测试 |")
+        L.append("|:---|:---|:---:|:---:|:---:|:---:|:---|")
+        for path in landscape["paths"]:
+            probes = path.get("probes", {})
+            detective = probes.get("detective", {})
+            inquisitor = probes.get("inquisitor", {})
+            L.append(
+                f"| **{_cell(path.get('path_id'))}** | {_cell(path.get('archetype'))} | "
+                f"{_cell(path.get('linked_crux_id'))} | **{_cell(path.get('state'))}** | "
+                f"R{detective.get('round', '—')} {_cell(detective.get('state', 'UNPROBED'))} | "
+                f"R{inquisitor.get('round', '—')} {_cell(inquisitor.get('state', 'UNPROBED'))} | "
+                f"{_cell(path.get('hypothesis'))}<br>{_cell(path.get('economic_capture_test'))} |"
+            )
+        L.append("")
+
     # Evidence quality gate
     invalid = quality["invalid"]
     gate_status = "PASS" if not invalid and refs else "FAIL"
-    L.append("## 0.2 · 证据质量闸")
+    L.append("## 0.3 · 证据质量闸")
     L.append(f"- 状态: **{gate_status}** ｜ 可复核引用: {len(refs)} 条 ｜ 被剔除引用: {len(invalid)} 条")
     L.append("- 规则: 引用必须含 claim/source/date，且 URL 不能只是主页或裸域名。")
     if invalid:
@@ -622,6 +652,9 @@ def _render_audit(state, include_title=True):
                      "本报告只展示代表路径，证据不得跨路径拼接晋级。")
         L.append(f"- **关系 / 来源 crux**: {relation_labels.get(seed.get('relation_type'), seed.get('relation_type', '—'))}"
                  f" / {_clean(seed.get('origin_crux'))} ｜ 首见 R{seed.get('first_seen_round', '?')} ｜ agent: {agents}")
+        if seed.get("landscape_path_id"):
+            L.append(f"- **Landscape 绑定**: {_clean(seed.get('landscape_path_id'))} → "
+                     f"{_clean(seed.get('origin_crux'))}")
         L.append(f"- **价值传导**: {_clean(seed.get('causal_path'))}")
         L.append(f"- **经济暴露**: {_clean(seed.get('economic_exposure'))}")
         L.append(f"- **市场可能漏看**: {_clean(seed.get('why_market_may_miss'))}")
@@ -785,6 +818,7 @@ def _render_decision_brief(view):
         f"{item['id']} {item['label']}" for item in root["monitorable"][:3]
     ) or "无"
     next_action = view["next_action"]
+    landscape = view.get("landscape_map", {})
     target = f"（{next_action['candidate']}）" if next_action["candidate"] else ""
     return "\n".join([
         f"# Decision Brief — {view['topic']}",
@@ -800,6 +834,12 @@ def _render_decision_brief(view):
         f"- **活下来**: {survived}。",
         f"- **被推翻**: {falsified}。",
         f"- **仍需监控**: {monitoring}。",
+        "" if not landscape.get("required") else "## 发现路径覆盖",
+        "" if not landscape.get("required") else (
+            f"- 计划 {landscape['path_count']}；SUPPORTED {landscape['supported_count']}；"
+            f"REJECTED {landscape['rejected_count']}；UNKNOWN {landscape['unknown_count']}；"
+            f"UNPROBED {landscape['unprobed_count']}。"
+        ),
         "",
         "## 候选成熟度",
         f"- 唯一候选 {counts['lead_count']}；可筛选 {counts['ready_for_screening_count']}；"
@@ -844,6 +884,7 @@ def _render_candidate_cards(view):
             f"`{card['promotion_eligibility']}` ｜ P1 `{card['screen_status']}` ｜ "
             f"P2 `{card['claim_verification_status']}`。",
             f"- **价值路径**: {card['relation_type']} / {card['origin_crux']}；"
+            f"Landscape `{card['landscape_path_id'] or 'legacy-unmapped'}`；"
             f"经济暴露: {card['economic_exposure']}。",
             f"- **预期差**: {card['expectation_gap']}。",
             f"- **定价锚**: {card['pricing_anchor']}。",

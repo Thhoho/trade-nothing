@@ -12,6 +12,7 @@ import re
 from datetime import date
 
 import crux_engine
+import landscape_engine
 
 
 RELATION_TYPES = {
@@ -75,7 +76,12 @@ def _ticker(value):
 
 def _seed_key(seed):
     identity = _ticker(seed.get("ticker")) or _norm(seed.get("candidate"))
-    return "|".join((identity, seed.get("relation_type", ""), seed.get("origin_crux", "")))
+    return "|".join((
+        identity,
+        seed.get("relation_type", ""),
+        seed.get("origin_crux", ""),
+        seed.get("landscape_path_id") or "",
+    ))
 
 
 def entity_identity(seed):
@@ -134,6 +140,7 @@ def _normalize_seed(raw, state, agent_name, round_num, allowed, audit):
     candidate = _text(raw.get("candidate"))
     relation = _text(raw.get("relation_type")).upper()
     origin = _text(raw.get("origin_crux"))
+    landscape_path_id = _text(raw.get("landscape_path_id"))
     asset_type = _text(raw.get("asset_type") or "OTHER").upper()
     causal_path = _text(raw.get("causal_path"))
     if not candidate:
@@ -144,6 +151,13 @@ def _normalize_seed(raw, state, agent_name, round_num, allowed, audit):
         return None
     if origin not in state.get("cruxes", {}):
         _reason(audit, "unknown_origin_crux")
+        return None
+    binding_issues = landscape_engine.seed_binding_issues(
+        state, landscape_path_id, origin
+    )
+    if binding_issues:
+        for reason in binding_issues:
+            _reason(audit, reason)
         return None
     if asset_type not in ASSET_TYPES:
         _reason(audit, "invalid_asset_type")
@@ -177,6 +191,7 @@ def _normalize_seed(raw, state, agent_name, round_num, allowed, audit):
         "asset_type": asset_type,
         "relation_type": relation,
         "origin_crux": origin,
+        "landscape_path_id": landscape_path_id or None,
         "causal_path": causal_path,
         "economic_exposure": _text(raw.get("economic_exposure")),
         "why_market_may_miss": _text(raw.get("why_market_may_miss")),
@@ -353,6 +368,7 @@ def _origin_gate(state, seed):
     if not isinstance(origin, dict):
         return ["origin_crux_missing"]
     blockers = []
+    blockers.extend(landscape_engine.seed_readiness_blockers(state, seed))
     if origin.get("first_contested") is None:
         blockers.append("origin_crux_never_contested")
     if origin.get("status") not in {"RESOLVED_BULL", "RESOLVED_BEAR", "MONITORABLE"}:
