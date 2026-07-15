@@ -18,9 +18,11 @@
       "adapter_instruction_sha256": "d5f386912fe69dde69e3ef533c602b88b9e893b416bfbdabdfb620e165e66312"
     },
     "v0_12": {
-      "runner_kind": "GIT_SKILL_SNAPSHOT",
+      "runner_kind": "GIT_METHOD_ADAPTER",
       "engine_version": "git:b8514c77b329e67a95d8224ec36aaff479a27f5d",
       "git_commit": "b8514c77b329e67a95d8224ec36aaff479a27f5d",
+      "method_instruction_path": "arms/v0_12-method.md",
+      "method_instruction_sha256": "a54cf53c6ee19c9f65df5e13c277ea719957627e179525c9e972163051d21351",
       "entrypoint_path": "SKILL.md",
       "entrypoint_sha256": "b06736e3099c37c3ea23a6c6d88070bd6b162fbbe0225045559d665a1a10985e",
       "orchestrator_path": "scripts/deepthink_orchestrator_v2.py",
@@ -29,9 +31,11 @@
       "adapter_instruction_sha256": "d5f386912fe69dde69e3ef533c602b88b9e893b416bfbdabdfb620e165e66312"
     },
     "v0_14": {
-      "runner_kind": "GIT_SKILL_SNAPSHOT",
+      "runner_kind": "GIT_METHOD_ADAPTER",
       "engine_version": "git:50b4ed9d59df8dd9b0753d0432e6a15e8d95d18f",
       "git_commit": "50b4ed9d59df8dd9b0753d0432e6a15e8d95d18f",
+      "method_instruction_path": "arms/v0_14-method.md",
+      "method_instruction_sha256": "996961e7cad52be991ab9599ec6fa189aeaaf2503206547f6f1eec5f6b7360ab",
       "entrypoint_path": "SKILL.md",
       "entrypoint_sha256": "17f931e1edf58f02a053e921e3ac6543c5a1cff72be5b0180481aaf704aef6f7",
       "orchestrator_path": "scripts/deepthink_orchestrator_v2.py",

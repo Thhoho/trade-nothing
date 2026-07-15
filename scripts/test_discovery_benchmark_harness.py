@@ -56,6 +56,29 @@ class DiscoveryBenchmarkHarnessTests(unittest.TestCase):
         self.assertNotIn("microsoft and constellation", encoded)
         self.assertNotIn(str(SUITE_PATH.parent).lower(), encoded)
 
+    def test_git_method_adapters_are_executable_and_receipt_bound(self):
+        suite = load_suite()
+        for variant in ("v0_12", "v0_14"):
+            contract = suite["variant_manifest"][variant]
+            self.assertEqual(contract["runner_kind"], "GIT_METHOD_ADAPTER")
+            with tempfile.TemporaryDirectory() as parent:
+                dispatch = harness.initialize_run(
+                    suite,
+                    SUITE_PATH,
+                    "ai_power_infrastructure_2025",
+                    variant,
+                    Path(parent) / "run",
+                )
+            self.assertIn(variant.replace("_", "."), dispatch["method_instruction"])
+            self.assertEqual(
+                harness._hash_bytes(dispatch["method_instruction"].encode("utf-8")),
+                contract["method_instruction_sha256"],
+            )
+            self.assertEqual(
+                harness._variant_receipt_expected(contract)["method_instruction_sha256"],
+                contract["method_instruction_sha256"],
+            )
+
     def test_read_requires_prior_search_and_as_of_excludes_future_documents(self):
         suite = load_suite()
         with tempfile.TemporaryDirectory() as parent:

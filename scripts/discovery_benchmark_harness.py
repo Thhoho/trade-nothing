@@ -31,7 +31,7 @@ EVALUATION_SCOPE = "FROZEN_CORPUS_DISCOVERY"
 QUESTION_TYPES = {
     "CONJUNCTIVE", "DISJUNCTIVE", "CAUSAL_CHAIN", "COMPARATIVE", "UNIVERSE_SEARCH"
 }
-VARIANT_KINDS = {"PROMPT_ONLY", "GIT_SKILL_SNAPSHOT"}
+VARIANT_KINDS = {"PROMPT_ONLY", "GIT_METHOD_ADAPTER"}
 STATUS_VALUES = {"COMPLETE", "FAILED", "PAUSED_BUDGET", "RUNTIME_FAILURE"}
 LEAKAGE_KEYS = {
     "gold", "gold_answer", "expected_answer", "expected_outcome", "major_paths",
@@ -180,6 +180,14 @@ def _validate_variants(variants, manifest):
                 raise ValueError(f"{variant}.git_commit must be a full git sha")
             base.update({
                 "git_commit": commit,
+                "method_instruction_path": _safe_path(
+                    entry.get("method_instruction_path"),
+                    f"{variant}.method_instruction_path",
+                ),
+                "method_instruction_sha256": _sha256(
+                    entry.get("method_instruction_sha256"),
+                    f"{variant}.method_instruction_sha256",
+                ),
                 "entrypoint_path": _safe_path(
                     entry.get("entrypoint_path"), f"{variant}.entrypoint_path"
                 ),
@@ -223,6 +231,8 @@ def validate_suite(suite, suite_path):
         paths = [("adapter_instruction_path", "adapter_instruction_sha256")]
         if entry["runner_kind"] == "PROMPT_ONLY":
             paths.append(("instruction_path", "instruction_sha256"))
+        else:
+            paths.append(("method_instruction_path", "method_instruction_sha256"))
         for path_field, hash_field in paths:
             path = (root / entry[path_field]).resolve()
             if not path.is_relative_to(root) or not path.is_file():
@@ -338,7 +348,7 @@ def verify_git_variants(suite, source_repo):
     repo = Path(source_repo).resolve()
     verified = []
     for variant, entry in suite["variant_manifest"].items():
-        if entry["runner_kind"] != "GIT_SKILL_SNAPSHOT":
+        if entry["runner_kind"] != "GIT_METHOD_ADAPTER":
             continue
         for path_field, hash_field in (
             ("entrypoint_path", "entrypoint_sha256"),
@@ -380,6 +390,10 @@ def initialize_run(suite, suite_path, case_id, variant, output_dir):
         method_instruction = (root / variant_contract["instruction_path"]).read_text(
             encoding="utf-8"
         )
+    else:
+        method_instruction = (
+            root / variant_contract["method_instruction_path"]
+        ).read_text(encoding="utf-8")
     adapter_instruction = (
         root / variant_contract["adapter_instruction_path"]
     ).read_text(encoding="utf-8")
@@ -614,6 +628,7 @@ def _variant_receipt_expected(contract):
     else:
         expected.update({
             "git_commit": contract["git_commit"],
+            "method_instruction_sha256": contract["method_instruction_sha256"],
             "entrypoint_sha256": contract["entrypoint_sha256"],
             "orchestrator_sha256": contract["orchestrator_sha256"],
         })

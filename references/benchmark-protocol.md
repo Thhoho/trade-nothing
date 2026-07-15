@@ -191,9 +191,13 @@ from report comprehension. Do not merge the two scopes into one headline metric.
 The persisted `benchmarks/v014-discovery-pilot` suite implements that separate scope. It contains
 three as-of cases, three pinned arms, and twenty curator-frozen primary-source extracts mixed across
 themes so that irrelevant but plausible documents act as decoys. It is a retrieval-method pilot,
-not a full-document corpus, live-web universe test, expected-return test, or alpha claim.
+not a full-document corpus, live-web universe test, expected-return test, or alpha claim. The v0.12
+and v0.14 arms are `GIT_METHOD_ADAPTER` runs: the host verifies the pinned skill commit,
+entrypoint, and orchestrator, then gives the same model a separately hashed one-shot projection of
+that method. This compares method projections under one runtime; it does not claim that the full
+multi-agent orchestrator executed or that agent-isolation effects were measured.
 
-Research roles receive only `dispatch.json` plus two host-mediated commands. `corpus_search` returns
+Research roles receive only the public dispatch plus two host-mediated gateway operations. `corpus_search` returns
 metadata and a short snippet; `corpus_read` returns a body only after search exposed that document
 ID. The gateway applies the case cutoff date, caps queries and distinct documents, logs every event,
 and becomes immutable when its retrieval receipt is finalized. Keep the evaluator-only answer key
