@@ -8,6 +8,7 @@ import tempfile
 import unittest
 
 import candidate_screen_engine as screen_engine
+import codex_candidate_screen_receipt as codex_receipt
 import crux_engine
 import deepthink_orchestrator_v2 as orchestrator
 import report_v2
@@ -290,6 +291,28 @@ class CandidateScreenEngineTests(unittest.TestCase):
             st, receipt, analyst, skeptic, AS_OF
         )
         self.assertIn("isolation_receipt_agents_not_distinct", validation["blockers"])
+
+    def test_codex_receipt_builder_binds_dispatch_payloads_and_agent_ids(self):
+        st = state_with_seed()
+        analyst = payload("Analyst")
+        skeptic = payload("Skeptic")
+        prompts = orchestrator.candidate_screen_prompts(
+            st, screen_engine.screenable_seeds(st), AS_OF
+        )
+        dispatch = {"dispatch_id": "CSD-BUILDER", "as_of_date": AS_OF, **prompts}
+        receipt = codex_receipt.build_receipt(
+            dispatch, analyst, skeptic, "/root/analyst", "/root/skeptic"
+        )
+        self.assertEqual(receipt["runner_kind"], "codex_collaboration_v1")
+        self.assertEqual(receipt["roles"]["analyst"]["agent_id"], "/root/analyst")
+        self.assertEqual(
+            receipt["roles"]["skeptic"]["payload_sha256"],
+            screen_engine.payload_sha256(skeptic),
+        )
+        with self.assertRaises(ValueError):
+            codex_receipt.build_receipt(
+                dispatch, analyst, skeptic, "/root/same", "/root/same"
+            )
 
     def test_same_source_organization_does_not_corroborate(self):
         st = state_with_seed()

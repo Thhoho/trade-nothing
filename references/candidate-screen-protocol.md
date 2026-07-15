@@ -17,7 +17,9 @@ promoting a draft.
 2. Run Candidate Analyst and Candidate Skeptic in isolated contexts. For Antigravity, use
    `scripts/agy_candidate_screen_runner.py`; it launches two distinct OS processes concurrently.
    Codex hosts may use two distinct collaboration-agent contexts and emit a
-   `codex_collaboration_v1` receipt containing the host-returned canonical agent IDs.
+   `codex_collaboration_v1` receipt containing the host-returned canonical agent IDs. After both
+   payloads are sealed, use `scripts/codex_candidate_screen_receipt.py` to bind the dispatch,
+   payloads, and those IDs; the helper does not launch agents or invent host events.
 3. Give both the same seed packet, as-of date, and eight fixed questions.
 4. Submit both JSON payloads to candidate_screen_engine.py.
 5. Preserve disagreement. Do not ask an LLM Judge to average it away.
