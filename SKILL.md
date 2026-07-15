@@ -332,6 +332,12 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > `references/landscape-map-protocol.md`. Both research roles must probe every path; any `UNPROBED`
 > path blocks convergence and `EDGE_FOUND`. Every mapped OpportunitySeed must bind the matching
 > `landscape_path_id` and `origin_crux`.
+> `UNIVERSE_SEARCH` is coverage-convergent, not direction-convergent: after every path is probed by
+> both roles, every crux has valid evidence anchors, the adversary is dry, and two consecutive
+> rounds add neither a seed nor seed evidence, unresolved global cruxes become `MONITORABLE`.
+> The root evidence direction remains `UNDETERMINED`; heterogeneous candidate evidence must never
+> be pooled into a universe-level bull/bear call or `EDGE_FOUND`. Candidate direction, pricing, and
+> investability remain per-seed CandidateScreen questions.
 > A seed cannot reach `READY_FOR_SCREENING` without an observable pricing anchor, expectation gap,
 > economic exposure, structured catalyst window, falsifier, and two independent source
 > organizations. Only the deterministic `VERIFIED_FOR_HUMAN` state may be offered for human DRAFT

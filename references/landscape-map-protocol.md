@@ -51,6 +51,11 @@ the two-path role budget.
 Any `UNPROBED` path blocks opportunity-run convergence, formal reporting, and an `EDGE_FOUND`
 claim. `UNKNOWN` is completed coverage, not positive evidence. It must remain visible in the report.
 
+For `UNIVERSE_SEARCH`, completed coverage is the root stopping unit. After two consecutive rounds
+with no new seed or seed-evidence growth and the normal crux/source dry gates, the engine may close
+directionally mixed global cruxes as `MONITORABLE`. This does not promote any seed, produce a
+universe direction, or establish an edge. Those decisions remain candidate-local.
+
 ## Candidate binding
 
 Every OpportunitySeed emitted in a mapped run must include `landscape_path_id`. The engine rejects

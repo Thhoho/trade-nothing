@@ -65,8 +65,9 @@ class QuestionAwareVerdictTests(unittest.TestCase):
         st["cruxes"]["C3"]["p_history"] = [0.5, 0.50]
         verdict = crux_engine.research_verdict(st)
         self.assertEqual(verdict["edge_state"], "INSUFFICIENT_EVIDENCE")
-        self.assertEqual(verdict["actionability"], "MONITOR")
-        self.assertEqual(verdict["reason_code"], "PATH_OR_PRICING_COVERAGE_INCOMPLETE")
+        self.assertEqual(verdict["evidence_direction"], "UNDETERMINED")
+        self.assertEqual(verdict["actionability"], "NONE")
+        self.assertEqual(verdict["reason_code"], "UNIVERSE_LANDSCAPE_MISSING")
         st["decision_trace"].append({
             "round": 3, "weakest": "C1", "focus_crux": "C1",
             "p_weakest": 0.35, "p_mean": 0.45,
@@ -78,7 +79,7 @@ class QuestionAwareVerdictTests(unittest.TestCase):
         self.assertEqual(report["focus_crux"], "C1")
         self.assertEqual(report["aggregation_rule"], "LOGIC_GRAPH_MULTI_PATH")
 
-    def test_universe_search_requires_path_and_pricing_to_find_edge(self):
+    def test_universe_search_never_promotes_pooled_global_scores_to_edge(self):
         st = self._state("UNIVERSE_SEARCH", [
             {"id": "C1", "label": "path a", "logic_role": "OPPORTUNITY_PATH"},
             {"id": "C2", "label": "path b", "logic_role": "OPPORTUNITY_PATH"},
@@ -87,12 +88,18 @@ class QuestionAwareVerdictTests(unittest.TestCase):
         st["cruxes"]["C1"]["p_history"] = [0.5, 0.35]
         st["cruxes"]["C2"]["p_history"] = [0.5, 0.65]
         st["cruxes"]["C3"]["p_history"] = [0.5, 0.60]
+        st["landscape_map"] = {"paths": [{
+            "path_id": "L1", "state": "SUPPORTED",
+            "probes": {"detective": {"state": "SUPPORTED"},
+                       "inquisitor": {"state": "SUPPORTED"}},
+        }]}
         verdict = crux_engine.research_verdict(st)
-        self.assertEqual(verdict["edge_state"], "EDGE_FOUND")
+        self.assertEqual(verdict["edge_state"], "INSUFFICIENT_EVIDENCE")
+        self.assertEqual(verdict["evidence_direction"], "UNDETERMINED")
         self.assertEqual(verdict["actionability"], "MONITOR")
         st["last_convergence"] = {"decision": "converge"}
         verdict = crux_engine.research_verdict(st)
-        self.assertEqual(verdict["actionability"], "READY_FOR_SCREENING")
+        self.assertEqual(verdict["actionability"], "MONITOR")
 
     def test_conjunctive_bear_crux_yields_no_edge_but_never_short(self):
         st = self._state("CONJUNCTIVE", [

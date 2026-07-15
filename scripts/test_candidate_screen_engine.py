@@ -401,8 +401,31 @@ class CandidateScreenOrchestratorTests(unittest.TestCase):
         st = state_with_seed()
         st["question_type"] = "UNIVERSE_SEARCH"
         st["cruxes"]["C1"]["logic_role"] = "OPPORTUNITY_PATH"
+        st["opportunity_seeds"][0]["landscape_path_id"] = "L1"
+        st["cruxes"]["C2"] = copy.deepcopy(st["cruxes"]["C1"])
+        st["cruxes"]["C2"].update({
+            "label": "pricing crux",
+            "logic_role": "PRICING",
+            "citations": [citation("pricing-origin-a"), citation("pricing-origin-b")],
+        })
+        st["landscape_map"] = {"paths": [{
+            "path_id": "L1",
+            "linked_crux_id": "C1",
+            "state": "SUPPORTED",
+            "probes": {
+                "detective": {"round": 1, "state": "SUPPORTED", "evidence": []},
+                "inquisitor": {"round": 1, "state": "SUPPORTED", "evidence": []},
+            },
+        }]}
         verdict = crux_engine.research_verdict(st)
-        st["rounds"] = [{"round": 1}, {"round": 2}]
+        st["rounds"] = [
+            {"round": 1, "opportunity_harvest": {
+                "accepted_new": 1, "merged_existing": 0,
+            }},
+            {"round": 2, "opportunity_harvest": {
+                "accepted_new": 0, "merged_existing": 0,
+            }},
+        ]
         st["decision_trace"] = [{
             "round": 2,
             "weakest": "C1",

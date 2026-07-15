@@ -11,7 +11,7 @@ causal branches, comparisons, or a candidate universe.
 | `DISJUNCTIVE` | Two or more paths can independently work | Reject only when every path and the pricing gap are rejected |
 | `CAUSAL_CHAIN` | Value depends on an ordered transmission chain | A broken necessary link may reject the chain, but record where value transfers |
 | `COMPARATIVE` | The decision is relative among candidates | Require meaningful separation; do not emit a pseudo-global verdict |
-| `UNIVERSE_SEARCH` | The task is to find candidates in a broad opportunity set | A failed path never rejects the universe; require path and pricing coverage |
+| `UNIVERSE_SEARCH` | The task is to find candidates in a broad opportunity set | A failed path never rejects the universe; converge on audited search coverage, then assess direction and pricing per candidate |
 
 ## Crux roles
 
@@ -51,3 +51,16 @@ The graph is a decision contract, not decoration. Do not infer a missing relatio
 - `BEAR` describes evidence direction. It is not a short trade.
 - `READY_FOR_SCREENING` requires workflow convergence; an apparent early edge remains `MONITOR`.
 - A short may appear only as a separately evidenced `SHORT_CANDIDATE` that passes CandidateScreen.
+
+## Universe-search convergence
+
+Do not pool evidence from heterogeneous candidates into one global bull/bear score. A positive
+equipment supplier, a financing-constrained generator, and an adverse-exposure utility are not
+three observations of the same directional proposition.
+
+`UNIVERSE_SEARCH` converges only when every Landscape path has an accepted Detective and
+Inquisitor probe, every root crux has valid evidence anchors, no recent crux was introduced, and
+two consecutive rounds add neither a new OpportunitySeed nor evidence to an existing seed. The
+root verdict remains `INSUFFICIENT_EVIDENCE / UNDETERMINED / MONITOR`; convergence means the
+bounded search was completed, not that an edge exists. CandidateScreen is the only place that may
+settle candidate-specific direction, pricing gap, and investability.

@@ -243,6 +243,71 @@ class LandscapeDispatchTests(unittest.TestCase):
 
 
 class LandscapeGateAndReportTests(unittest.TestCase):
+    def _coverage_complete_universe(self):
+        state = mapped_state()
+        for path in state["landscape_map"]["paths"]:
+            path["state"] = "SUPPORTED"
+            path["probes"] = {
+                "detective": {"round": 1, "state": "SUPPORTED", "evidence": []},
+                "inquisitor": {"round": 1, "state": "SUPPORTED", "evidence": []},
+            }
+        for index, crux in enumerate(state["cruxes"].values(), 1):
+            crux["first_contested"] = 1
+            crux["status"] = "OPEN"
+            crux["citations"] = [
+                citation(f"c{index}-a"), citation(f"c{index}-b"),
+            ]
+        state["max_introduced_round"] = 0
+        verdict = crux_engine.research_verdict(state)
+        state["decision_trace"] = [
+            {"round": 3, "research_verdict": verdict},
+            {"round": 4, "research_verdict": verdict},
+        ]
+        state["rounds"] = [
+            {"round": 3, "opportunity_harvest": {
+                "accepted_new": 0, "merged_existing": 0,
+            }},
+            {"round": 4, "opportunity_harvest": {
+                "accepted_new": 0, "merged_existing": 0,
+            }},
+        ]
+        return state
+
+    def test_universe_converges_on_coverage_and_dry_harvest_not_global_direction(self):
+        state = self._coverage_complete_universe()
+        state["cruxes"]["C1"]["p_history"] = [0.5, 0.8, 0.2]
+        state["cruxes"]["C2"]["p_history"] = [0.5, 0.2, 0.8]
+        result = crux_engine.convergence(state, 4)
+        self.assertEqual(result["decision"], "converge")
+        self.assertEqual(result["convergence_basis"], "UNIVERSE_COVERAGE_AND_HARVEST_DRY")
+        self.assertTrue(all(
+            crux["status"] == "MONITORABLE" and crux["retired"]
+            for crux in state["cruxes"].values()
+        ))
+        self.assertEqual(
+            crux_engine.research_verdict(state)["evidence_direction"],
+            "UNDETERMINED",
+        )
+
+    def test_universe_final_round_seed_or_evidence_growth_blocks_convergence(self):
+        for field in ("accepted_new", "merged_existing"):
+            state = self._coverage_complete_universe()
+            state["rounds"][-1]["opportunity_harvest"][field] = 1
+            result = crux_engine.convergence(state, 4)
+            self.assertEqual(result["decision"], "continue")
+            self.assertTrue(all(
+                crux["status"] == "OPEN" for crux in state["cruxes"].values()
+            ))
+
+    def test_universe_dry_rounds_before_coverage_do_not_count(self):
+        state = self._coverage_complete_universe()
+        for path in state["landscape_map"]["paths"]:
+            for probe in path["probes"].values():
+                probe["round"] = 4
+        result = crux_engine.convergence(state, 4)
+        self.assertEqual(result["decision"], "continue")
+        self.assertIn("R4 完成后", result["reason"])
+
     def test_unprobed_path_blocks_edge_and_convergence(self):
         state = mapped_state()
         for crux in state["cruxes"].values():

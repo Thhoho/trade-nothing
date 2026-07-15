@@ -37,6 +37,7 @@ OPEN_PATIENCE = 3               # rounds a crux may stay contested before forced
 MIN_CONTESTED = 3               # min contested rounds before a crux is eligible for retirement
 DRY_ROUNDS   = 3                # no NEW crux introduced for this many rounds = adversary went dry
 MIN_VALID_CITATIONS = 2         # a crux needs real source anchors before it may retire
+UNIVERSE_HARVEST_DRY_ROUNDS = 2 # coverage round + one confirmation round without seed/evidence growth
 
 QUESTION_TYPES = {
     "CONJUNCTIVE", "DISJUNCTIVE", "CAUSAL_CHAIN", "COMPARATIVE", "UNIVERSE_SEARCH",
@@ -272,7 +273,7 @@ def _update_status(cx, r):
     return "OPEN"
 
 
-def submit_round(state, round_num, judge_signals):
+def submit_round(state, round_num, judge_signals, round_context=None):
     """
     judge_signals: { crux_id: {
         "signal": float in [-1,1],            # +bull / -bear, |0.5|=weak |1|=strong
@@ -320,7 +321,12 @@ def submit_round(state, round_num, judge_signals):
     aggregation_rule = ("WEAKEST_NECESSARY_CRUX"
                         if state.get("question_type") in {"CONJUNCTIVE", "CAUSAL_CHAIN"}
                         else "LOGIC_GRAPH_MULTI_PATH")
-    state["rounds"].append({"round": round_num, "fired_cruxes": fired, "signals": normalized_signals})
+    round_record = {"round": round_num, "fired_cruxes": fired, "signals": normalized_signals}
+    if isinstance(round_context, dict):
+        for key in ("landscape_audit", "opportunity_harvest"):
+            if isinstance(round_context.get(key), dict):
+                round_record[key] = round_context[key]
+    state["rounds"].append(round_record)
     state["decision_trace"].append({
         "round": round_num, "weakest": weakest,
         "p_weakest": round(probs[weakest], 4), "p_mean": round(_sig(mean_L), 4),
@@ -411,7 +417,7 @@ def research_verdict(state, probs=None):
                 reason_code = "PRICING_NOT_ASSESSED"
             else:
                 reason_code = "PRICING_GAP_UNRESOLVED"
-    elif qtype in {"DISJUNCTIVE", "UNIVERSE_SEARCH"}:
+    elif qtype == "DISJUNCTIVE":
         pricing_supports_gap = bool(pricing) and any(value >= 0.55 for value in pricing)
         pricing_rejects_gap = bool(pricing) and all(value <= 0.40 for value in pricing)
         if paths and any(value >= 0.60 for value in paths) and pricing_supports_gap:
@@ -420,6 +426,15 @@ def research_verdict(state, probs=None):
             edge_state, actionability, reason_code = "NO_EDGE", "NONE", "ALL_PATHS_AND_PRICING_GAP_REJECTED"
         else:
             reason_code = "PATH_OR_PRICING_COVERAGE_INCOMPLETE"
+    elif qtype == "UNIVERSE_SEARCH":
+        # A universe contains heterogeneous entities and adverse as well as positive
+        # paths. Pooling their evidence into one directional support score creates a
+        # category error: failure by one candidate can cancel success by another, and
+        # a negative screen can be misreported as a bearish universe call. Root-level
+        # completion is therefore coverage-only; direction and edge live on each seed.
+        direction = "UNDETERMINED"
+        actionability = "MONITOR"
+        reason_code = "UNIVERSE_COVERAGE_COMPLETE_CANDIDATE_LEVEL_ASSESSMENT"
     elif qtype == "COMPARATIVE":
         compared = axes or paths
         if (len(compared) >= 2 and max(compared) >= 0.60 and min(compared) <= 0.40
@@ -435,6 +450,10 @@ def research_verdict(state, probs=None):
         item for item in state.get("landscape_map", {}).get("paths", [])
         if isinstance(item, dict)
     ]
+    if qtype == "UNIVERSE_SEARCH" and not landscape_paths:
+        edge_state = "INSUFFICIENT_EVIDENCE"
+        actionability = "NONE"
+        reason_code = "UNIVERSE_LANDSCAPE_MISSING"
     if any(item.get("state", "UNPROBED") == "UNPROBED" for item in landscape_paths):
         edge_state = "INSUFFICIENT_EVIDENCE"
         actionability = "NONE"
@@ -449,6 +468,113 @@ def research_verdict(state, probs=None):
         "question_type": qtype,
         "reason_code": reason_code,
     }
+
+
+def _universe_coverage_round(state):
+    """Derive the first round in which both roles had probed every Landscape path."""
+    probe_rounds = []
+    for item in state.get("landscape_map", {}).get("paths", []):
+        if not isinstance(item, dict):
+            continue
+        probes = item.get("probes", {}) if isinstance(item.get("probes"), dict) else {}
+        for role in ("detective", "inquisitor"):
+            try:
+                probe_rounds.append(int(probes.get(role, {}).get("round") or 0))
+            except (TypeError, ValueError):
+                return None
+    if not probe_rounds or any(round_num <= 0 for round_num in probe_rounds):
+        return None
+    return max(probe_rounds)
+
+
+def _universe_harvest_dry_rounds(state, coverage_round):
+    """Count consecutive dry harvests beginning no earlier than full coverage."""
+    dry = 0
+    for item in reversed(state.get("rounds", [])):
+        try:
+            item_round = int(item.get("round") or 0)
+        except (AttributeError, TypeError, ValueError):
+            break
+        if item_round < coverage_round:
+            break
+        harvest = item.get("opportunity_harvest") if isinstance(item, dict) else None
+        if not isinstance(harvest, dict):
+            break
+        if int(harvest.get("accepted_new") or 0) or int(harvest.get("merged_existing") or 0):
+            break
+        dry += 1
+    return dry
+
+
+def _universe_convergence_issue(state, round_num):
+    """Return the deterministic reason a broad search is not coverage-complete yet."""
+    paths = [
+        item for item in state.get("landscape_map", {}).get("paths", [])
+        if isinstance(item, dict)
+    ]
+    if not paths:
+        return "UNIVERSE_SEARCH 缺少 Landscape Map，不能声明搜索完成。"
+    unprobed = [
+        item.get("path_id") for item in paths
+        if item.get("state", "UNPROBED") == "UNPROBED"
+    ]
+    if unprobed:
+        return f"Landscape Map 仍有未质证路径: {unprobed}；机会型研究不得收敛。"
+    missing_roles = []
+    for item in paths:
+        probes = item.get("probes", {}) if isinstance(item.get("probes"), dict) else {}
+        for role in ("detective", "inquisitor"):
+            if role not in probes:
+                missing_roles.append(f"{item.get('path_id')}:{role}")
+    if missing_roles:
+        return f"Landscape Map 缺少双边探测记录: {missing_roles}。"
+    coverage_round = _universe_coverage_round(state)
+    if coverage_round is None:
+        return "Landscape Map 双边探测缺少有效轮次，不能建立覆盖完成时间。"
+
+    unexamined = [
+        cid for cid, cx in state.get("cruxes", {}).items()
+        if cx.get("first_contested") is None
+    ]
+    if unexamined:
+        return f"仍有从未被有效证据质证的 crux: {unexamined}。"
+    under_sourced = [
+        cid for cid, cx in state.get("cruxes", {}).items()
+        if _valid_citation_count(cx) < MIN_VALID_CITATIONS
+    ]
+    if under_sourced:
+        return f"仍有证据锚点不足的 crux: {under_sourced}。"
+    if round_num - state.get("max_introduced_round", 0) < DRY_ROUNDS:
+        return (
+            f"R{state.get('max_introduced_round', 0)} 才引入新 crux，"
+            f"需再质证 {DRY_ROUNDS} 轮确认无新攻击面。"
+        )
+    dry_rounds = _universe_harvest_dry_rounds(state, coverage_round)
+    if dry_rounds < UNIVERSE_HARVEST_DRY_ROUNDS:
+        return (
+            f"Landscape 于 R{coverage_round} 完成后，候选收割仅连续静默 {dry_rounds} 轮；"
+            f"需 {UNIVERSE_HARVEST_DRY_ROUNDS} 轮无新 seed 或既有 seed 证据增长。"
+        )
+    if len(state.get("decision_trace", [])) < 2:
+        return "覆盖完成后仍需一轮确认根层 edge/actionability 状态稳定。"
+    a, b = state["decision_trace"][-1], state["decision_trace"][-2]
+    signature = lambda item: (
+        item.get("research_verdict", {}).get("edge_state"),
+        item.get("research_verdict", {}).get("actionability"),
+    )
+    if signature(a) != signature(b):
+        return "UNIVERSE_SEARCH 根层 edge/actionability 状态尚未稳定。"
+    return None
+
+
+def _settle_universe_cruxes(state, round_num):
+    """Close global cruxes as monitors without inventing a universe direction."""
+    for cx in state.get("cruxes", {}).values():
+        if cx.get("status") in {"PENDING", "OPEN"}:
+            cx["status"] = "MONITORABLE"
+            cx["retired"] = True
+            cx["monitorable_reason"] = "UNIVERSE_COVERAGE_COMPLETE_DIRECTION_NOT_AGGREGATED"
+            cx["monitorable_round"] = int(round_num)
 
 
 def convergence(state, round_num):
@@ -472,6 +598,21 @@ def convergence(state, round_num):
         if open_cruxes is not None:
             out["open_cruxes"] = open_cruxes
         return out
+
+    if state.get("question_type") == "UNIVERSE_SEARCH":
+        issue = _universe_convergence_issue(state, round_num)
+        if issue:
+            return not_ready(issue)
+        _settle_universe_cruxes(state, round_num)
+        return {
+            "decision": "converge", "round": round_num,
+            "reason": (
+                "UNIVERSE_SEARCH 已完成双边 Landscape 覆盖，所有 crux 有有效证据锚点，"
+                "且连续两轮无候选或候选证据增长。根层方向保持 UNDETERMINED；"
+                "候选错价与方向留给 CandidateScreen。"
+            ),
+            "convergence_basis": "UNIVERSE_COVERAGE_AND_HARVEST_DRY",
+        }
 
     # every crux must be examined and settled or converted to a monitorable watch-item
     unsettled = [cid for cid, cx in state["cruxes"].items()

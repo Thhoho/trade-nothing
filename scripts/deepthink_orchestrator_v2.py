@@ -1030,15 +1030,27 @@ def cmd_submit(topic, detective, inquisitor, judge):
     landscape_audit = landscape_engine.ingest_round(
         state, round_num, detective=detective, inquisitor=inquisitor
     )
+    # Harvest before convergence so a final-round candidate/evidence change cannot be
+    # hidden by a premature coverage-complete decision.
+    harvest = opportunity_engine.harvest_round(state, round_num, detective, inquisitor)
     signals = judge.get("crux_signals", {})
-    conv = crux_engine.submit_round(state, round_num, signals)
+    conv = crux_engine.submit_round(
+        state, round_num, signals,
+        round_context={
+            "landscape_audit": landscape_audit,
+            "opportunity_harvest": harvest,
+        },
+    )
     state["last_convergence"] = conv
     # ── 保存 agent 原始输出到 state，供报告层消费 ──
     state["rounds"][-1]["detective_raw"] = detective
     state["rounds"][-1]["inquisitor_raw"] = inquisitor
     state["rounds"][-1]["judge_raw"] = judge
     state["rounds"][-1]["landscape_audit"] = landscape_audit
-    harvest = opportunity_engine.harvest_round(state, round_num, detective, inquisitor)
+    # Root convergence can change screening eligibility; refresh only deterministic
+    # projections, never the underlying seed evidence.
+    opportunity_engine.refresh_candidate_states(state)
+    harvest.update(opportunity_engine.summary(state))
     state["rounds"][-1]["opportunity_harvest"] = harvest
     _save(topic, state)
     dt = state["decision_trace"][-1]
