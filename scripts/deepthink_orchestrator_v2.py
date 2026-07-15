@@ -1333,6 +1333,16 @@ def cmd_submit_verification(topic, snapshots, verifier, seed_id="", requested_cl
         state, snapshots, verifier, seed_id or None, requested_claim_id or None,
         isolation_status=isolation_status,
     )
+    if audit.get("conflicting_claim_ids"):
+        return {
+            "status": "claim_verification_submission_conflict",
+            "topic": topic,
+            "verification_audit": audit,
+            "instruction": (
+                "同一 claim/snapshot 已存在不同 verifier 提交；旧结果保持不变。"
+                "不得覆盖、删除或重写，需使用新的合法 snapshot 才能形成新记录。"
+            ),
+        }
     _save(topic, state)
     latest = candidate_screen_engine.latest_by_seed(state)
     promotion_packets = [

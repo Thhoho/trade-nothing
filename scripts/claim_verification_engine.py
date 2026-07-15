@@ -367,6 +367,7 @@ def apply_verifier_results(state, snapshots_payload, verifier_payload, seed_id=N
         for i, item in enumerate(stored) if isinstance(item, dict)
     }
     accepted, missing_snapshot, unknown = 0, [], []
+    replayed, conflicts, pending = [], [], []
     for cid, result in results.items():
         request = request_map.get(cid)
         if not request:
@@ -376,13 +377,38 @@ def apply_verifier_results(state, snapshots_payload, verifier_payload, seed_id=N
         if not snapshot:
             missing_snapshot.append(cid)
             continue
-        normalized = _normalize_result(request, snapshot, result, isolation_status)
         key = (cid, snapshot["snapshot_id"])
+        submission_sha256 = candidate_screen_engine.payload_sha256({
+            "schema": "claim-verification-submission.v1",
+            "claim_request": request,
+            "snapshot_manifest": _manifest(snapshot),
+            "verifier_result": result,
+            "isolation_status": isolation_status,
+        })
         if key in by_key:
-            stored[by_key[key]] = normalized
+            existing = stored[by_key[key]]
+            if existing.get("submission_sha256") == submission_sha256:
+                replayed.append(cid)
+            else:
+                conflicts.append(cid)
         else:
-            stored.append(normalized)
-            by_key[key] = len(stored) - 1
+            pending.append((cid, request, snapshot, result, submission_sha256))
+    if conflicts:
+        return {
+            "accepted_verifications": 0,
+            "replayed_claim_ids": replayed,
+            "conflicting_claim_ids": conflicts,
+            "unknown_claim_ids": unknown,
+            "missing_snapshot_claim_ids": missing_snapshot,
+            "rejected_snapshots": rejected,
+            **summary(state),
+        }
+    for cid, request, snapshot, result, submission_sha256 in pending:
+        normalized = _normalize_result(request, snapshot, result, isolation_status)
+        normalized["submission_sha256"] = submission_sha256
+        key = (cid, snapshot["snapshot_id"])
+        stored.append(normalized)
+        by_key[key] = len(stored) - 1
         accepted += 1
     manifests = state.setdefault("source_snapshots", [])
     manifest_ids = {item.get("snapshot_id") for item in manifests if isinstance(item, dict)}
@@ -394,6 +420,8 @@ def apply_verifier_results(state, snapshots_payload, verifier_payload, seed_id=N
     opportunity_engine.refresh_candidate_states(state)
     return {
         "accepted_verifications": accepted,
+        "replayed_claim_ids": replayed,
+        "conflicting_claim_ids": [],
         "unknown_claim_ids": unknown,
         "missing_snapshot_claim_ids": missing_snapshot,
         "rejected_snapshots": rejected,

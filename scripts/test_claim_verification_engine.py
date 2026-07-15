@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Offline regression tests for snapshot-bound claim verification."""
+import copy
 import os
 import tempfile
 import unittest
@@ -130,6 +131,43 @@ class ClaimVerificationEngineTests(unittest.TestCase):
         self.assertTrue(st["source_snapshots"])
         self.assertNotIn("text", st["source_snapshots"][0])
         self.assertNotIn("text", st["claim_verifications"][0]["snapshot_manifest"])
+
+    def test_exact_verifier_replay_is_idempotent(self):
+        st = screened_state()
+        snapshots = snapshot_payload(st)
+        verifier = verifier_payload(st, snapshots)
+        claim_engine.apply_verifier_results(
+            st, snapshots, verifier, isolation_status="verified"
+        )
+        original = copy.deepcopy(st["claim_verifications"])
+        replay = claim_engine.apply_verifier_results(
+            st, snapshots, verifier, isolation_status="verified"
+        )
+        self.assertEqual(replay["accepted_verifications"], 0)
+        self.assertEqual(
+            sorted(replay["replayed_claim_ids"]),
+            sorted(item["claim_id"] for item in original),
+        )
+        self.assertEqual(st["claim_verifications"], original)
+
+    def test_changed_verifier_payload_conflicts_without_overwrite(self):
+        st = screened_state()
+        snapshots = snapshot_payload(st)
+        verifier = verifier_payload(st, snapshots)
+        claim_engine.apply_verifier_results(
+            st, snapshots, verifier, isolation_status="verified"
+        )
+        original_verifications = copy.deepcopy(st["claim_verifications"])
+        original_screen = copy.deepcopy(st["candidate_screens"][0])
+        first = claim_engine.collect_claim_requests(st)[0]["claim_id"]
+        changed = verifier_payload(st, snapshots, overrides={first: "CONTRADICTS"})
+        conflict = claim_engine.apply_verifier_results(
+            st, snapshots, changed, isolation_status="verified"
+        )
+        self.assertEqual(conflict["accepted_verifications"], 0)
+        self.assertEqual(conflict["conflicting_claim_ids"], [first])
+        self.assertEqual(st["claim_verifications"], original_verifications)
+        self.assertEqual(st["candidate_screens"][0], original_screen)
 
     def test_invented_quote_is_physically_rejected(self):
         st = screened_state()

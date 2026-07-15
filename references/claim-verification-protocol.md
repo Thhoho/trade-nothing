@@ -14,6 +14,11 @@ source-supported claim; it still does not prove that the source itself is true.
   exact quote occurs verbatim in the hashed snapshot.
 - The engine stores the snapshot manifest and short quote, not the full page.
 
+Each `(claim_id, snapshot_id)` accepts at most one verifier submission. An exact replay is
+idempotent. A different payload for the same claim and snapshot is a conflict and must leave the
+stored verification unchanged. A new assessment requires a genuinely new content-hashed snapshot;
+deleting or rewriting the old result is forbidden.
+
 Snapshot content must come from the host fetcher or evidence_snapshot.py, not
 from the Claim Verifier. Run the verifier in a context isolated from Candidate
 Analyst and Candidate Skeptic.
