@@ -372,6 +372,10 @@ For method evaluation, read `references/benchmark-protocol.md` and use
 `scripts/benchmark_harness.py`. Never expose blind assessments, expected paths, or post-as-of
 outcomes to a research role, and never let a research result score itself.
 
+When handing a state to `tradenothing-next`, read `references/project-handoff-protocol.md` and use
+`scripts/project_handoff.py`. Never hand the product a Markdown conclusion, raw role transcripts,
+or an unverified JSON copy. Lesson selection remains a separate human action in the product.
+
 **Data tiers (取数分层):** Tier-2 = WebSearch (the sub-agents' primary qualitative engine — broad,
 robust, carries URLs that flow into the ledger/References). Tier-1 = `scripts/tier1_providers.py`
 (no-key, citable hard anchors): `--fred DGS10` (macro), `--edgar NVDA --form 10-K` (US filings),
