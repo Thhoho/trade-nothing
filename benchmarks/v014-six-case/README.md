@@ -3,6 +3,14 @@
 This directory is the reproducible input contract for the initial 6 x 3
 `CLOSED_PACKET_REASONING` comparison.
 
+Two immutable manifests share the same frozen cases and evidence:
+
+- `suite.json` is the historical `single_agent / v0_12 / v0_14` contract.
+- `suite-a458842.json` is the current `single_agent / v0_14 / a458842` contract. Use it to evaluate
+  the installed method; its evaluator key is `assessor/answer-key-a458842.json`.
+
+Do not report results from the historical `v0_14` arm as current-skill effectiveness.
+
 It measures whether an arm can reason from the same frozen facts, control maturity, avoid false
 opportunities, and produce a usable report. It does **not** measure source discovery, full-universe
 coverage, proprietary insight, or alpha. Those require a separate searchable frozen-corpus suite.
@@ -24,6 +32,9 @@ Validate before dispatch:
 python3 scripts/benchmark_harness.py validate-suite \
   --suite benchmarks/v014-six-case/suite.json
 ```
+
+For the current skill, replace `suite.json` with `suite-a458842.json` in validate,
+verify-variants, materialize-case, and score commands.
 
 Verify that pinned skill commits and file hashes exist in the canonical Git object database:
 

@@ -1,0 +1,97 @@
+{
+  "schema_version": "trade-nothing.discovery-benchmark-suite.v1",
+  "suite_id": "v014-discovery-pilot-a458842",
+  "evaluation_scope": "FROZEN_CORPUS_DISCOVERY",
+  "research_access": {
+    "external_search_allowed": false,
+    "filesystem_allowed": false,
+    "corpus_gateway_required": true
+  },
+  "variants": [
+    "single_agent",
+    "v0_14",
+    "a458842"
+  ],
+  "variant_manifest": {
+    "single_agent": {
+      "runner_kind": "PROMPT_ONLY",
+      "engine_version": "prompt:171602d05e3bb155acfd57fc70907408f3191fe6cf2181445612ec1b5819fa14",
+      "instruction_path": "arms/single_agent.md",
+      "instruction_sha256": "171602d05e3bb155acfd57fc70907408f3191fe6cf2181445612ec1b5819fa14",
+      "adapter_instruction_path": "arms/corpus-tool-adapter.md",
+      "adapter_instruction_sha256": "d5f386912fe69dde69e3ef533c602b88b9e893b416bfbdabdfb620e165e66312"
+    },
+    "v0_14": {
+      "runner_kind": "GIT_METHOD_ADAPTER",
+      "engine_version": "git:50b4ed9d59df8dd9b0753d0432e6a15e8d95d18f",
+      "git_commit": "50b4ed9d59df8dd9b0753d0432e6a15e8d95d18f",
+      "method_instruction_path": "arms/v0_14-method.md",
+      "method_instruction_sha256": "996961e7cad52be991ab9599ec6fa189aeaaf2503206547f6f1eec5f6b7360ab",
+      "entrypoint_path": "SKILL.md",
+      "entrypoint_sha256": "17f931e1edf58f02a053e921e3ac6543c5a1cff72be5b0180481aaf704aef6f7",
+      "orchestrator_path": "scripts/deepthink_orchestrator_v2.py",
+      "orchestrator_sha256": "daef5fbb86b5edde5bd54c24cffb2942231e481667ef1619a910c6b4ce1747b9",
+      "adapter_instruction_path": "arms/corpus-tool-adapter.md",
+      "adapter_instruction_sha256": "d5f386912fe69dde69e3ef533c602b88b9e893b416bfbdabdfb620e165e66312"
+    },
+    "a458842": {
+      "runner_kind": "GIT_METHOD_ADAPTER",
+      "engine_version": "git:a458842a690924bdb1bc87c7ec7d315a18d02aec",
+      "git_commit": "a458842a690924bdb1bc87c7ec7d315a18d02aec",
+      "method_instruction_path": "arms/a458842-method.md",
+      "method_instruction_sha256": "f058009e8df8427de0574ee9c1038d65ab8c7d07b13119270496e26dc203ed83",
+      "entrypoint_path": "SKILL.md",
+      "entrypoint_sha256": "2931de49eb67d6e0aa4afd23def5a32c3be4d4222b239f02b5eeaf2ae62684cf",
+      "orchestrator_path": "scripts/deepthink_orchestrator_v2.py",
+      "orchestrator_sha256": "f754a411d721044a93259ce404c30c0a7834029dab558ca3210c3a5b401e237b",
+      "adapter_instruction_path": "arms/corpus-tool-adapter.md",
+      "adapter_instruction_sha256": "d5f386912fe69dde69e3ef533c602b88b9e893b416bfbdabdfb620e165e66312"
+    }
+  },
+  "corpus_manifest": {
+    "path": "corpus/corpus.json",
+    "sha256": "81f30bcade71c0461533e4d0f231774d8f91472af83f05d02d9b0ee3398248a6",
+    "document_count": 20
+  },
+  "cases": [
+    {
+      "case_id": "regional_bank_systemic_short_2024",
+      "corpus_id": "v014-cross-theme-primary-extracts",
+      "question_type": "CONJUNCTIVE",
+      "as_of": "2024-02-07",
+      "prompt": "截至 2024-02-07，从冻结语料中判断美国区域银行是否存在可执行的系统性做空机会。建立从资产压力到股东回报的因果链，寻找支持与反对证据，区分命题、定价和载体，最多保留 3 个研究对象或对冲路径。",
+      "budget": {
+        "max_tokens": 30000,
+        "max_queries": 10,
+        "max_documents_read": 10,
+        "max_wall_seconds": 1200
+      }
+    },
+    {
+      "case_id": "glp1_value_capture_2024",
+      "corpus_id": "v014-cross-theme-primary-extracts",
+      "question_type": "UNIVERSE_SEARCH",
+      "as_of": "2024-05-02",
+      "prompt": "截至 2024-05-02，从冻结语料中寻找 GLP-1 需求增长与供给约束中真正可投资的价值捕获路径。建立价值链，检查每条路径的经济暴露、市场预期和可交易性，最多保留 3 个候选。",
+      "budget": {
+        "max_tokens": 30000,
+        "max_queries": 10,
+        "max_documents_read": 10,
+        "max_wall_seconds": 1200
+      }
+    },
+    {
+      "case_id": "ai_power_infrastructure_2025",
+      "corpus_id": "v014-cross-theme-primary-extracts",
+      "question_type": "UNIVERSE_SEARCH",
+      "as_of": "2025-01-31",
+      "prompt": "截至 2025-01-31，从冻结语料中寻找 AI 数据中心电力瓶颈的可投资价值捕获者。建立主要价值转移路径，并检验每个候选从主题暴露到股东收益的完整因果链，最多保留 3 个候选。",
+      "budget": {
+        "max_tokens": 30000,
+        "max_queries": 10,
+        "max_documents_read": 10,
+        "max_wall_seconds": 1200
+      }
+    }
+  ]
+}

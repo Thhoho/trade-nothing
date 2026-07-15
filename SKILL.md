@@ -381,8 +381,10 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > Read `references/claim-verification-protocol.md` before verification.
 
 For method evaluation, read `references/benchmark-protocol.md` and use
-`scripts/benchmark_harness.py`. Never expose blind assessments, expected paths, or post-as-of
-outcomes to a research role, and never let a research result score itself.
+`scripts/benchmark_harness.py`. Use the `suite-a458842.json` manifests when evaluating the current
+pinned method; the original `suite.json` manifests are historical comparisons and do not represent
+the current skill. Never expose blind assessments, expected paths, or post-as-of outcomes to a
+research role, and never let a research result score itself.
 
 When handing a state to `tradenothing-next`, read `references/project-handoff-protocol.md` and use
 `scripts/project_handoff.py --check` before export. Never hand the product a Markdown conclusion,

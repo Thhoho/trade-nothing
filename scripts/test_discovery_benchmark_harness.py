@@ -13,6 +13,8 @@ import discovery_benchmark_harness as harness
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SUITE_PATH = REPO_ROOT / "benchmarks" / "v014-discovery-pilot" / "suite.json"
 ANSWER_KEY_PATH = SUITE_PATH.parent / "assessor" / "answer-key.json"
+CURRENT_SUITE_PATH = SUITE_PATH.parent / "suite-a458842.json"
+CURRENT_ANSWER_KEY_PATH = SUITE_PATH.parent / "assessor" / "answer-key-a458842.json"
 
 
 def load_suite():
@@ -41,6 +43,25 @@ class DiscoveryBenchmarkHarnessTests(unittest.TestCase):
             len(case["comprehension_questions"]) == 3
             for case in answer_key["cases"].values()
         ))
+
+    def test_current_pilot_compares_baseline_prior_and_a458842(self):
+        suite = harness.validate_suite(
+            harness._load_json(CURRENT_SUITE_PATH), CURRENT_SUITE_PATH
+        )
+        self.assertEqual(suite["suite_id"], "v014-discovery-pilot-a458842")
+        self.assertEqual(suite["variants"], ["single_agent", "v0_14", "a458842"])
+        self.assertEqual(
+            suite["variant_manifest"]["a458842"]["git_commit"],
+            "a458842a690924bdb1bc87c7ec7d315a18d02aec",
+        )
+        self.assertEqual(
+            harness.verify_git_variants(suite, REPO_ROOT), ["v0_14", "a458842"]
+        )
+        answer_key = harness._load_json(CURRENT_ANSWER_KEY_PATH)
+        self.assertEqual(answer_key["suite_id"], suite["suite_id"])
+        self.assertEqual(
+            set(answer_key["cases"]), {case["case_id"] for case in suite["cases"]}
+        )
 
     def test_dispatch_has_no_corpus_bodies_or_evaluator_keys(self):
         suite = load_suite()
