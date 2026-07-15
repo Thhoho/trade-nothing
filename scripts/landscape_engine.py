@@ -64,8 +64,16 @@ def validate_frame(frame):
         suggested_rounds = int(frame.get("suggested_max_rounds"))
     except (TypeError, ValueError):
         suggested_rounds = 0
+    # A Universe search may still harvest a new seed in the round that completes
+    # Landscape coverage.  Reserve the full deterministic harvest-dry window
+    # *after* the worst-case coverage round; otherwise a valid frame can hit the
+    # fuse before convergence is even possible.
     minimum_rounds = (
-        max(crux_engine.MIN_ROUNDS, math.ceil(len(paths) / MAX_PATHS_PER_ROLE_ROUND) + 1)
+        max(
+            crux_engine.MIN_ROUNDS,
+            math.ceil(len(paths) / MAX_PATHS_PER_ROLE_ROUND)
+            + crux_engine.UNIVERSE_HARVEST_DRY_ROUNDS,
+        )
         if paths else 0
     )
     if suggested_rounds < minimum_rounds:

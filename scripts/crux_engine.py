@@ -37,7 +37,7 @@ OPEN_PATIENCE = 3               # rounds a crux may stay contested before forced
 MIN_CONTESTED = 3               # min contested rounds before a crux is eligible for retirement
 DRY_ROUNDS   = 3                # no NEW crux introduced for this many rounds = adversary went dry
 MIN_VALID_CITATIONS = 2         # a crux needs real source anchors before it may retire
-UNIVERSE_HARVEST_DRY_ROUNDS = 2 # coverage round + one confirmation round without seed/evidence growth
+UNIVERSE_HARVEST_DRY_ROUNDS = 2 # two dry harvests; coverage round counts only when itself dry
 
 QUESTION_TYPES = {
     "CONJUNCTIVE", "DISJUNCTIVE", "CAUSAL_CHAIN", "COMPARATIVE", "UNIVERSE_SEARCH",

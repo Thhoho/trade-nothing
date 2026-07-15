@@ -22,7 +22,7 @@ def citation(path, claim="path evidence"):
     }
 
 
-def frame(path_count=5, suggested_max_rounds=4):
+def frame(path_count=5, suggested_max_rounds=5):
     archetypes = [
         "DIRECT_CAPTURE",
         "BOTTLENECK_OWNER",
@@ -138,6 +138,9 @@ class LandscapeFrameTests(unittest.TestCase):
 
     def test_round_budget_must_cover_map_plus_stability(self):
         raw = frame(path_count=7, suggested_max_rounds=4)
+        self.assertIn("landscape_requires_at_least_6_rounds", landscape_engine.validate_frame(raw))
+
+        raw = frame(path_count=5, suggested_max_rounds=4)
         self.assertIn("landscape_requires_at_least_5_rounds", landscape_engine.validate_frame(raw))
 
     def test_pure_challenge_frame_does_not_require_map(self):
