@@ -41,12 +41,11 @@ The benchmark suite is shipped in installed skill copies for reproducibility. Th
 arms must run without filesystem/tool access and receive only the generated dispatch. Prompt-only
 instructions such as “do not read assessor files” do not qualify as blind isolation.
 
-The original `benchmarks/v014-six-case/suite.json` remains an immutable historical comparison. For
-the current skill, use `benchmarks/v014-six-case/suite-a458842.json`, which compares the same
-single-agent baseline and prior v0.14 arm against Git commit `a458842`; its suite contract hash, not
-the display label, is authoritative. The validated contract is
-`fd289645453e2f79b00af46836a79f59662684c4111fdb92209d78359039abfe`. Do not spend benchmark budget on the historical manifest and
-then describe it as current-method performance.
+Historical suite manifests remain immutable comparisons. For the current skill, first run
+`scripts/benchmark_current.py --check` and use the closed-packet suite and evaluator key resolved
+from `benchmarks/current.json`. The pointer binds the operational method identity, suite contract,
+current variant, and answer key. Never infer “current” from a filename, display label, or repository
+HEAD; benchmark-only commits must not masquerade as research-method changes.
 
 ```bash
 python3 scripts/benchmark_harness.py materialize-case \
@@ -204,12 +203,11 @@ entrypoint, and orchestrator, then gives the same model a separately hashed one-
 that method. This compares method projections under one runtime; it does not claim that the full
 multi-agent orchestrator executed or that agent-isolation effects were measured.
 
-Use `suite-a458842.json` and `assessor/answer-key-a458842.json` for the current discovery comparison.
-That manifest retains the single-agent and prior v0.14 arms, adds the pinned `a458842` method
-adapter, and leaves the historical `suite.json` unchanged. The adapter is explicitly a one-model
-projection: it cannot measure physical agent isolation or the full orchestrator. The validated
-current discovery contract is
-`3d1ccc16f27c45ce98d589f19cdef6dbb8e0907485c512f4bf21b76e4e41ffe3`.
+Use the discovery suite and evaluator key resolved by `scripts/benchmark_current.py --check`.
+The current manifest retains the single-agent and prior v0.14 arms, adds a Git- and
+method-identity-pinned current adapter, and leaves all historical suites unchanged. The adapter is
+explicitly a one-model projection: it cannot measure physical agent isolation or the full
+orchestrator. The pointer's suite contract hash is authoritative.
 
 Research roles receive only the public dispatch plus two host-mediated gateway operations. `corpus_search` returns
 metadata and a short snippet; `corpus_read` returns a body only after search exposed that document

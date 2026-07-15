@@ -17,6 +17,8 @@ from collections import defaultdict
 from datetime import date
 from pathlib import Path, PurePosixPath
 
+from method_identity import build_method_identity_from_git
+
 
 SUITE_SCHEMA = "trade-nothing.benchmark-suite.v3"
 DISPATCH_SCHEMA = "trade-nothing.benchmark-dispatch.v3"
@@ -192,6 +194,11 @@ def validate_suite(suite):
                     f"variant_manifest.{variant}.orchestrator_sha256",
                 ),
             }
+            if entry.get("method_contract_sha256") is not None:
+                normalized_entry["method_contract_sha256"] = _sha256(
+                    entry.get("method_contract_sha256"),
+                    f"variant_manifest.{variant}.method_contract_sha256",
+                )
             if engine_version != f"git:{git_commit}":
                 raise ValueError(
                     f"variant_manifest.{variant}.engine_version must bind git_commit"
@@ -405,6 +412,10 @@ def verify_git_variants(suite, source_repo):
             actual = hashlib.sha256(completed.stdout).hexdigest()
             if actual != entry[hash_field]:
                 raise ValueError(f"pinned variant file hash mismatch: {variant} {entry[path_field]}")
+        if entry.get("method_contract_sha256") is not None:
+            actual_identity = build_method_identity_from_git(repo, entry["git_commit"])
+            if actual_identity["contract_sha256"] != entry["method_contract_sha256"]:
+                raise ValueError(f"pinned variant method identity mismatch: {variant}")
         verified.append({
             "variant": variant,
             "engine_version": entry["engine_version"],
@@ -519,6 +530,10 @@ def validate_result(result, case, suite):
             "entrypoint_sha256": variant_contract["entrypoint_sha256"],
             "orchestrator_sha256": variant_contract["orchestrator_sha256"],
         })
+        if variant_contract.get("method_contract_sha256") is not None:
+            receipt_expected["method_contract_sha256"] = variant_contract[
+                "method_contract_sha256"
+            ]
     for field, expected in receipt_expected.items():
         if engine_receipt.get(field) != expected:
             raise ValueError(f"result.engine_receipt.{field} does not match variant contract")

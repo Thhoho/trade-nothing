@@ -17,6 +17,8 @@ from collections import Counter, defaultdict
 from datetime import UTC, date, datetime
 from pathlib import Path, PurePosixPath
 
+from method_identity import build_method_identity_from_git
+
 
 SUITE_SCHEMA = "trade-nothing.discovery-benchmark-suite.v1"
 CORPUS_SCHEMA = "trade-nothing.frozen-corpus.v1"
@@ -201,6 +203,11 @@ def _validate_variants(variants, manifest):
                     entry.get("orchestrator_sha256"), f"{variant}.orchestrator_sha256"
                 ),
             })
+            if entry.get("method_contract_sha256") is not None:
+                base["method_contract_sha256"] = _sha256(
+                    entry.get("method_contract_sha256"),
+                    f"{variant}.method_contract_sha256",
+                )
             if engine != f"git:{commit}":
                 raise ValueError(f"{variant}.engine_version must bind git commit")
         base["variant_contract_sha256"] = _hash_bytes(_json(base).encode("utf-8"))
@@ -364,6 +371,10 @@ def verify_git_variants(suite, source_repo):
                 raise ValueError(f"cannot read pinned variant {variant}:{entry[path_field]}")
             if _hash_bytes(completed.stdout) != entry[hash_field]:
                 raise ValueError(f"pinned variant file hash mismatch: {variant}")
+        if entry.get("method_contract_sha256") is not None:
+            actual_identity = build_method_identity_from_git(repo, entry["git_commit"])
+            if actual_identity["contract_sha256"] != entry["method_contract_sha256"]:
+                raise ValueError(f"pinned variant method identity mismatch: {variant}")
         verified.append(variant)
     return verified
 
@@ -632,6 +643,8 @@ def _variant_receipt_expected(contract):
             "entrypoint_sha256": contract["entrypoint_sha256"],
             "orchestrator_sha256": contract["orchestrator_sha256"],
         })
+        if contract.get("method_contract_sha256") is not None:
+            expected["method_contract_sha256"] = contract["method_contract_sha256"]
     return expected
 
 

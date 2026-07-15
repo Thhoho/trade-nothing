@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+import subprocess
 from pathlib import Path
 
 from version import __version__
@@ -55,6 +57,68 @@ def build_method_identity(root=ROOT):
         "schema_version": SCHEMA,
         "scope": SCOPE,
         "method_version": __version__,
+        "contract_sha256": hashlib.sha256(
+            canonical_json(contract).encode("utf-8")
+        ).hexdigest(),
+        "file_count": len(entries),
+    }
+
+
+def build_method_identity_from_git(repo, commit):
+    """Rebuild an operational-bundle identity from an immutable Git tree."""
+    repo = Path(repo).resolve()
+    commit = str(commit or "").lower()
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise ValueError("method identity Git commit must be a full sha")
+
+    def git_bytes(*args):
+        completed = subprocess.run(
+            ["git", "-C", str(repo), *args],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if completed.returncode != 0:
+            detail = completed.stderr.decode("utf-8", errors="replace").strip()
+            raise ValueError("cannot read method identity Git tree: " + detail)
+        return completed.stdout
+
+    names = git_bytes("ls-tree", "-r", "--name-only", commit).decode("utf-8").splitlines()
+    paths = sorted(
+        path for path in names
+        if path == "SKILL.md"
+        or (path.startswith("agents/") and path.count("/") == 1 and path.endswith(".md"))
+        or (path.startswith("references/") and path.count("/") == 1 and path.endswith(".md"))
+        or (
+            path.startswith("scripts/")
+            and path.count("/") == 1
+            and path.endswith(".py")
+            and not Path(path).name.startswith("test_")
+        )
+    )
+    if "SKILL.md" not in paths:
+        raise ValueError("method identity Git tree is missing SKILL.md")
+    version_text = git_bytes("show", f"{commit}:scripts/version.py").decode("utf-8")
+    match = re.search(r'^__version__\s*=\s*["\'](\d+\.\d+\.\d+)["\']', version_text, re.M)
+    if not match:
+        raise ValueError("method identity Git tree has no valid __version__")
+    entries = [
+        {
+            "path": path,
+            "sha256": hashlib.sha256(git_bytes("show", f"{commit}:{path}")).hexdigest(),
+        }
+        for path in paths
+    ]
+    contract = {
+        "schema_version": SCHEMA,
+        "scope": SCOPE,
+        "method_version": match.group(1),
+        "files": entries,
+    }
+    return {
+        "schema_version": SCHEMA,
+        "scope": SCOPE,
+        "method_version": match.group(1),
         "contract_sha256": hashlib.sha256(
             canonical_json(contract).encode("utf-8")
         ).hexdigest(),
