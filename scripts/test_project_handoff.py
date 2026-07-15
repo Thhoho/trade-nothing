@@ -83,6 +83,36 @@ class ProjectHandoffTests(unittest.TestCase):
         ).hexdigest()
         self.assertEqual(first["handoff_integrity"]["state_sha256"], expected)
 
+    def test_preflight_reports_all_legacy_blockers_without_rewriting_state(self):
+        legacy = fixture_state()
+        legacy.pop("question_type")
+        legacy.pop("logic_graph")
+        legacy["runtime"] = {"state_path": "/tmp/legacy.json"}
+        legacy["runtime_contract"] = {"isolation_status": "unverified"}
+        legacy["decision_trace"][-1].pop("aggregation_rule")
+        legacy["decision_trace"][-1].pop("research_verdict")
+        legacy.pop("research_verdict")
+        legacy["decision_trace"][-1]["decision"] = "NO_EDGE / AVOID"
+
+        assessment = project_handoff.preflight_handoff(legacy)
+        codes = {item["code"] for item in assessment["blockers"]}
+        warning_codes = {item["code"] for item in assessment["warnings"]}
+
+        self.assertEqual(assessment["status"], "BLOCKED")
+        self.assertFalse(assessment["exportable"])
+        self.assertTrue(
+            {
+                "QUESTION_TYPE_INVALID",
+                "LOGIC_GRAPH_INVALID",
+                "LEGACY_AVOID_SEMANTICS",
+                "THREE_AXIS_VERDICT_MISSING",
+                "RUN_ID_INVALID",
+            }.issubset(codes)
+        )
+        self.assertIn("RUNTIME_ISOLATION_NOT_VERIFIED", warning_codes)
+        with self.assertRaisesRegex(ValueError, "handoff preflight blocked"):
+            project_handoff.build_handoff(legacy)
+
     def test_writer_refuses_implicit_overwrite_and_symlink(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

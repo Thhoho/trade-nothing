@@ -3,6 +3,14 @@
 Use this protocol only when moving a completed or explicitly non-formal `deepthink2` state into
 `tradenothing-next`. A Markdown report is not an executable handoff.
 
+Run the read-only preflight first. It reports every known blocker and warning in one response:
+
+```bash
+python3 scripts/project_handoff.py \
+  --state "/absolute/path/to/v2_state.json" \
+  --check
+```
+
 ```bash
 python3 scripts/project_handoff.py \
   --state "/absolute/path/to/v2_state.json" \
@@ -23,6 +31,10 @@ The checksum detects accidental transfer or UI tampering. It does not authentica
 runtime, publisher or user. Candidate isolation and claim-verification gates remain independently
 mandatory. The product must recompute the checksum before accepting a handoff and must continue to
 derive candidate maturity from the imported evidence state.
+
+Never repair a blocked historical state by inventing a question type, logic graph, run ID,
+three-axis verdict, isolation receipt or Landscape Map after the run. Preserve it as audit-only
+history or rerun the question under the current method.
 
 Do not overwrite the source state. Existing output files require explicit `--force`; symlink outputs
 are refused.
