@@ -25,6 +25,7 @@ The exporter:
 - removes research rounds, raw role transcripts, search logs and dispatch prompts;
 - writes `lesson_injections=[]`; Lesson selection remains a separate human action in the product;
 - binds the compact state to `handoff_integrity.state_sha256`;
+- exports `method_identity` captured at run initialization; v2 handoffs without it fail closed;
 - never promotes a candidate, creates a Thesis, approves a Decision or opens a Paper Position.
 
 The checksum detects accidental transfer or UI tampering. It does not authenticate the skill,
@@ -33,7 +34,7 @@ mandatory. The product must recompute the checksum before accepting a handoff an
 derive candidate maturity from the imported evidence state.
 
 Never repair a blocked historical state by inventing a question type, logic graph, run ID,
-three-axis verdict, isolation receipt or Landscape Map after the run. Preserve it as audit-only
+three-axis verdict, isolation receipt, method identity or Landscape Map after the run. Preserve it as audit-only
 history or rerun the question under the current method.
 
 Do not overwrite the source state. Existing output files require explicit `--force`; symlink outputs

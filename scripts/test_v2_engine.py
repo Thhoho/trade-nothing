@@ -333,6 +333,10 @@ class OrchestratorTests(unittest.TestCase):
         self.assertEqual(stored["cruxes"]["C1"]["catalyst_window"]["expected_by"], "2026-10-31")
         self.assertEqual(stored["question_type"], "CONJUNCTIVE")
         self.assertEqual(stored["logic_graph"]["root_id"], "Q1")
+        self.assertEqual(
+            stored["method_identity"]["schema_version"],
+            "trade-nothing.method-identity.v1",
+        )
 
     def test_framer_cannot_self_attest_runtime_isolation(self):
         frame = self.frame()

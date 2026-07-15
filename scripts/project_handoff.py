@@ -17,7 +17,7 @@ import tempfile
 from typing import Any
 
 
-HANDOFF_SCHEMA = "trade-nothing.deepthink2.project-handoff.v1"
+HANDOFF_SCHEMA = "trade-nothing.deepthink2.project-handoff.v2"
 INTEGRITY_SCHEMA = "trade-nothing.project-handoff-integrity.v1"
 PREFLIGHT_SCHEMA = "trade-nothing.project-handoff-preflight.v1"
 QUESTION_TYPES = {
@@ -45,6 +45,7 @@ STATE_FIELDS = (
     "claim_verifications",
     "runtime_contract",
     "research_start_context",
+    "method_identity",
 )
 
 
@@ -114,6 +115,45 @@ def preflight_handoff(state: Any) -> dict[str, Any]:
     if not isinstance(state, dict):
         block("STATE_NOT_OBJECT", "state", "state must be a JSON object")
         return _preflight_result(blockers, warnings)
+
+    method = state.get("method_identity")
+    if not isinstance(method, dict):
+        block(
+            "METHOD_IDENTITY_MISSING",
+            "state.method_identity",
+            "new effect samples require a method identity pinned when the run starts",
+        )
+    else:
+        if method.get("schema_version") != "trade-nothing.method-identity.v1":
+            block(
+                "METHOD_IDENTITY_SCHEMA_INVALID",
+                "state.method_identity.schema_version",
+                "method identity schema is invalid",
+            )
+        if method.get("scope") != "operational-bundle.v1":
+            block(
+                "METHOD_IDENTITY_SCOPE_INVALID",
+                "state.method_identity.scope",
+                "method identity scope is invalid",
+            )
+        if not re.fullmatch(r"[0-9a-f]{64}", str(method.get("contract_sha256") or "")):
+            block(
+                "METHOD_CONTRACT_HASH_INVALID",
+                "state.method_identity.contract_sha256",
+                "method contract hash must be a lowercase SHA-256",
+            )
+        if not re.fullmatch(r"\d+\.\d+\.\d+", str(method.get("method_version") or "")):
+            block(
+                "METHOD_VERSION_INVALID",
+                "state.method_identity.method_version",
+                "method version must be semantic x.y.z",
+            )
+        if not isinstance(method.get("file_count"), int) or method.get("file_count", 0) <= 0:
+            block(
+                "METHOD_FILE_COUNT_INVALID",
+                "state.method_identity.file_count",
+                "method identity must bind at least one operational file",
+            )
 
     for field in ("topic", "decision_question"):
         if not str(state.get(field) or "").strip():

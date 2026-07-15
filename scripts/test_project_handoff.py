@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 import project_handoff
+import method_identity
 
 
 def fixture_state():
@@ -61,6 +62,7 @@ def fixture_state():
         "candidate_screens": [],
         "claim_verifications": [],
         "runtime_contract": {"isolation_status": "verified"},
+        "method_identity": method_identity.build_method_identity(),
         "research_start_context": {
             "packet_id": "RSP-20260715-ABCDEF123456",
             "payload_sha256": "a" * 64,
@@ -81,6 +83,9 @@ class ProjectHandoffTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(first["schema_version"], project_handoff.HANDOFF_SCHEMA)
         self.assertEqual(first["lesson_injections"], [])
+        self.assertEqual(
+            first["state"]["method_identity"], method_identity.build_method_identity()
+        )
         self.assertNotIn("rounds", first["state"])
         self.assertNotIn("candidate_screen_dispatches", first["state"])
         self.assertNotIn("raw", first["state"]["decision_trace"][0])
@@ -103,6 +108,7 @@ class ProjectHandoffTests(unittest.TestCase):
         legacy["decision_trace"][-1].pop("aggregation_rule")
         legacy["decision_trace"][-1].pop("research_verdict")
         legacy.pop("research_verdict")
+        legacy.pop("method_identity")
         legacy["decision_trace"][-1]["decision"] = "NO_EDGE / AVOID"
 
         assessment = project_handoff.preflight_handoff(legacy)
@@ -118,6 +124,7 @@ class ProjectHandoffTests(unittest.TestCase):
                 "LEGACY_AVOID_SEMANTICS",
                 "THREE_AXIS_VERDICT_MISSING",
                 "RUN_ID_INVALID",
+                "METHOD_IDENTITY_MISSING",
             }.issubset(codes)
         )
         self.assertIn("RUNTIME_ISOLATION_NOT_VERIFIED", warning_codes)

@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime, timezone
 
 import artifact_envelope
+import method_identity
 from utils import get_scratch_dir, load_json_safe, save_json
 
 
@@ -98,6 +99,7 @@ def create_manifest(topic, *, state_path="", as_of_date="", runtime_isolation="u
         "runtime_isolation": str(runtime_isolation or "unverified"),
         "latest_envelope": {},
         "failure_count": 0,
+        "method_identity": method_identity.build_method_identity(),
     }
     save_json(manifest_path(run_id), manifest)
     return manifest
@@ -129,6 +131,8 @@ def load_manifest(run_id):
         raise ValueError("run_manifest_not_found_or_invalid")
     if data.get("run_id") != run_id:
         raise ValueError("run_manifest_id_mismatch")
+    if data.get("method_identity"):
+        method_identity.validate_method_identity(data["method_identity"])
     data["state_path"] = _validated_state_path(data.get("state_path"))
     return data
 

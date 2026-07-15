@@ -7,6 +7,7 @@ import unittest
 from unittest import mock
 
 import run_registry
+import method_identity
 import utils
 from utils import save_json
 
@@ -38,12 +39,23 @@ class RunRegistryTests(unittest.TestCase):
         manifest = run_registry.create_manifest("Exact topic")
         self.assertTrue(manifest["run_id"].startswith("RUN-"))
         self.assertIn(manifest["run_id"], manifest["state_path"])
+        self.assertEqual(manifest["method_identity"], method_identity.build_method_identity())
         resolved = run_registry.resolve_context(run_id=manifest["run_id"])
         self.assertEqual(resolved["topic"], "Exact topic")
         with self.assertRaisesRegex(ValueError, "topic_run_mismatch"):
             run_registry.resolve_context(
                 run_id=manifest["run_id"], topic="Exact topic?"
             )
+
+    def test_manifest_rejects_method_contract_drift(self):
+        manifest = run_registry.create_manifest("Pinned method")
+        path = run_registry.manifest_path(manifest["run_id"])
+        with open(path, encoding="utf-8") as handle:
+            stored = json.load(handle)
+        stored["method_identity"]["contract_sha256"] = "0" * 64
+        save_json(path, stored)
+        with self.assertRaisesRegex(ValueError, "method_contract_drift"):
+            run_registry.load_manifest(manifest["run_id"])
 
     def test_adopt_existing_state_without_renaming_it(self):
         path = os.path.join(self.tmp.name, "v2-state", "legacy.json")

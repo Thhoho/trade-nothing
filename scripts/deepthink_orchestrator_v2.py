@@ -32,6 +32,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 import crux_engine
 import landscape_engine
+import method_identity
 import opportunity_engine
 import candidate_screen_engine
 import claim_verification_engine
@@ -1017,6 +1018,7 @@ def cmd_init(topic, frame, runtime_isolation="unverified", start_packet=None):
         "single_model_fallback": "degraded",
         "artifact_policy": _frame_artifact_policy(),
     }
+    state["method_identity"] = method_identity.build_method_identity()
     out = {"status": "dispatch_subagents", "topic": topic, "round": 1, "thesis_seed": state["thesis_seed"]}
     out.update(dispatch_prompts(state, 1))
     _save(topic, state)
