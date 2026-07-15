@@ -534,6 +534,29 @@ class CandidateScreenOrchestratorTests(unittest.TestCase):
 
 
 class CandidateScreenReportTests(unittest.TestCase):
+    def test_watchlist_card_prioritizes_gap_and_debiases_short_label(self):
+        st = state_with_seed()
+        st["opportunity_seeds"][0]["relation_type"] = "SHORT_CANDIDATE"
+        unresolved = {
+            dimension: "UNKNOWN"
+            for dimension in screen_engine.DIMENSIONS
+            if dimension != "ECONOMIC_EXPOSURE"
+        }
+        analyst = payload("Analyst", overrides=unresolved)
+        skeptic = payload("Skeptic", overrides=unresolved)
+        receipt = install_test_dispatch(st, analyst, skeptic)
+        screen_engine.evaluate_batch(
+            st, analyst, skeptic, AS_OF, isolation_status="verified",
+            isolation_receipt=receipt,
+        )
+        md = report_v2.render(st, view="cards")
+        self.assertIn("反向风险暴露", md)
+        self.assertNotIn("SHORT_CANDIDATE", md)
+        self.assertIn("首要筛选缺口**: EXPECTATION_GAP", md)
+        self.assertIn("Analyst UNKNOWN ｜ Skeptic UNKNOWN", md)
+        self.assertIn("派生未研究项", md)
+        self.assertIn("优先补齐 EXPECTATION_GAP", md)
+
     def test_report_renders_screen_matrix_without_auto_promotion(self):
         st = state_with_seed()
         analyst = payload("Analyst")

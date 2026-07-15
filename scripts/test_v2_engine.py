@@ -592,6 +592,9 @@ class ReportSafetyTests(unittest.TestCase):
         self.assertNotIn("最低路径支持度", md)
         self.assertNotIn("命题均值支持度", md)
         self.assertIn("Landscape 双边覆盖 + 候选收割静默", md)
+        self.assertIn("## 研究轴证据状态", md)
+        self.assertIn("不构成候选宇宙的整体多空方向", md)
+        self.assertNotIn("## 原想法经质证后发生了什么", md)
 
     def test_validator_rejects_rendered_verdict_drift_from_state(self):
         st = converged_state()

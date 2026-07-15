@@ -77,6 +77,58 @@ def _clean(value):
     return " ".join(str(value or "").split()) or "—"
 
 
+RELATION_LABELS = {
+    "DIRECT_WINNER": "直接受益路径",
+    "SUBSTITUTE_WINNER": "替代路径",
+    "COMPETITOR_WINNER": "竞争者受益路径",
+    "BOTTLENECK_OWNER": "瓶颈所有者",
+    "INFRA_ASSET_OWNER": "基础资产所有者",
+    "SECOND_ORDER": "二阶研究线索",
+    "SHORT_CANDIDATE": "反向风险暴露",
+}
+SCREEN_CORE_ORDER = ("ECONOMIC_EXPOSURE", "EXPECTATION_GAP", "TRADABILITY", "CATALYST")
+SCREEN_SOURCE_GATES = {
+    "total_unique_urls",
+    "primary_unique_urls",
+    "independent_source_orgs",
+    "analyst_source_breadth",
+    "skeptic_source_breadth",
+}
+
+
+def _relation_label(value):
+    cleaned = _clean(value).upper()
+    return RELATION_LABELS.get(cleaned, cleaned or "—")
+
+
+def _screen_gap_summary(screen):
+    """Project cheap-first gaps into the first core stop and its consequences."""
+    if not isinstance(screen, dict) or not screen:
+        return {}
+    dimensions = screen.get("dimensions", {}) if isinstance(screen.get("dimensions"), dict) else {}
+    primary = next((
+        dimension for dimension in SCREEN_CORE_ORDER
+        if dimensions.get(dimension, {}).get("state") != "SUPPORTED"
+    ), "")
+    primary_item = dimensions.get(primary, {}) if primary else {}
+    dependent = [
+        dimension for dimension in candidate_screen_engine.DIMENSIONS
+        if dimension != primary and dimensions.get(dimension, {}).get("state") != "SUPPORTED"
+    ]
+    dimension_names = set(candidate_screen_engine.DIMENSIONS)
+    non_dimension_gaps = [gap for gap in screen.get("gaps", []) if gap not in dimension_names]
+    source_gaps = [gap for gap in non_dimension_gaps if gap in SCREEN_SOURCE_GATES]
+    process_gaps = [gap for gap in non_dimension_gaps if gap not in SCREEN_SOURCE_GATES]
+    return {
+        "primary": primary,
+        "analyst_answer": primary_item.get("analyst", {}).get("answer", "UNKNOWN"),
+        "skeptic_answer": primary_item.get("skeptic", {}).get("answer", "UNKNOWN"),
+        "dependent": dependent,
+        "source_gaps": source_gaps,
+        "process_gaps": process_gaps,
+    }
+
+
 def _cell(value):
     return _clean(value).replace("|", "\\|")
 
@@ -201,6 +253,13 @@ def _candidate_cards(state):
         action_code, action_text = _candidate_next_action(
             candidate_state, promotion["blocking_reasons"]
         )
+        screen_gaps = _screen_gap_summary(screen)
+        if candidate_state == opportunity_engine.WATCHLIST and screen_gaps.get("primary"):
+            action_text = (
+                f"优先补齐 {screen_gaps['primary']}（Analyst "
+                f"{screen_gaps['analyst_answer']} / Skeptic {screen_gaps['skeptic_answer']}）；"
+                "其余 UNKNOWN 是 cheap-first 停止后的派生缺口，不得并列成独立研究任务。"
+            )
         cards.append({
             "entity_id": entity.get("entity_id"),
             "seed_id": seed.get("seed_id"),
@@ -208,6 +267,7 @@ def _candidate_cards(state):
             "ticker": _clean(seed.get("ticker")) if seed.get("ticker") else "",
             "asset_type": _clean(seed.get("asset_type")),
             "relation_type": _clean(seed.get("relation_type")),
+            "relation_label": _relation_label(seed.get("relation_type")),
             "origin_crux": _clean(seed.get("origin_crux")),
             "landscape_path_id": _clean(seed.get("landscape_path_id")),
             "candidate_state": candidate_state,
@@ -223,6 +283,7 @@ def _candidate_cards(state):
                 "claim_verification_status", "NOT_APPLICABLE"
             ),
             "isolation_status": screen.get("isolation_status", "unverified"),
+            "screen_gap_summary": screen_gaps,
             "path_count": len(entity.get("paths", [])),
             "next_action_code": action_code,
             "next_action": action_text,
@@ -657,15 +718,6 @@ def _render_audit(state, include_title=True):
     L.append("- 只有 `VERIFIED_FOR_HUMAN` 可供人工建立独立 DRAFT Thesis；报告通过不代表候选可升级。")
     if not opportunities:
         L.append("- 本轮没有通过证据反查的候选；不以行业主题词或无来源公司名凑数。")
-    relation_labels = {
-        "DIRECT_WINNER": "直接受益",
-        "SUBSTITUTE_WINNER": "替代路径",
-        "COMPETITOR_WINNER": "竞争者受益",
-        "BOTTLENECK_OWNER": "瓶颈所有者",
-        "INFRA_ASSET_OWNER": "基础资产所有者",
-        "SECOND_ORDER": "二阶机会",
-        "SHORT_CANDIDATE": "做空研究候选",
-    }
     for index, seed in enumerate(opportunities[:10], 1):
         ticker = f" · {seed['ticker']}" if seed.get("ticker") else ""
         effective_status = seed.get("candidate_state", opportunity_engine.EVIDENCE_BACKED)
@@ -684,7 +736,7 @@ def _render_audit(state, include_title=True):
         if len(entity_view.get("paths", [])) > 1:
             L.append(f"- **实体去重**: 同一候选保留 {len(entity_view['paths'])} 条独立价值路径；"
                      "本报告只展示代表路径，证据不得跨路径拼接晋级。")
-        L.append(f"- **关系 / 来源 crux**: {relation_labels.get(seed.get('relation_type'), seed.get('relation_type', '—'))}"
+        L.append(f"- **关系 / 来源 crux**: {_relation_label(seed.get('relation_type'))}"
                  f" / {_clean(seed.get('origin_crux'))} ｜ 首见 R{seed.get('first_seen_round', '?')} ｜ agent: {agents}")
         if seed.get("landscape_path_id"):
             L.append(f"- **Landscape 绑定**: {_clean(seed.get('landscape_path_id'))} → "
@@ -711,7 +763,18 @@ def _render_audit(state, include_title=True):
             L.append(f"- **Claim Verification**: `{claim_status}` ｜ "
                      "P2 验证快照哈希与精确片段；它证明 claim 与快照内容对齐，不证明来源本身真实。")
             if screen.get("gaps"):
-                L.append(f"- **筛选缺口**: {', '.join(screen['gaps'])}")
+                gap_summary = _screen_gap_summary(screen)
+                if gap_summary.get("primary"):
+                    L.append(
+                        f"- **首要筛选缺口**: {gap_summary['primary']} ｜ Analyst "
+                        f"{gap_summary['analyst_answer']} ｜ Skeptic {gap_summary['skeptic_answer']}"
+                    )
+                if gap_summary.get("dependent"):
+                    L.append(f"- **派生未研究项**: {', '.join(gap_summary['dependent'])}")
+                if gap_summary.get("source_gaps"):
+                    L.append(f"- **来源门槛**: {', '.join(gap_summary['source_gaps'])}")
+                if gap_summary.get("process_gaps"):
+                    L.append(f"- **流程门槛**: {', '.join(gap_summary['process_gaps'])}")
             L.append("")
             L.append("<details><summary>展开八维双边筛选矩阵</summary>")
             L.append("")
@@ -854,6 +917,21 @@ def _render_decision_brief(view):
     next_action = view["next_action"]
     landscape = view.get("landscape_map", {})
     target = f"（{next_action['candidate']}）" if next_action["candidate"] else ""
+    universe = view["question_type"] == "UNIVERSE_SEARCH"
+    challenge_heading = "## 研究轴证据状态" if universe else "## 原想法经质证后发生了什么"
+    challenge_lines = (
+        [
+            f"- **存在正向证据**: {survived}。",
+            f"- **存在负向证据**: {falsified}。",
+            f"- **仍需候选级判断**: {monitoring}。",
+            "- 这些是跨候选研究轴的证据状态，不构成候选宇宙的整体多空方向。",
+        ]
+        if universe else [
+            f"- **活下来**: {survived}。",
+            f"- **被推翻**: {falsified}。",
+            f"- **仍需监控**: {monitoring}。",
+        ]
+    )
     return "\n".join([
         f"# Decision Brief — {view['topic']}",
         f"> 决策问题: {view['decision_question']} ｜ 视野: {view['horizon']} ｜ "
@@ -864,10 +942,8 @@ def _render_decision_brief(view):
         f"可行动性: **{verdict['actionability']}**。",
         f"- 这回答的是命题、证据和研究动作，不是买卖建议；依据代码: `{verdict['reason_code']}`。",
         "",
-        "## 原想法经质证后发生了什么",
-        f"- **活下来**: {survived}。",
-        f"- **被推翻**: {falsified}。",
-        f"- **仍需监控**: {monitoring}。",
+        challenge_heading,
+        *challenge_lines,
         "" if not landscape.get("required") else "## 发现路径覆盖",
         "" if not landscape.get("required") else (
             f"- 计划 {landscape['path_count']}；SUPPORTED {landscape['supported_count']}；"
@@ -917,7 +993,7 @@ def _render_candidate_cards(view):
             f"- **候选状态**: `{card['candidate_state']}` ｜ 升级资格: "
             f"`{card['promotion_eligibility']}` ｜ P1 `{card['screen_status']}` ｜ "
             f"P2 `{card['claim_verification_status']}`。",
-            f"- **价值路径**: {card['relation_type']} / {card['origin_crux']}；"
+            f"- **价值路径**: {card['relation_label']} / {card['origin_crux']}；"
             f"Landscape `{card['landscape_path_id'] or 'legacy-unmapped'}`；"
             f"经济暴露: {card['economic_exposure']}。",
             f"- **预期差**: {card['expectation_gap']}。",
@@ -926,7 +1002,19 @@ def _render_candidate_cards(view):
             f"- **证据边界**: 隔离 `{card['isolation_status']}`；独立价值路径 "
             f"{card['path_count']} 条，路径之间不得拼接证据晋级。",
         ])
-        if card["blocking_reasons"]:
+        gap_summary = card.get("screen_gap_summary", {})
+        if gap_summary.get("primary"):
+            lines.append(
+                f"- **首要筛选缺口**: {gap_summary['primary']} ｜ Analyst "
+                f"{gap_summary['analyst_answer']} ｜ Skeptic {gap_summary['skeptic_answer']}。"
+            )
+            if gap_summary.get("dependent"):
+                lines.append(f"- **派生未研究项**: {', '.join(gap_summary['dependent'])}。")
+            if gap_summary.get("source_gaps"):
+                lines.append(f"- **来源门槛**: {', '.join(gap_summary['source_gaps'])}。")
+            if gap_summary.get("process_gaps"):
+                lines.append(f"- **流程门槛**: {', '.join(gap_summary['process_gaps'])}。")
+        elif card["blocking_reasons"]:
             lines.append(f"- **阻塞原因**: {', '.join(card['blocking_reasons'])}。")
         lines.extend([
             f"- **下一动作**: `{card['next_action_code']}` — {card['next_action']}",
