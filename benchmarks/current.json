@@ -1,0 +1,22 @@
+{
+  "schema_version": "trade-nothing.benchmark-current.v1",
+  "method_identity": {
+    "schema_version": "trade-nothing.method-identity.v1",
+    "scope": "operational-bundle.v1",
+    "method_version": "0.9.4",
+    "contract_sha256": "1d68e4ace893ad8e91541af12a8f5da32a9c6b4ac003855dab0395697568107e",
+    "file_count": 65
+  },
+  "closed_packet": {
+    "suite_path": "benchmarks/v014-six-case/suite-48e0366.json",
+    "answer_key_path": "benchmarks/v014-six-case/assessor/answer-key-48e0366.json",
+    "current_variant": "48e0366",
+    "suite_contract_sha256": "42f71476ee0fff331316c2b95f8379d70ca926225a3bc457ffb5bf867022f741"
+  },
+  "discovery": {
+    "suite_path": "benchmarks/v014-discovery-pilot/suite-48e0366.json",
+    "answer_key_path": "benchmarks/v014-discovery-pilot/assessor/answer-key-48e0366.json",
+    "current_variant": "48e0366",
+    "suite_contract_sha256": "f507a37da4259a098f515f9abd8ef3463de675cbbee4a23ae04d50fbb7522cc6"
+  }
+}

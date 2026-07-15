@@ -135,28 +135,32 @@ class BenchmarkHarnessTests(unittest.TestCase):
             "50b4ed9d59df8dd9b0753d0432e6a15e8d95d18f",
         )
 
-    def test_current_suite_compares_baseline_prior_and_a458842(self):
+    def test_current_suite_compares_baseline_prior_and_48e0366(self):
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         suite_path = os.path.join(
-            repo_root, "benchmarks", "v014-six-case", "suite-a458842.json"
+            repo_root, "benchmarks", "v014-six-case", "suite-48e0366.json"
         )
         data = harness._load_json(suite_path)
         validated = harness.validate_evidence_files(data, suite_path)
-        self.assertEqual(validated["suite_id"], "v014-six-case-a458842")
-        self.assertEqual(validated["variants"], ["single_agent", "v0_14", "a458842"])
+        self.assertEqual(validated["suite_id"], "v014-six-case-48e0366")
+        self.assertEqual(validated["variants"], ["single_agent", "v0_14", "48e0366"])
         self.assertEqual(
-            validated["variant_manifest"]["a458842"]["git_commit"],
-            "a458842a690924bdb1bc87c7ec7d315a18d02aec",
+            validated["variant_manifest"]["48e0366"]["git_commit"],
+            "48e0366cb5069e28540ef3f45e948e635f171fcc",
+        )
+        self.assertEqual(
+            validated["variant_manifest"]["48e0366"]["method_contract_sha256"],
+            "1d68e4ace893ad8e91541af12a8f5da32a9c6b4ac003855dab0395697568107e",
         )
         verified = harness.verify_git_variants(data, repo_root)
-        self.assertEqual([item["variant"] for item in verified], ["v0_14", "a458842"])
+        self.assertEqual([item["variant"] for item in verified], ["v0_14", "48e0366"])
         answer_key = harness._load_json(
             os.path.join(
                 repo_root,
                 "benchmarks",
                 "v014-six-case",
                 "assessor",
-                "answer-key-a458842.json",
+                "answer-key-48e0366.json",
             )
         )
         self.assertEqual(answer_key["suite_id"], validated["suite_id"])
