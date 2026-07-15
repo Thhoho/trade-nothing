@@ -132,7 +132,7 @@ class BenchmarkHarnessTests(unittest.TestCase):
         )
         self.assertEqual(
             validated["variant_manifest"]["v0_14"]["git_commit"],
-            "a5793317e0aa4110282c2d3cd3fb23be07bf5304",
+            "50b4ed9d59df8dd9b0753d0432e6a15e8d95d18f",
         )
 
     def test_closed_packet_suite_rejects_fake_search_budget(self):

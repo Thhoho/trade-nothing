@@ -20,12 +20,12 @@
     },
     "v0_14": {
       "runner_kind": "GIT_SKILL_SNAPSHOT",
-      "engine_version": "git:a5793317e0aa4110282c2d3cd3fb23be07bf5304",
-      "git_commit": "a5793317e0aa4110282c2d3cd3fb23be07bf5304",
+      "engine_version": "git:50b4ed9d59df8dd9b0753d0432e6a15e8d95d18f",
+      "git_commit": "50b4ed9d59df8dd9b0753d0432e6a15e8d95d18f",
       "entrypoint_path": "SKILL.md",
-      "entrypoint_sha256": "b452842aecc71d81128a499f67d23f8f1a00bf80b0a7f69b2afd2f62f49a09d0",
+      "entrypoint_sha256": "17f931e1edf58f02a053e921e3ac6543c5a1cff72be5b0180481aaf704aef6f7",
       "orchestrator_path": "scripts/deepthink_orchestrator_v2.py",
-      "orchestrator_sha256": "831f9dd98f59ce9c0690c22f2142d2e32f742ce4ca4e922b39893189ee62f7e5"
+      "orchestrator_sha256": "daef5fbb86b5edde5bd54c24cffb2942231e481667ef1619a910c6b4ce1747b9"
     }
   },
   "evaluation_scope": "CLOSED_PACKET_REASONING",
