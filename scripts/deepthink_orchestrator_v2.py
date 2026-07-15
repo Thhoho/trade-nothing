@@ -37,6 +37,7 @@ import candidate_screen_engine
 import claim_verification_engine
 import research_output
 import run_registry
+import research_start_packet
 from utils import get_scratch_dir, get_output_dir, get_evolution_path, load_json_safe, save_json
 try:
     from model_tiers import model_for
@@ -643,8 +644,8 @@ def _enforce_round_scope(judge, state, policy, admitted_ids):
             signal["quality_flags"] = sorted(set(flags))
     return sorted(allowed)
 
-def frame_prompt(topic):
-    return ("[HOST EXECUTION CONTRACT — MANDATORY]\n"
+def frame_prompt(topic, start_context=None):
+    prompt = ("[HOST EXECUTION CONTRACT — MANDATORY]\n"
             "Execute the Framer inline in the current parent context. Do not call "
             "define_subagent, invoke_subagent, Task, delegate, context-fork, or any equivalent "
             "sub-agent mechanism. Do not browse or call tools during framing.\n"
@@ -655,6 +656,21 @@ def frame_prompt(topic):
             "forbidden_consensus / no_edge_precheck / suggested_max_rounds。机会型问题还必须输出 "
             "5–7 路 entity-agnostic landscape_map。严格按 framer.md 的 JSON 输出。"
             "只返回内联 JSON；禁止创建 Markdown、Google Drive、云文档或自选输出路径。")
+    if start_context:
+        prompt += (
+            "\n[HUMAN-SELECTED LESSON CONSTRAINTS]\n"
+            + json.dumps(start_context, ensure_ascii=False, indent=2)
+            + "\nThese Lessons are framing constraints, not evidence, prior verdicts, scores, "
+              "candidate states, or actionability signals. Translate each into an explicit "
+              "premise audit, falsifier, comparison axis, or failure mode. Do not pre-decide "
+              "any crux or reuse prior evidence. Copy this exact binding into the Framer JSON "
+              "as research_start_binding: "
+            + json.dumps({
+                "packet_id": start_context["packet_id"],
+                "payload_sha256": start_context["payload_sha256"],
+            }, ensure_ascii=False)
+        )
+    return prompt
 
 def dispatch_prompts(state, round_num):
     policy = _round_policy(state, round_num)
@@ -829,7 +845,45 @@ def candidate_screen_prompts(state, seeds, as_of_date):
 
 
 # ── commands ─────────────────────────────────────────────────────────────────
-def cmd_frame(topic):
+def _research_start_context(topic, packet, frame=None):
+    if not packet:
+        return None
+    context = research_start_packet.framing_context(packet)
+    question = context["question"]
+    if topic and topic != question["topic"]:
+        raise research_start_packet.PacketValidationError(
+            "CLI topic must exactly match research-start question.topic"
+        )
+    if frame is not None:
+        expected_binding = {
+            "packet_id": context["packet_id"],
+            "payload_sha256": context["payload_sha256"],
+        }
+        if frame.get("research_start_binding") != expected_binding:
+            raise research_start_packet.PacketValidationError(
+                "framer research_start_binding must match the supplied packet"
+            )
+        bindings = {
+            "decision_question": frame.get("decision_question"),
+            "question_type": frame.get("question_type"),
+            "horizon": frame.get("horizon"),
+            "as_of_date": frame.get("as_of_date"),
+        }
+        for key, actual in bindings.items():
+            if actual != question.get(key):
+                raise research_start_packet.PacketValidationError(
+                    f"framer {key} must exactly match research-start question.{key}"
+                )
+    return context
+
+
+def cmd_frame(topic, start_packet=None):
+    try:
+        start_context = _research_start_context(topic, start_packet)
+    except research_start_packet.PacketValidationError as exc:
+        return {"status": "start_packet_rejected", "topic": topic, "reason": str(exc)}
+    if start_context and not topic:
+        topic = start_context["question"]["topic"]
     return {"status": "need_framing", "topic": topic, "model": model_for("crux_extraction"),
             "execution_contract": {
                 "dispatch_mode": "INLINE_PARENT",
@@ -839,7 +893,8 @@ def cmd_frame(topic):
                 "stage_timeout_seconds": 120,
                 "on_timeout": "call --runtime-failure --stage framing --reason '<brief reason>'",
             },
-            "framer_prompt": frame_prompt(topic),
+            "framer_prompt": frame_prompt(topic, start_context),
+            "research_start_context": start_context,
             "artifact_policy": _frame_artifact_policy(),
             "instruction": (
                 "在父上下文内联执行 framer；严禁派生 Framer 子代理或调用搜索工具。"
@@ -866,7 +921,19 @@ def cmd_runtime_failure(topic, stage, reason):
         ),
     }
 
-def cmd_init(topic, frame, runtime_isolation="unverified"):
+def cmd_init(topic, frame, runtime_isolation="unverified", start_packet=None):
+    if not start_packet and isinstance(frame, dict) and frame.get("research_start_binding"):
+        return {
+            "status": "start_packet_rejected",
+            "topic": topic,
+            "reason": "framer declared research_start_binding but --start-packet was omitted",
+        }
+    try:
+        start_context = _research_start_context(topic, start_packet, frame)
+    except research_start_packet.PacketValidationError as exc:
+        return {"status": "start_packet_rejected", "topic": topic, "reason": str(exc)}
+    if start_context and not topic:
+        topic = start_context["question"]["topic"]
     issues = _validate_frame(frame)
     if issues:
         return {
@@ -879,6 +946,7 @@ def cmd_init(topic, frame, runtime_isolation="unverified"):
     pre = frame.get("no_edge_precheck", {})
     if pre and pre.get("is_researchable") is False:
         return {"status": "no_edge", "topic": topic, "reason": pre.get("reason", ""),
+                "research_start_context": start_context,
                 "frame_quality_status": _frame_quality_status(frame),
                 "instruction": "立题门判定无非对称角度。输出 No-Edge 声明，不派任何子智能体。"}
     cruxes = frame.get("candidate_cruxes", [])
@@ -900,6 +968,8 @@ def cmd_init(topic, frame, runtime_isolation="unverified"):
         "no_edge_precheck": pre,
         "artifact_policy": _frame_artifact_policy(),
     }
+    if start_context:
+        state["research_start_context"] = start_context
     landscape = landscape_engine.initialize(frame)
     if landscape is not None:
         state["landscape_map"] = landscape
@@ -1411,6 +1481,8 @@ def main():
     ap.add_argument("--run-id", default="")
     ap.add_argument("--state-path", default="")
     ap.add_argument("--frame-json", default="")
+    ap.add_argument("--start-packet", default="",
+                    help="tradenothing-next research-start packet JSON path or object")
     ap.add_argument("--det", default=""); ap.add_argument("--inq", default=""); ap.add_argument("--judge", default="")
     ap.add_argument("--analyst", default=""); ap.add_argument("--skeptic", default="")
     ap.add_argument("--as-of", default=""); ap.add_argument("--seed-id", default="")
@@ -1474,8 +1546,19 @@ def main():
         print(json.dumps({"status": "run_identity_error", "reason": str(exc)},
                          ensure_ascii=False, indent=2))
         return
-    if a.frame:  out = cmd_frame(a.topic)
-    elif a.init: out = cmd_init(a.topic, _jload(a.frame_json), a.runtime_isolation)
+    try:
+        start_packet = _jload(a.start_packet) if a.start_packet else None
+    except (OSError, json.JSONDecodeError) as exc:
+        print(json.dumps({
+            "status": "start_packet_rejected",
+            "topic": a.topic,
+            "reason": f"cannot load research-start packet: {exc}",
+        }, ensure_ascii=False, indent=2))
+        return
+    if a.frame:  out = cmd_frame(a.topic, start_packet)
+    elif a.init: out = cmd_init(
+        a.topic, _jload(a.frame_json), a.runtime_isolation, start_packet
+    )
     elif a.submit: out = cmd_submit(a.topic, _jload(a.det), _jload(a.inq), _jload(a.judge))
     elif a.report: out = cmd_report(
         a.topic,

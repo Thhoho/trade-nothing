@@ -61,6 +61,13 @@ def fixture_state():
         "candidate_screens": [],
         "claim_verifications": [],
         "runtime_contract": {"isolation_status": "verified"},
+        "research_start_context": {
+            "packet_id": "RSP-20260715-ABCDEF123456",
+            "payload_sha256": "a" * 64,
+            "question": {"topic": "fixture"},
+            "lesson_constraints": [{"lesson_id": 7, "title": "fixture"}],
+            "use_policy": "framing only",
+        },
         "runtime": {"run_id": "RUN-20260715-ABCDEF123456", "other": "drop"},
         "rounds": [{"detective": {"raw": "must not cross handoff"}}],
         "candidate_screen_dispatches": [{"prompt": "drop"}],
@@ -77,6 +84,10 @@ class ProjectHandoffTests(unittest.TestCase):
         self.assertNotIn("rounds", first["state"])
         self.assertNotIn("candidate_screen_dispatches", first["state"])
         self.assertNotIn("raw", first["state"]["decision_trace"][0])
+        self.assertEqual(
+            first["state"]["research_start_context"]["packet_id"],
+            "RSP-20260715-ABCDEF123456",
+        )
         self.assertEqual(first["state"]["cruxes"]["C1"]["p_history"], [0.2])
         expected = hashlib.sha256(
             project_handoff.canonical_json(first["state"]).encode("utf-8")

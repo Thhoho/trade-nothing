@@ -44,6 +44,7 @@ STATE_FIELDS = (
     "candidate_screens",
     "claim_verifications",
     "runtime_contract",
+    "research_start_context",
 )
 
 

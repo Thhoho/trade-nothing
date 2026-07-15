@@ -214,6 +214,9 @@ addressing.
 ```bash
 # 1. Framing gate (DEEP, runs once) — question type + connected logic graph + 2-5 cruxes
 python3 scripts/deepthink_orchestrator_v2.py --frame --topic "TARGET"
+# When tradenothing-next exported a human-gated ACTIVE Lesson packet, read
+# references/research-start-packet-protocol.md and add:
+#   --start-packet /path/to/RSP-....json
 #    → execute agents/framer.md INLINE IN THE PARENT. Never define/invoke a Framer sub-agent and
 #      never browse during framing. If no_edge_precheck.is_researchable=false → emit
 #      No-Edge statement and STOP (spawn nothing).
@@ -222,6 +225,7 @@ python3 scripts/deepthink_orchestrator_v2.py --frame --topic "TARGET"
 
 # 2. Init from frame → Round-1 dispatch prompts (Detective+Inquisitor scoped to all cruxes)
 python3 scripts/deepthink_orchestrator_v2.py --init --topic "TARGET" --frame-json '<framer_output>'
+# If --frame used --start-packet, --init MUST receive that exact same packet.
 #    → status=frame_rejected when premise_audit, unit_of_analysis, falsifiers, concrete catalyst
 #      windows, or No-Edge basis are missing. Never repair or bypass this gate by hand.
 #    A host with physically isolated contexts may additionally pass --runtime-isolation verified.
