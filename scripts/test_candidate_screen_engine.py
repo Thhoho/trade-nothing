@@ -142,6 +142,32 @@ def receipt_from_dispatch(dispatch, analyst, skeptic):
     return receipt
 
 
+def codex_receipt_from_dispatch(dispatch, analyst, skeptic):
+    receipt = {
+        "schema": "candidate-screen-isolation.v1",
+        "runner_kind": "codex_collaboration_v1",
+        "host_enforced": True,
+        "dispatch_id": dispatch["dispatch_id"],
+        "as_of_date": dispatch["as_of_date"],
+        "candidate_seed_ids": dispatch["candidate_seed_ids"],
+        "roles": {},
+    }
+    for role, value in (("analyst", analyst), ("skeptic", skeptic)):
+        receipt["roles"][role] = {
+            "invocation_id": f"/root/test-{role}",
+            "agent_id": f"/root/test-{role}",
+            "context_isolation": "independent_agent_context",
+            "status": "completed",
+            "timed_out": False,
+            "prompt_sha256": hashlib.sha256(
+                dispatch[f"{role}_prompt"].encode("utf-8")
+            ).hexdigest(),
+            "payload_sha256": screen_engine.payload_sha256(value),
+        }
+    receipt["receipt_id"] = screen_engine.isolation_receipt_id(receipt)
+    return receipt
+
+
 def install_test_dispatch(st, analyst, skeptic):
     prompts = orchestrator.candidate_screen_prompts(
         st, screen_engine.screenable_seeds(st), AS_OF
@@ -228,6 +254,42 @@ class CandidateScreenEngineTests(unittest.TestCase):
         self.assertIn("页面快照", screen["promotion_packet"]["required_next_step"])
         self.assertEqual(st["opportunity_seeds"][0]["candidate_state"], "THESIS_CANDIDATE")
         self.assertEqual(st["opportunity_seeds"][0]["promotion_eligibility"], "BLOCKED")
+
+    def test_codex_collaboration_receipt_requires_distinct_host_agents(self):
+        st = state_with_seed()
+        analyst = payload("Analyst")
+        skeptic = payload("Skeptic")
+        prompts = orchestrator.candidate_screen_prompts(
+            st, screen_engine.screenable_seeds(st), AS_OF
+        )
+        dispatch = {
+            "dispatch_id": "CSD-CODEX",
+            "as_of_date": AS_OF,
+            **prompts,
+        }
+        st["candidate_screen_dispatches"] = [{
+            "dispatch_id": dispatch["dispatch_id"],
+            "as_of_date": AS_OF,
+            "candidate_seed_ids": dispatch["candidate_seed_ids"],
+            "prompt_sha256": {
+                role: hashlib.sha256(dispatch[f"{role}_prompt"].encode("utf-8")).hexdigest()
+                for role in ("analyst", "skeptic")
+            },
+        }]
+        receipt = codex_receipt_from_dispatch(dispatch, analyst, skeptic)
+        audit = screen_engine.evaluate_batch(
+            st, analyst, skeptic, AS_OF, isolation_status="verified",
+            isolation_receipt=receipt,
+        )
+        self.assertEqual(audit["thesis_candidate_count"], 1)
+        self.assertEqual(audit["isolation_receipt_status"], "verified")
+
+        receipt["roles"]["skeptic"]["agent_id"] = receipt["roles"]["analyst"]["agent_id"]
+        receipt["receipt_id"] = screen_engine.isolation_receipt_id(receipt)
+        validation = screen_engine.validate_isolation_receipt(
+            st, receipt, analyst, skeptic, AS_OF
+        )
+        self.assertIn("isolation_receipt_agents_not_distinct", validation["blockers"])
 
     def test_same_source_organization_does_not_corroborate(self):
         st = state_with_seed()

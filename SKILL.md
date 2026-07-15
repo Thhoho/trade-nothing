@@ -362,10 +362,12 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > publisher's final URL. Source-organization diversity is derived from publisher domains, not agent-written
 > `source` labels. A `--screen-isolation verified` claim is not proof. `THESIS_CANDIDATE` requires
 > a validated `candidate-screen-isolation.v1` receipt binding the stored dispatch, exact role
-> prompts, exact submitted payloads, distinct process IDs, distinct invocation IDs, and successful
-> exits. Without that receipt the screen remains at most `WATCHLIST`, even when the caller claims
-> verified isolation. Antigravity users should run `scripts/agy_candidate_screen_runner.py` rather
-> than manually submitting two role payloads. Tool permission bypass is never implicit: add
+> prompts and exact submitted payloads. Antigravity receipts require distinct process IDs,
+> distinct invocation IDs, and successful exits. Codex collaboration receipts require two
+> completed independent agent contexts with distinct host-returned canonical agent IDs and
+> distinct invocation IDs. Without a valid receipt the screen remains at most `WATCHLIST`, even
+> when the caller claims verified isolation. Antigravity users should run
+> `scripts/agy_candidate_screen_runner.py` rather than manually submitting two role payloads. Tool permission bypass is never implicit: add
 > `--allow-agent-tools` only when the caller has explicitly authorized non-interactive agent tools.
 > Both screen roles use cheap-first order: economic exposure, expectation gap, tradability, and
 > catalyst first. A NO or UNKNOWN core answer stops expanded research for that seed; the role still

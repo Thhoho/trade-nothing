@@ -16,6 +16,8 @@ promoting a draft.
    fall inside the root horizon. Default dispatch screens one representative path per exact entity.
 2. Run Candidate Analyst and Candidate Skeptic in isolated contexts. For Antigravity, use
    `scripts/agy_candidate_screen_runner.py`; it launches two distinct OS processes concurrently.
+   Codex hosts may use two distinct collaboration-agent contexts and emit a
+   `codex_collaboration_v1` receipt containing the host-returned canonical agent IDs.
 3. Give both the same seed packet, as-of date, and eight fixed questions.
 4. Submit both JSON payloads to candidate_screen_engine.py.
 5. Preserve disagreement. Do not ask an LLM Judge to average it away.
@@ -31,8 +33,10 @@ gate or treating missing work as support.
 The host must submit screen isolation as verified, degraded, or unverified. A claimed value of
 `verified` is insufficient. Only verified physical isolation with a validated
 `candidate-screen-isolation.v1` receipt is eligible for THESIS_CANDIDATE. The receipt binds the
-stored dispatch and exact role prompt hashes to the exact submitted payload hashes, successful
-process exits, and distinct process and invocation IDs. A missing, mismatched, or self-authored
+stored dispatch and exact role prompt hashes to the exact submitted payload hashes. The
+`agy_separate_process_v1` profile additionally requires successful exits and distinct process and
+invocation IDs. The `codex_collaboration_v1` profile requires completed independent agent contexts,
+distinct host-returned agent IDs, and distinct invocation IDs. A missing, mismatched, or invented
 receipt caps the result at WATCHLIST.
 
 The receipt is an auditable process-integrity control, not a cryptographic trust boundary against

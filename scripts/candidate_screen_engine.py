@@ -338,7 +338,8 @@ def validate_isolation_receipt(state, receipt, analyst_payload, skeptic_payload,
     receipt = receipt if isinstance(receipt, dict) else {}
     if receipt.get("schema") != "candidate-screen-isolation.v1":
         blockers.append("isolation_receipt_schema_invalid")
-    if receipt.get("runner_kind") != "agy_separate_process_v1":
+    runner_kind = _text(receipt.get("runner_kind"))
+    if runner_kind not in {"agy_separate_process_v1", "codex_collaboration_v1"}:
         blockers.append("isolation_receipt_runner_invalid")
     if receipt.get("host_enforced") is not True:
         blockers.append("isolation_receipt_not_host_enforced")
@@ -356,31 +357,46 @@ def validate_isolation_receipt(state, receipt, analyst_payload, skeptic_payload,
             blockers.append("isolation_receipt_seed_ids_mismatch")
 
     roles = receipt.get("roles") if isinstance(receipt.get("roles"), dict) else {}
-    process_ids = []
+    isolation_ids = []
     invocation_ids = []
     payloads = {"analyst": analyst_payload, "skeptic": skeptic_payload}
     for role in ("analyst", "skeptic"):
         item = roles.get(role) if isinstance(roles.get(role), dict) else {}
         invocation_id = _text(item.get("invocation_id"))
-        try:
-            process_id = int(item.get("process_id"))
-        except (TypeError, ValueError):
-            process_id = 0
         if not invocation_id:
             blockers.append(f"isolation_receipt_{role}_invocation_missing")
-        if process_id <= 0:
-            blockers.append(f"isolation_receipt_{role}_process_missing")
-        if item.get("exit_code") != 0 or item.get("timed_out") is not False:
-            blockers.append(f"isolation_receipt_{role}_process_failed")
+        if runner_kind == "agy_separate_process_v1":
+            try:
+                process_id = int(item.get("process_id"))
+            except (TypeError, ValueError):
+                process_id = 0
+            if process_id <= 0:
+                blockers.append(f"isolation_receipt_{role}_process_missing")
+            if item.get("exit_code") != 0 or item.get("timed_out") is not False:
+                blockers.append(f"isolation_receipt_{role}_process_failed")
+            isolation_ids.append(str(process_id))
+        elif runner_kind == "codex_collaboration_v1":
+            agent_id = _text(item.get("agent_id"))
+            if not agent_id:
+                blockers.append(f"isolation_receipt_{role}_agent_missing")
+            if item.get("context_isolation") != "independent_agent_context":
+                blockers.append(f"isolation_receipt_{role}_context_not_isolated")
+            if item.get("status") != "completed" or item.get("timed_out") is not False:
+                blockers.append(f"isolation_receipt_{role}_agent_failed")
+            isolation_ids.append(agent_id)
         expected_prompt = (dispatch or {}).get("prompt_sha256", {}).get(role)
         if not expected_prompt or item.get("prompt_sha256") != expected_prompt:
             blockers.append(f"isolation_receipt_{role}_prompt_hash_mismatch")
         if item.get("payload_sha256") != payload_sha256(payloads[role]):
             blockers.append(f"isolation_receipt_{role}_payload_hash_mismatch")
-        process_ids.append(process_id)
         invocation_ids.append(invocation_id)
-    if len(set(process_ids)) != 2:
-        blockers.append("isolation_receipt_processes_not_distinct")
+    if len(set(isolation_ids)) != 2:
+        blocker = (
+            "isolation_receipt_processes_not_distinct"
+            if runner_kind == "agy_separate_process_v1"
+            else "isolation_receipt_agents_not_distinct"
+        )
+        blockers.append(blocker)
     if len(set(invocation_ids)) != 2:
         blockers.append("isolation_receipt_invocations_not_distinct")
     expected_id = isolation_receipt_id(receipt)
