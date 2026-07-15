@@ -410,6 +410,9 @@ python3 scripts/logic_radar_v2.py
 
 # Dispatch and submit two-sided OpportunitySeed screens
 python3 scripts/deepthink_orchestrator_v2.py --screen --topic "Topic Name" --as-of "YYYY-MM-DD"
+# Gap-directed WATCHLIST rescreen: explicit seed and a strictly later as-of are mandatory.
+python3 scripts/deepthink_orchestrator_v2.py --screen --topic "Topic Name" \
+  --seed-id "OS-..." --as-of "YYYY-MM-DD"
 
 # Antigravity: execute both screen roles in distinct OS processes and submit a bound receipt
 python3 scripts/agy_candidate_screen_runner.py --topic "Topic Name" --as-of "YYYY-MM-DD"

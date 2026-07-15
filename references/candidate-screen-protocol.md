@@ -24,6 +24,19 @@ promoting a draft.
 4. Submit both JSON payloads to candidate_screen_engine.py.
 5. Preserve disagreement. Do not ask an LLM Judge to average it away.
 
+### Gap-directed rescreening
+
+A WATCHLIST may be rescreened only by explicitly selecting its `seed_id` and using an `as_of_date`
+strictly later than the latest stored screen. The new dispatch may include only the prior screen ID,
+status, and deterministic gap codes as routing context. Those fields are not evidence and neither
+role may inherit or cite the prior answers. Both isolated roles must answer the full current
+eight-dimension contract from fresh evidence.
+
+One seed may have at most one accepted submission per as-of date. An exact replay is idempotent. A
+different payload for the same seed/as-of is a conflict and must leave the original screen unchanged;
+it may not overwrite history or become a new attempt. This prevents same-day answer shopping and
+preserves a chronological screening trail.
+
 Use an agent-local cheap-first order for each seed. Both roles first answer
 ECONOMIC_EXPOSURE, EXPECTATION_GAP, TRADABILITY, and CATALYST. If either role finds any of its core
 dimensions NO or UNKNOWN, that role stops expanded research for the seed and fills all remaining

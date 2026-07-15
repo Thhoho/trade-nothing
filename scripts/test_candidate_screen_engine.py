@@ -417,11 +417,53 @@ class CandidateScreenEngineTests(unittest.TestCase):
             st, analyst, skeptic, AS_OF, isolation_status="verified",
             isolation_receipt=receipt,
         )
-        screen_engine.evaluate_batch(
+        replay = screen_engine.evaluate_batch(
             st, analyst, skeptic, AS_OF, isolation_status="verified",
             isolation_receipt=receipt,
         )
         self.assertEqual(len(st["candidate_screens"]), 1)
+        self.assertEqual(replay["replayed"], 1)
+        self.assertEqual(replay["evaluated"], 0)
+
+    def test_same_day_changed_submission_conflicts_without_overwrite(self):
+        st = state_with_seed()
+        first = screen_engine.evaluate_batch(
+            st, payload("Analyst"), payload("Skeptic"), AS_OF,
+        )
+        original = copy.deepcopy(st["candidate_screens"][0])
+        changed = {dimension: "NO" for dimension in screen_engine.DIMENSIONS}
+        conflict = screen_engine.evaluate_batch(
+            st,
+            payload("Analyst", overrides=changed),
+            payload("Skeptic", overrides=changed),
+            AS_OF,
+        )
+        self.assertEqual(first["evaluated"], 1)
+        self.assertEqual(conflict["evaluated"], 0)
+        self.assertEqual(conflict["conflicting_seed_ids"], ["OS-TEST"])
+        self.assertEqual(len(st["candidate_screens"]), 1)
+        self.assertEqual(st["candidate_screens"][0], original)
+
+    def test_later_as_of_rescreen_appends_chronological_screen(self):
+        st = state_with_seed()
+        screen_engine.evaluate_batch(
+            st, payload("Analyst"), payload("Skeptic"), AS_OF,
+        )
+        changed = {dimension: "NO" for dimension in screen_engine.DIMENSIONS}
+        audit = screen_engine.evaluate_batch(
+            st,
+            payload("Analyst", overrides=changed),
+            payload("Skeptic", overrides=changed),
+            "2026-07-11",
+        )
+        self.assertEqual(audit["evaluated"], 1)
+        self.assertEqual(len(st["candidate_screens"]), 2)
+        self.assertEqual(
+            screen_engine.latest_by_seed(st)["OS-TEST"]["as_of_date"],
+            "2026-07-11",
+        )
+        self.assertEqual(st["candidate_screens"][0]["status"], "WATCHLIST")
+        self.assertEqual(st["candidate_screens"][1]["status"], "REJECTED")
 
 
 class CandidateScreenOrchestratorTests(unittest.TestCase):
@@ -460,6 +502,35 @@ class CandidateScreenOrchestratorTests(unittest.TestCase):
         stored = orchestrator._load(topic)
         self.assertEqual(result["thesis_candidate_count"], 1)
         self.assertEqual(len(stored["candidate_screens"]), 1)
+
+    def test_watchlist_rescreen_requires_newer_as_of_and_targets_first_gap(self):
+        topic = "candidate screen gap-directed rescreen"
+        st = state_with_seed()
+        unresolved = {
+            dimension: "UNKNOWN"
+            for dimension in screen_engine.DIMENSIONS
+            if dimension != "ECONOMIC_EXPOSURE"
+        }
+        screen_engine.evaluate_batch(
+            st,
+            payload("Analyst", overrides=unresolved),
+            payload("Skeptic", overrides=unresolved),
+            AS_OF,
+        )
+        orchestrator._save(topic, st)
+
+        blocked = orchestrator.cmd_screen(topic, AS_OF, "OS-TEST")
+        self.assertEqual(blocked["status"], "blocked_screen_as_of_not_newer")
+        self.assertEqual(blocked["previous_as_of_date"], AS_OF)
+
+        dispatch = orchestrator.cmd_screen(topic, "2026-07-11", "OS-TEST")
+        self.assertEqual(dispatch["status"], "dispatch_candidate_screeners")
+        self.assertEqual(dispatch["screen_mode"], "RESCREEN")
+        self.assertEqual(dispatch["rescreen_context"][0]["first_core_gap"], "EXPECTATION_GAP")
+        self.assertIn("仅是工作流路由，不是证据", dispatch["analyst_prompt"])
+        self.assertNotIn("screen evidence analyst", str(dispatch["rescreen_context"]))
+        stored = orchestrator._load(topic)
+        self.assertEqual(stored["candidate_screen_dispatches"][-1]["screen_mode"], "RESCREEN")
 
     def test_screen_is_blocked_before_root_convergence(self):
         topic = "candidate screen blocked"
@@ -556,6 +627,8 @@ class CandidateScreenReportTests(unittest.TestCase):
         self.assertIn("Analyst UNKNOWN ｜ Skeptic UNKNOWN", md)
         self.assertIn("派生未研究项", md)
         self.assertIn("优先补齐 EXPECTATION_GAP", md)
+        self.assertIn("gap-directed 重筛", md)
+        self.assertIn("同日不同提交不得覆盖旧记录", md)
 
     def test_report_renders_screen_matrix_without_auto_promotion(self):
         st = state_with_seed()

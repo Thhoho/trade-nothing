@@ -259,6 +259,8 @@ def _candidate_cards(state):
                 f"优先补齐 {screen_gaps['primary']}（Analyst "
                 f"{screen_gaps['analyst_answer']} / Skeptic {screen_gaps['skeptic_answer']}）；"
                 "其余 UNKNOWN 是 cheap-first 停止后的派生缺口，不得并列成独立研究任务。"
+                "只有出现新观察日与新证据后，才用显式 seed_id 做 gap-directed 重筛；"
+                "同日不同提交不得覆盖旧记录。"
             )
         cards.append({
             "entity_id": entity.get("entity_id"),

@@ -491,14 +491,51 @@ def evaluate_batch(
         "isolation_receipt_blockers": receipt_validation["blockers"],
         "submitted_seed_ids": requested_ids,
         "evaluated": 0,
+        "replayed": 0,
+        "replayed_screen_ids": [],
+        "conflicting_screen_ids": [],
+        "conflicting_seed_ids": [],
         "unknown_seed_ids": [],
         "missing_analyst": [],
         "missing_skeptic": [],
     }
     screens = state.setdefault("candidate_screens", [])
     by_id = {s.get("screen_id"): i for i, s in enumerate(screens) if isinstance(s, dict)}
+    receipt_for_hash = isolation_receipt if isinstance(isolation_receipt, dict) else {}
+    submission_hashes = {
+        seed_id: payload_sha256({
+            "schema": "candidate-screen-submission.v1",
+            "seed_id": seed_id,
+            "as_of_date": as_of_date,
+            "claimed_isolation_status": claimed_isolation_status,
+            "analyst": analyst_map.get(seed_id, {}),
+            "skeptic": skeptic_map.get(seed_id, {}),
+            "isolation_receipt": receipt_for_hash,
+        })
+        for seed_id in requested_ids
+    }
+
+    # A seed has at most one accepted screen per as-of date. Exact submission
+    # replays are idempotent; a different payload for the same screen identity
+    # is rejected atomically instead of overwriting the earlier evidence trail.
+    for seed_id in requested_ids:
+        screen_id = _screen_id(seed_id, as_of_date)
+        if screen_id not in by_id:
+            continue
+        existing = screens[by_id[screen_id]]
+        if existing.get("submission_sha256") == submission_hashes[seed_id]:
+            audit["replayed_screen_ids"].append(screen_id)
+        else:
+            audit["conflicting_screen_ids"].append(screen_id)
+            audit["conflicting_seed_ids"].append(seed_id)
+    audit["replayed"] = len(audit["replayed_screen_ids"])
+    if audit["conflicting_screen_ids"]:
+        audit.update(summary(state))
+        return audit
 
     for seed_id in requested_ids:
+        if _screen_id(seed_id, as_of_date) in audit["replayed_screen_ids"]:
+            continue
         seed = eligible.get(seed_id)
         if not seed:
             audit["unknown_seed_ids"].append(seed_id)
@@ -554,12 +591,10 @@ def evaluate_batch(
             "gaps": gaps,
             "critical_rejections": sorted(rejected),
             "promotion_packet": _promotion_packet(state, seed) if status == "THESIS_CANDIDATE" else None,
+            "submission_sha256": submission_hashes[seed_id],
         }
-        if screen["screen_id"] in by_id:
-            screens[by_id[screen["screen_id"]]] = screen
-        else:
-            screens.append(screen)
-            by_id[screen["screen_id"]] = len(screens) - 1
+        screens.append(screen)
+        by_id[screen["screen_id"]] = len(screens) - 1
         seed["screen_status"] = status
         seed["last_screened_as_of"] = as_of_date
         seed["latest_screen_id"] = screen["screen_id"]

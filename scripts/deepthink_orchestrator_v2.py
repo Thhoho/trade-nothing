@@ -805,6 +805,25 @@ def dispatch_prompts(state, round_num):
 
 def candidate_screen_prompts(state, seeds, as_of_date):
     selection = candidate_screen_engine.selection_audit(seeds)
+    latest = candidate_screen_engine.latest_by_seed(state)
+    rescreen_context = []
+    for seed in seeds:
+        previous = latest.get(seed.get("seed_id"))
+        if not previous:
+            continue
+        gaps = previous.get("gaps", []) if isinstance(previous.get("gaps"), list) else []
+        first_core_gap = next(
+            (dimension for dimension in candidate_screen_engine.CORE_DIMENSIONS if dimension in gaps),
+            "",
+        )
+        rescreen_context.append({
+            "seed_id": seed.get("seed_id"),
+            "previous_screen_id": previous.get("screen_id"),
+            "previous_as_of_date": previous.get("as_of_date"),
+            "previous_status": previous.get("status"),
+            "first_core_gap": first_core_gap,
+            "gap_codes": gaps,
+        })
     packet = [{
         "seed_id": seed.get("seed_id"),
         "candidate": seed.get("candidate"),
@@ -824,6 +843,8 @@ def candidate_screen_prompts(state, seeds, as_of_date):
     common = (
         f"as_of_date: {as_of_date}\n"
         f"research_horizon: {state.get('horizon', '3-6M')}\n"
+        "前次筛选缺口（仅是工作流路由，不是证据，不得引用或继承答案）:\n"
+        + json.dumps(rescreen_context, ensure_ascii=False, indent=2) + "\n"
         "候选包:\n" + json.dumps(packet, ensure_ascii=False, indent=2) + "\n"
         "固定问题:\n" + json.dumps(candidate_screen_engine.QUESTIONS, ensure_ascii=False, indent=2) + "\n"
         "cheap-first 顺序: 先查 ECONOMIC_EXPOSURE / EXPECTATION_GAP / TRADABILITY / CATALYST。"
@@ -843,6 +864,8 @@ def candidate_screen_prompts(state, seeds, as_of_date):
         "严格按 candidate-screen-protocol.md 输出 JSON。"
     )
     return {"candidate_seed_ids": [s.get("seed_id") for s in seeds],
+            "screen_mode": "RESCREEN" if rescreen_context else "INITIAL",
+            "rescreen_context": rescreen_context,
             "selection_audit": selection,
             "analyst_prompt": analyst, "skeptic_prompt": skeptic}
 
@@ -1130,6 +1153,22 @@ def cmd_screen(topic, as_of_date="", seed_id=""):
         return {"status": "no_screenable_candidates", "topic": topic,
                 "seed_id": seed_id or None,
                 "instruction": "没有未筛选的 READY_FOR_SCREENING 候选；指定 --seed-id 可重筛已有候选。"}
+    latest = candidate_screen_engine.latest_by_seed(state)
+    if seed_id and seed_id in latest:
+        previous_as_of = str(latest[seed_id].get("as_of_date") or "")
+        if as_of_date <= previous_as_of:
+            return {
+                "status": "blocked_screen_as_of_not_newer",
+                "topic": topic,
+                "seed_id": seed_id,
+                "requested_as_of_date": as_of_date,
+                "previous_as_of_date": previous_as_of,
+                "previous_screen_id": latest[seed_id].get("screen_id"),
+                "instruction": (
+                    "同一 as-of 不允许用新 payload 覆盖历史筛选。等待新的观察日并使用严格更晚的 "
+                    "--as-of；原筛选保持不可变。"
+                ),
+            }
     prompts = candidate_screen_prompts(state, seeds, as_of_date)
     dispatch_id = "CSD-" + hashlib.sha256(
         f"{as_of_date}|{'|'.join(prompts['candidate_seed_ids'])}".encode("utf-8")
@@ -1138,6 +1177,8 @@ def cmd_screen(topic, as_of_date="", seed_id=""):
         "dispatch_id": dispatch_id,
         "as_of_date": as_of_date,
         "candidate_seed_ids": prompts["candidate_seed_ids"],
+        "screen_mode": prompts["screen_mode"],
+        "rescreen_context": prompts["rescreen_context"],
         "selection_audit": prompts["selection_audit"],
         "max_batch": candidate_screen_engine.MAX_BATCH,
         "prompt_sha256": {
@@ -1148,11 +1189,19 @@ def cmd_screen(topic, as_of_date="", seed_id=""):
     history = state.setdefault("candidate_screen_dispatches", [])
     if not isinstance(history, list):
         history = state["candidate_screen_dispatches"] = []
-    history[:] = [
-        item for item in history
-        if not isinstance(item, dict) or item.get("dispatch_id") != dispatch_id
-    ]
-    history.append(record)
+    existing_dispatch = next(
+        (item for item in history if isinstance(item, dict) and item.get("dispatch_id") == dispatch_id),
+        None,
+    )
+    if existing_dispatch is not None and existing_dispatch != record:
+        return {
+            "status": "blocked_candidate_screen_dispatch_conflict",
+            "topic": topic,
+            "dispatch_id": dispatch_id,
+            "instruction": "同一 dispatch identity 已绑定不同内容；保留原记录并停止。",
+        }
+    if existing_dispatch is None:
+        history.append(record)
     _save(topic, state)
     out = {
         "status": "dispatch_candidate_screeners",
@@ -1192,6 +1241,16 @@ def cmd_submit_screen(
         )
     except ValueError as exc:
         return {"status": "error", "reason": str(exc)}
+    if audit.get("conflicting_screen_ids"):
+        return {
+            "status": "candidate_screen_submission_conflict",
+            "topic": topic,
+            "screen_audit": audit,
+            "instruction": (
+                "同一 seed/as-of 已存在不同提交；历史记录未被覆盖。使用严格更晚的 --as-of "
+                "重新 dispatch，不得修改或删除旧筛选。"
+            ),
+        }
     _save(topic, state)
     latest = candidate_screen_engine.latest_by_seed(state)
     thesis_candidates = [
