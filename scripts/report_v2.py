@@ -129,7 +129,14 @@ def _extract_raw_material(state):
     return material
 
 
-def _candidate_next_action(candidate_state):
+def _candidate_next_action(candidate_state, blockers=None):
+    blockers = set(blockers or [])
+    if (candidate_state == opportunity_engine.EVIDENCE_BACKED
+            and blockers == {"insufficient_independent_seed_sources"}):
+        return (
+            "ADD_INDEPENDENT_SOURCE",
+            "补充第二个独立来源组织；不得用同一发布者的另一条 URL 冒充交叉验证。",
+        )
     return {
         opportunity_engine.VERIFIED_FOR_HUMAN: (
             "HUMAN_REVIEW_PROMOTION_PACKET",
@@ -191,7 +198,9 @@ def _candidate_cards(state):
             or latest_screen_by_entity.get(entity.get("entity_identity"))
             or {}
         )
-        action_code, action_text = _candidate_next_action(candidate_state)
+        action_code, action_text = _candidate_next_action(
+            candidate_state, promotion["blocking_reasons"]
+        )
         cards.append({
             "entity_id": entity.get("entity_id"),
             "seed_id": seed.get("seed_id"),
@@ -453,9 +462,11 @@ def _render_audit(state, include_title=True):
     # ═══ Debate-support trace (not a calibrated probability) ═══
     n_rounds = len(state.get("rounds", []))
     dt = state.get("decision_trace", [])
+    is_universe = rd.get("question_type") == "UNIVERSE_SEARCH"
     trace_str = " → ".join(
         f"R{d['round']}: {crux_engine.safe_decision_label(d.get('decision'))}"
-        f"({int(d.get('support_weakest', d['p_weakest'])*100)}/100)"
+        + ("" if is_universe else
+           f"({int(d.get('support_weakest', d['p_weakest'])*100)}/100)")
         for d in dt
     ) if dt else "—"
 
@@ -480,7 +491,10 @@ def _render_audit(state, include_title=True):
              f"可行动性: **{verdict.get('actionability', 'NONE')}**")
     L.append(f"- 判定依据: `{verdict.get('reason_code', 'LEGACY_STATE')}`。"
              "`NO_EDGE` 只表示未发现可利用预期差，不等于 AVOID、SHORT，也不是交易指令。")
-    if rd.get("binding_crux"):
+    if is_universe:
+        L.append("- 收敛单位: **Landscape 双边覆盖 + 候选收割静默**；"
+                 "异质候选证据不生成全局 bull/bear 支持度。")
+    elif rd.get("binding_crux"):
         L.append(f"- 约束性 crux (binding): **{rd['binding_crux']}** ｜ "
                  f"最弱辩论支持度 {int(support_w*100)}/100 ｜ 均值支持度 {int(support_m*100)}/100")
     else:
@@ -573,8 +587,12 @@ def _render_audit(state, include_title=True):
 
     # A · 证明账本
     L.append("## A · 证明账本（脚本物理生成，数值勿改）")
-    L.append("| crux | 辩论支持度 | 状态 | 多头最强 | 空头最强 | 监控锚点 | 反证 / 催化窗口 | 引用 |")
-    L.append("|:---|:---:|:---|:---|:---|:---|:---|:---|")
+    if is_universe:
+        L.append("| crux | 状态 | 支持证据 | 反对证据 | 监控锚点 | 反证 / 催化窗口 | 引用 |")
+        L.append("|:---|:---|:---|:---|:---|:---|:---|")
+    else:
+        L.append("| crux | 辩论支持度 | 状态 | 多头最强 | 空头最强 | 监控锚点 | 反证 / 催化窗口 | 引用 |")
+        L.append("|:---|:---:|:---|:---|:---|:---|:---|:---|")
     for c in rd["cruxes"]:
         rno = " ".join(f"[{n}]" for n in crux_refs[c["id"]]) or "—"
         catalyst = c.get("catalyst_window", {})
@@ -582,19 +600,31 @@ def _render_audit(state, include_title=True):
                          f"[{catalyst.get('date_status', 'UNVERIFIED')}; "
                          f"basis={catalyst.get('basis_claim_id', '—')}]"
                          if isinstance(catalyst, dict) else _clean(catalyst))
-        L.append(f"| **{c['id']} {c['label']}** | {int(c['support_score']*100)}/100 | "
-                 f"{_STATUS.get(c['status'], c['status'])} "
-                 f"| {c.get('best_bull') or '—'} | {c.get('best_bear') or '—'} "
-                 f"| {c.get('monitor_anchor','')} | {_cell(c.get('falsifier'))} / {_cell(catalyst_text)} | {rno} |")
+        if is_universe:
+            L.append(f"| **{c['id']} {c['label']}** | {_STATUS.get(c['status'], c['status'])} "
+                     f"| {c.get('best_bull') or '—'} | {c.get('best_bear') or '—'} "
+                     f"| {c.get('monitor_anchor','')} | {_cell(c.get('falsifier'))} / {_cell(catalyst_text)} | {rno} |")
+        else:
+            L.append(f"| **{c['id']} {c['label']}** | {int(c['support_score']*100)}/100 | "
+                     f"{_STATUS.get(c['status'], c['status'])} "
+                     f"| {c.get('best_bull') or '—'} | {c.get('best_bear') or '—'} "
+                     f"| {c.get('monitor_anchor','')} | {_cell(c.get('falsifier'))} / {_cell(catalyst_text)} | {rno} |")
     L.append("")
 
     # 每条 crux 支持度轨迹
-    L.append("### A.1 · 辩论支持度演化（非统计概率）")
-    for cid, cx in state["cruxes"].items():
-        ph = cx["p_history"]
-        pts = " → ".join(f"{int(p*100)}" for p in ph)
-        status_icon = _STATUS.get(cx["status"], cx["status"])
-        L.append(f"- **{cid} {cx['label']}**: {pts} → {status_icon}")
+    if is_universe:
+        L.append("### A.1 · Universe 收敛轨迹")
+        L.append("- 不展示全局最弱值、均值或方向轨迹；这些数会错误混合不同候选与相反暴露。")
+        for cid, cx in state["cruxes"].items():
+            L.append(f"- **{cid} {cx['label']}**: {_STATUS.get(cx['status'], cx['status'])}；"
+                     f"有效来源 URL {len(cx.get('seen_evidence_keys', []))} 条。")
+    else:
+        L.append("### A.1 · 辩论支持度演化（非统计概率）")
+        for cid, cx in state["cruxes"].items():
+            ph = cx["p_history"]
+            pts = " → ".join(f"{int(p*100)}" for p in ph)
+            status_icon = _STATUS.get(cx["status"], cx["status"])
+            L.append(f"- **{cid} {cx['label']}**: {pts} → {status_icon}")
     L.append("")
 
     # 证据仪表盘
@@ -605,9 +635,13 @@ def _render_audit(state, include_title=True):
     L.append("═══════════════════════════════════════════")
     L.append(f"  标的: {topic}")
     L.append(f"  博弈深度: {n_rounds} 轮 ｜ 唯一来源: {rd['n_unique_sources']} 个")
-    L.append(f"  当前焦点 / 最低支持度: {rd.get('focus_crux') or rd.get('binding_crux')} "
-             f"({int(support_w*100)}/100)")
-    L.append(f"  命题均值支持度: {int(support_m*100)}/100")
+    if is_universe:
+        L.append(f"  当前研究焦点: {rd.get('focus_crux') or '—'}")
+        L.append("  收敛单位: Landscape覆盖 + 连续候选收割静默")
+    else:
+        L.append(f"  当前焦点 / 最低支持度: {rd.get('focus_crux') or rd.get('binding_crux')} "
+                 f"({int(support_w*100)}/100)")
+        L.append(f"  命题均值支持度: {int(support_m*100)}/100")
     L.append(f"  决策演化: {trace_str}")
     L.append("  交易输出: 禁止自动给出目标价、预期收益或仓位")
     L.append("═══════════════════════════════════════════")

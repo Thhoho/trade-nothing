@@ -40,6 +40,11 @@ The brief must render root-thesis truth and candidate maturity independently:
 - discovery coverage: planned Landscape paths, role probes, aggregate path states, and seed
   conversion. Do not hide `UNKNOWN` paths or count them as support.
 
+For `UNIVERSE_SEARCH`, the report must derive the root verdict with the current deterministic
+coverage semantics. Never render a stored global bull/bear direction, weakest support, mean support,
+or directional support trace across heterogeneous candidates. The audit may show each crux's
+supporting and opposing evidence, but candidate direction and pricing remain candidate-local.
+
 Do not turn `NO_EDGE` into `SHORT`. Do not call a lead, READY seed, WATCHLIST, or unverified
 THESIS_CANDIDATE an opportunity, recommendation, or simulated-trade candidate.
 An opportunity-oriented report is invalid while any Landscape path is `UNPROBED`.
@@ -50,7 +55,7 @@ Use exactly one action per candidate:
 
 | Candidate state | Legal next action |
 | --- | --- |
-| `EVIDENCE_BACKED` | `COMPLETE_SEED_CONTRACT` |
+| `EVIDENCE_BACKED` | `COMPLETE_SEED_CONTRACT`; if the only blocker is source diversity, use `ADD_INDEPENDENT_SOURCE` |
 | `READY_FOR_SCREENING` | `RUN_CANDIDATE_SCREEN` |
 | `WATCHLIST` | `CLOSE_SCREEN_GAPS_OR_WAIT` |
 | `REJECTED` | `ARCHIVE_REJECTION` |

@@ -420,7 +420,7 @@ def _agent_supported_cruxes(detective, inquisitor):
 
 
 def _agent_evidence_by_crux(detective, inquisitor):
-    """Map structured agent evidence to crux ids; None means legacy payload."""
+    """Map citation identities to original agent evidence; None means legacy payload."""
     det = detective if isinstance(detective, dict) else {}
     inq = inquisitor if isinstance(inquisitor, dict) else {}
     structured_present = "crux_evidence" in det or "crux_attacks" in inq
@@ -430,19 +430,19 @@ def _agent_evidence_by_crux(detective, inquisitor):
     for group in det.get("crux_evidence", []):
         if not isinstance(group, dict) or not group.get("crux_id"):
             continue
-        bucket = out.setdefault(group["crux_id"], set())
+        bucket = out.setdefault(group["crux_id"], {})
         for evidence in group.get("evidence", []):
             key = crux_engine.citation_identity(evidence)
             if key:
-                bucket.add(key)
+                bucket[key] = evidence
     for group in inq.get("crux_attacks", []):
         if not isinstance(group, dict) or not group.get("crux_id"):
             continue
-        bucket = out.setdefault(group["crux_id"], set())
+        bucket = out.setdefault(group["crux_id"], {})
         for evidence in group.get("attacks", []):
             key = crux_engine.citation_identity(evidence)
             if key:
-                bucket.add(key)
+                bucket[key] = evidence
     return out
 
 
@@ -464,8 +464,11 @@ def _sanitize_judge_for_agent_support(judge, detective, inquisitor):
             flags = []
         if evidence_by_crux is not None:
             submitted = sig.get("citations", []) if isinstance(sig.get("citations", []), list) else []
-            allowed = evidence_by_crux.get(cid, set())
-            accepted = [c for c in submitted if crux_engine.citation_identity(c) in allowed]
+            allowed = evidence_by_crux.get(cid, {})
+            accepted = [
+                json.loads(json.dumps(allowed[crux_engine.citation_identity(c)], ensure_ascii=False))
+                for c in submitted if crux_engine.citation_identity(c) in allowed
+            ]
             if len(accepted) < len(submitted):
                 flags.append(f"dropped_judge_invented_citations:{len(submitted) - len(accepted)}")
             sig["citations"] = accepted

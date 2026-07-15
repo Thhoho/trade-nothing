@@ -23,6 +23,10 @@ import opportunity_engine
 
 REF_RE = re.compile(r"^- \[(\d+)\].*?(https?://\S+)\s*$")
 BRACKET_REF_RE = re.compile(r"\[(\d+)\]")
+VERDICT_LINE_RE = re.compile(
+    r"Edge: \*\*([A-Z_]+)\*\* ｜ 证据方向: \*\*([A-Z_]+)\*\* ｜ "
+    r"可行动性: \*\*([A-Z_]+)\*\*"
+)
 DATA_NUMBER_RE = re.compile(
     r"(\$\s*\d+(?:\.\d+)?)|"
     r"(\d+(?:\.\d+)?\s*(?:%|元|亿元|亿|万元|万|MW|GW|GWh|Wh|℃|°C|美元|颗|吨|μm|um|cm2|倍|股|亿元?))|"
@@ -91,6 +95,19 @@ def validate_report(path, state_path=""):
                     invalid.append((cid, cit.get("source", "?"), cit.get("url", "")))
         if invalid:
             warnings.append(f"State contains {len(invalid)} invalid citations filtered from report refs.")
+        expected = crux_engine.report_data(state).get("research_verdict", {})
+        expected_signature = (
+            expected.get("edge_state"), expected.get("evidence_direction"),
+            expected.get("actionability"),
+        )
+        rendered_signatures = set(VERDICT_LINE_RE.findall(md))
+        if not rendered_signatures:
+            errors.append("Cannot parse rendered three-axis verdict for state consistency check.")
+        elif rendered_signatures != {expected_signature}:
+            errors.append(
+                "Rendered verdict does not match the state-derived verdict: "
+                f"rendered={sorted(rendered_signatures)} expected={expected_signature}"
+            )
 
     battle = _battle_log(md)
     if battle is None:

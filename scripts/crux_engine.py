@@ -134,6 +134,19 @@ def citation_publisher_identity(c):
     return suffix
 
 
+def is_primary_citation(c):
+    """Conservatively identify declared primary sources and official US records."""
+    if not valid_citation(c):
+        return False
+    if str(c.get("source_tier", "")).lower() in {"primary", "tier-1", "tier1"}:
+        return True
+    try:
+        host = (urlparse(c.get("url", "")).hostname or "").lower().rstrip(".")
+    except Exception:
+        return False
+    return host.endswith(".gov")
+
+
 def citation_identity(c):
     """Stable per-claim evidence identity used to prevent repeated scoring."""
     normalized_url = citation_source_identity(c)
@@ -672,15 +685,22 @@ def report_data(state):
     last = state["decision_trace"][-1] if state["decision_trace"] else {}
     all_valid = [c for cx in cruxes for c in cx["valid_citations"]]
     unique_sources = {citation_source_identity(c) for c in all_valid}
-    primary_sources = {citation_source_identity(c) for c in all_valid
-                       if str(c.get("source_tier", "")).lower() in {"primary", "tier-1", "tier1"}}
+    primary_sources = {citation_source_identity(c) for c in all_valid if is_primary_citation(c)}
     question_type = state.get("question_type", "CONJUNCTIVE")
     focus_crux = last.get("focus_crux", last.get("weakest"))
     binding_crux = (focus_crux
                     if question_type in {"CONJUNCTIVE", "CAUSAL_CHAIN"} else None)
+    derived_verdict = research_verdict(state)
+    stored_verdict = last.get("research_verdict") or {}
+    report_verdict = (
+        derived_verdict if question_type == "UNIVERSE_SEARCH"
+        else stored_verdict or derived_verdict
+    )
     return {
         "decision": safe_decision_label(last.get("decision")),
-        "research_verdict": last.get("research_verdict") or research_verdict(state),
+        "research_verdict": report_verdict,
+        "stored_research_verdict": stored_verdict,
+        "verdict_drift": bool(stored_verdict and stored_verdict != report_verdict),
         "question_type": question_type,
         "logic_graph": state.get("logic_graph", {}),
         "binding_crux": binding_crux,

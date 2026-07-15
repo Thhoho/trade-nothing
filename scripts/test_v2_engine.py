@@ -570,6 +570,58 @@ class ReportSafetyTests(unittest.TestCase):
             self.assertIn(str(value), brief)
             self.assertIn(str(value), full)
 
+    def test_universe_report_recomputes_root_verdict_and_hides_global_support_aggregates(self):
+        st = converged_state()
+        st["question_type"] = "UNIVERSE_SEARCH"
+        st["cruxes"]["C1"]["logic_role"] = "OPPORTUNITY_PATH"
+        st["landscape_map"] = {"paths": [{
+            "path_id": "L1", "state": "SUPPORTED",
+            "probes": {
+                "detective": {"round": 1, "state": "SUPPORTED"},
+                "inquisitor": {"round": 1, "state": "SUPPORTED"},
+            },
+        }]}
+        st["decision_trace"][-1]["research_verdict"] = {
+            "edge_state": "INSUFFICIENT_EVIDENCE", "evidence_direction": "BEAR",
+            "actionability": "MONITOR", "question_type": "UNIVERSE_SEARCH",
+            "reason_code": "STALE_GLOBAL_AGGREGATE",
+        }
+        md = report_v2.render(st)
+        self.assertIn("INSUFFICIENT_EVIDENCE / UNDETERMINED / MONITOR", md)
+        self.assertNotIn("INSUFFICIENT_EVIDENCE / BEAR / MONITOR", md)
+        self.assertNotIn("最低路径支持度", md)
+        self.assertNotIn("命题均值支持度", md)
+        self.assertIn("Landscape 双边覆盖 + 候选收割静默", md)
+
+    def test_validator_rejects_rendered_verdict_drift_from_state(self):
+        st = converged_state()
+        st["cruxes"]["C1"].update({
+            "status": "MONITORABLE", "retired": True, "first_contested": 1,
+            "citations": [citation("drift-a"), citation("drift-b")],
+        })
+        md = report_v2.render(st).replace(
+            "证据方向: **UNDETERMINED**", "证据方向: **BEAR**"
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".md", encoding="utf-8") as report_handle, \
+                tempfile.NamedTemporaryFile("w", suffix=".json", encoding="utf-8") as state_handle:
+            report_handle.write(md)
+            report_handle.flush()
+            json.dump(st, state_handle)
+            state_handle.flush()
+            errors, _ = validate_report_v2.validate_report(
+                report_handle.name, state_handle.name
+            )
+        self.assertTrue(any("does not match" in item for item in errors))
+
+    def test_official_gov_record_counts_as_primary_source(self):
+        st = converged_state()
+        st["cruxes"]["C1"]["citations"] = [{
+            "claim": "official filing", "number": "1", "source": "SEC",
+            "url": "https://www.sec.gov/Archives/edgar/data/1/filing.htm",
+            "date": "2026-07-15",
+        }]
+        self.assertEqual(crux_engine.report_data(st)["n_primary_sources"], 1)
+
     def test_report_rejects_unknown_view(self):
         with self.assertRaisesRegex(ValueError, "unknown report view"):
             report_v2.render(converged_state(), view="raw-transcript")
