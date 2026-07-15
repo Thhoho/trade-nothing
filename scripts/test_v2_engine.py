@@ -338,6 +338,15 @@ class OrchestratorTests(unittest.TestCase):
             "trade-nothing.method-identity.v1",
         )
 
+    def test_low_level_state_load_rejects_method_identity_drift(self):
+        orchestrator.cmd_init("drifted-method", self.frame())
+        path = orchestrator._path("drifted-method")
+        stored = utils.load_json_safe(path, default={})
+        stored["method_identity"]["contract_sha256"] = "0" * 64
+        utils.save_json(path, stored)
+        with self.assertRaisesRegex(ValueError, "method_contract_drift"):
+            orchestrator._load("drifted-method")
+
     def test_framer_cannot_self_attest_runtime_isolation(self):
         frame = self.frame()
         frame["isolation_status"] = "verified"

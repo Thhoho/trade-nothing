@@ -363,11 +363,16 @@ def _legacy_path(topic):
 def _load(topic):
     p = _path(topic)
     if os.path.exists(p):
-        return load_json_safe(p, default=None)
+        state = load_json_safe(p, default=None)
+        if isinstance(state, dict) and state.get("method_identity"):
+            method_identity.validate_method_identity(state["method_identity"])
+        return state
     old = _legacy_path(topic)
     if os.path.exists(old):
         state = load_json_safe(old, default=None)
         if state:
+            if state.get("method_identity"):
+                method_identity.validate_method_identity(state["method_identity"])
             state.setdefault("migration", {})["loaded_from_legacy_state"] = old
         return state
     return None
