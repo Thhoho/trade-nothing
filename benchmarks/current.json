@@ -3,20 +3,20 @@
   "method_identity": {
     "schema_version": "trade-nothing.method-identity.v1",
     "scope": "operational-bundle.v1",
-    "method_version": "0.9.4",
-    "contract_sha256": "1d68e4ace893ad8e91541af12a8f5da32a9c6b4ac003855dab0395697568107e",
+    "method_version": "0.9.5",
+    "contract_sha256": "e92c5b89ca0ad03cece6ffafa3e4a0cc30a19d86ae1aac9e34bd11c427bd49a5",
     "file_count": 65
   },
   "closed_packet": {
-    "suite_path": "benchmarks/v014-six-case/suite-48e0366.json",
-    "answer_key_path": "benchmarks/v014-six-case/assessor/answer-key-48e0366.json",
-    "current_variant": "48e0366",
-    "suite_contract_sha256": "42f71476ee0fff331316c2b95f8379d70ca926225a3bc457ffb5bf867022f741"
+    "suite_path": "benchmarks/v014-six-case/suite-55c3640.json",
+    "answer_key_path": "benchmarks/v014-six-case/assessor/answer-key-55c3640.json",
+    "current_variant": "55c3640",
+    "suite_contract_sha256": "eb4a6f7b76515b2ed7fb1b658fba0a159bd63c0f2271bd1a27f116ab82d96c0c"
   },
   "discovery": {
-    "suite_path": "benchmarks/v014-discovery-pilot/suite-48e0366.json",
-    "answer_key_path": "benchmarks/v014-discovery-pilot/assessor/answer-key-48e0366.json",
-    "current_variant": "48e0366",
-    "suite_contract_sha256": "f507a37da4259a098f515f9abd8ef3463de675cbbee4a23ae04d50fbb7522cc6"
+    "suite_path": "benchmarks/v014-discovery-pilot/suite-55c3640.json",
+    "answer_key_path": "benchmarks/v014-discovery-pilot/assessor/answer-key-55c3640.json",
+    "current_variant": "55c3640",
+    "suite_contract_sha256": "cca937377267d6e0b8b8876d1fea5614e53ab10f5e9ef8c2257ebaabfc24bc75"
   }
 }
