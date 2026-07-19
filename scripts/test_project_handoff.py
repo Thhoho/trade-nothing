@@ -59,6 +59,9 @@ def fixture_state():
             }
         },
         "opportunity_seeds": [],
+        "candidate_gap_tasks": [],
+        "candidate_evidence_supplements": [],
+        "candidate_gap_resolutions": [],
         "candidate_screens": [],
         "claim_verifications": [],
         "runtime_contract": {"isolation_status": "verified"},
@@ -92,6 +95,9 @@ class ProjectHandoffTests(unittest.TestCase):
         )
         self.assertNotIn("rounds", first["state"])
         self.assertNotIn("candidate_screen_dispatches", first["state"])
+        self.assertEqual(first["state"]["candidate_gap_tasks"], [])
+        self.assertEqual(first["state"]["candidate_evidence_supplements"], [])
+        self.assertEqual(first["state"]["candidate_gap_resolutions"], [])
         self.assertNotIn("raw", first["state"]["decision_trace"][0])
         self.assertEqual(
             first["state"]["research_start_context"]["packet_id"],
@@ -110,7 +116,7 @@ class ProjectHandoffTests(unittest.TestCase):
         ).hexdigest()
         self.assertEqual(first["handoff_integrity"]["state_sha256"], expected)
 
-    def test_v3_requires_explicit_run_purpose(self):
+    def test_v4_requires_explicit_run_purpose(self):
         state = fixture_state()
         state["runtime"].pop("run_purpose")
         assessment = project_handoff.preflight_handoff(state)

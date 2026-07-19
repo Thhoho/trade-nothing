@@ -64,7 +64,16 @@ python3 scripts/deepthink_host_runner.py adopt --state-path "/.../v2_state.json"
 # Inspect and resume
 python3 scripts/deepthink_host_runner.py status --run-id "RUN-..."
 python3 scripts/deepthink_host_runner.py resume --run-id "RUN-..." --round-budget 1
+
+# After convergence, continue an EVIDENCE_BACKED candidate without reopening root debate
+python3 scripts/deepthink_orchestrator_v2.py --plan-candidate-gaps --run-id "RUN-..."
+python3 scripts/deepthink_orchestrator_v2.py --submit-gap-evidence --run-id "RUN-..." \
+  --task-id "CGT-..." --supplement '<json>'
 ```
+
+Candidate-gap histories follow the same run identity and method identity. A method-drifted run may
+not append a new task or supplement. Resume never retries a gap search automatically: every attempt
+consumes the task's frozen search budget and must be an explicit host action.
 
 `--allow-agent-tools` passes Antigravity's non-interactive permission bypass and therefore requires
 explicit authorization. Role working directories live under the run scratch directory, not inside

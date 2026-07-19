@@ -415,7 +415,7 @@ def screenable_seeds(state, seed_id=None):
     seeds = [s for s in state.get("opportunity_seeds", []) if isinstance(s, dict)]
     if seed_id:
         return [
-            seed for seed in seeds
+            opportunity_engine.effective_seed(state, seed) for seed in seeds
             if seed.get("seed_id") == seed_id
             and opportunity_engine.assess_seed(state, seed)["screening_status"]
             == opportunity_engine.READY

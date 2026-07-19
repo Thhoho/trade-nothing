@@ -16,6 +16,9 @@ Flow:
   --resolution-memo TOPIC              -> emit non-formal memo + compact continuation packet.
   --resume-blocked TOPIC               -> explicitly extend a fuse-broken run after user approval.
   --screen TOPIC                       -> dispatch isolated Candidate Analyst + Skeptic on eligible seeds.
+  --plan-candidate-gaps TOPIC          -> create bounded evidence tasks for blocked candidates.
+  --submit-gap-evidence TOPIC          -> append one content-addressed evidence supplement.
+  --close-gap-task TOPIC               -> terminate a bounded task without changing the seed.
   --submit-screen TOPIC                -> deterministic two-sided candidate gate.
   --verification-plan TOPIC            -> list source snapshots required for thesis candidates.
   --verify-claims TOPIC                 -> emit snapshot-bound Claim Verifier prompt.
@@ -34,6 +37,7 @@ import crux_engine
 import landscape_engine
 import method_identity
 import opportunity_engine
+import candidate_gap_engine
 import candidate_screen_engine
 import claim_verification_engine
 import research_output
@@ -1129,6 +1133,22 @@ def cmd_submit(topic, detective, inquisitor, judge):
                 "隔离运行 Analyst/Skeptic 后调用 --submit-screen。"
                 "若用户只要求命题质证，可显式调用 --report --challenge-only。"
             )
+        elif opportunity_question and dispatch.get("status") == "no_screenable_candidates":
+            gap_dispatch = cmd_plan_candidate_gaps(topic)
+            if gap_dispatch.get("status") == "candidate_gap_tasks_planned":
+                base.update(gap_dispatch)
+                base["research_converged"] = True
+                base["formal_report_deferred"] = True
+                base["instruction"] = (
+                    "根研究已收敛但没有 READY_FOR_SCREENING 候选。"
+                    "先执行确定性 CandidateGapTask；不得修改原 seed 或降低来源门。"
+                )
+            else:
+                base["status"] = "ready_for_report"
+                base["instruction"] = (
+                    f"引擎判定 {conv['decision']}，且没有可调度候选补证任务。"
+                    f"调用 --report --topic \"{topic}\"。"
+                )
         else:
             base["status"] = "ready_for_report"
             base["instruction"] = f"引擎判定 {conv['decision']}。调用 --report --topic \"{topic}\"。"
@@ -1233,6 +1253,56 @@ def cmd_screen(topic, as_of_date="", seed_id=""):
     }
     out.update(prompts)
     return out
+
+
+def cmd_plan_candidate_gaps(topic):
+    state = _load(topic)
+    if not state:
+        return {"status": "error", "reason": "状态不存在，请先完成 -deepthink2。"}
+    result = candidate_gap_engine.plan_tasks(state)
+    if result.get("task_count"):
+        opportunity_engine.refresh_candidate_states(state)
+        _save(topic, state)
+    return {"topic": topic, **result, **candidate_gap_engine.summary(state)}
+
+
+def cmd_submit_gap_evidence(topic, task_id, supplement):
+    state = _load(topic)
+    if not state:
+        return {"status": "error", "reason": "状态不存在。"}
+    try:
+        result = candidate_gap_engine.submit_supplement(
+            state, str(task_id or ""), supplement
+        )
+    except ValueError as exc:
+        return {"status": "candidate_gap_evidence_rejected", "reason": str(exc)}
+    _save(topic, state)
+    screen = cmd_screen(
+        topic,
+        state.get("frame_contract", {}).get("as_of_date", ""),
+    )
+    out = {"topic": topic, **result, **candidate_gap_engine.summary(state)}
+    if screen.get("status") == "dispatch_candidate_screeners":
+        out.update(screen)
+        out["gap_evidence_status"] = result["status"]
+        out["instruction"] = (
+            "候选已确定性进入 READY_FOR_SCREENING；继续隔离运行默认 Top-3 CandidateScreen。"
+        )
+    return out
+
+
+def cmd_close_gap_task(topic, task_id, status, reason):
+    state = _load(topic)
+    if not state:
+        return {"status": "error", "reason": "状态不存在。"}
+    try:
+        result = candidate_gap_engine.close_task(
+            state, str(task_id or ""), status, reason
+        )
+    except ValueError as exc:
+        return {"status": "candidate_gap_close_rejected", "reason": str(exc)}
+    _save(topic, state)
+    return {"topic": topic, **result, **candidate_gap_engine.summary(state)}
 
 
 def cmd_submit_screen(
@@ -1519,6 +1589,7 @@ def cmd_report(topic, challenge_only=False, report_view="full", include_synthesi
             return dispatch
     import report_v2
     opportunity_counts = opportunity_engine.summary(state)
+    gap_counts = candidate_gap_engine.summary(state)
     candidate_counts = candidate_screen_engine.summary(state)
     verification_counts = claim_verification_engine.summary(state)
     view_model = report_v2.build_report_view_model(state)
@@ -1531,6 +1602,7 @@ def cmd_report(topic, challenge_only=False, report_view="full", include_synthesi
             "n_unique_sources": rd["n_unique_sources"],
             "n_primary_sources": rd["n_primary_sources"],
             **opportunity_counts,
+            **gap_counts,
             **candidate_counts,
             **verification_counts,
             "model": model_for("battle_log_synthesis"),
@@ -1568,6 +1640,9 @@ def main():
     g.add_argument("--resolution-memo", action="store_true")
     g.add_argument("--resume-blocked", action="store_true")
     g.add_argument("--screen", action="store_true")
+    g.add_argument("--plan-candidate-gaps", action="store_true")
+    g.add_argument("--submit-gap-evidence", action="store_true")
+    g.add_argument("--close-gap-task", action="store_true")
     g.add_argument("--submit-screen", action="store_true")
     g.add_argument("--verification-plan", action="store_true")
     g.add_argument("--verify-claims", action="store_true")
@@ -1585,6 +1660,11 @@ def main():
     ap.add_argument("--det", default=""); ap.add_argument("--inq", default=""); ap.add_argument("--judge", default="")
     ap.add_argument("--analyst", default=""); ap.add_argument("--skeptic", default="")
     ap.add_argument("--as-of", default=""); ap.add_argument("--seed-id", default="")
+    ap.add_argument("--task-id", default="")
+    ap.add_argument("--supplement", default="")
+    ap.add_argument("--close-status", default="",
+                    choices=["", "SOURCE_EXHAUSTED", "WAITING_EVENT"])
+    ap.add_argument("--close-reason", default="")
     ap.add_argument("--screen-isolation", default="unverified",
                     choices=["verified", "degraded", "unverified"])
     ap.add_argument("--runtime-isolation", default="unverified",
@@ -1673,6 +1753,13 @@ def main():
     elif a.resolution_memo: out = cmd_resolution_memo(a.topic)
     elif a.resume_blocked: out = cmd_resume_blocked(a.topic, a.extra_rounds)
     elif a.screen: out = cmd_screen(a.topic, a.as_of, a.seed_id)
+    elif a.plan_candidate_gaps: out = cmd_plan_candidate_gaps(a.topic)
+    elif a.submit_gap_evidence: out = cmd_submit_gap_evidence(
+        a.topic, a.task_id, _jload(a.supplement)
+    )
+    elif a.close_gap_task: out = cmd_close_gap_task(
+        a.topic, a.task_id, a.close_status, a.close_reason
+    )
     elif a.submit_screen: out = cmd_submit_screen(
         a.topic, _jload(a.analyst), _jload(a.skeptic), a.as_of, a.screen_isolation,
         _jload(a.isolation_receipt),

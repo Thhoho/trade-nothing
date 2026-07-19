@@ -18,7 +18,7 @@ description: >
   or any agent framework supporting sub-agent delegation.
 ---
 
-# Trade Nothing v0.9.5 — The Sovereign Alpha Hunter
+# Trade Nothing v0.9.6 — The Sovereign Alpha Hunter
 
 > **"You are not a commentator explaining past facts; you are a hunter seeking misalignments in the mist. Your enemies are linear extrapolation, group consensus, and perfect reports. Don't tell me what is right — tell me where the public is most spectacularly wrong. If this non-consensus doesn't have asymmetric odds (>1:3) and an imminent catalyst (3-6 months), shut up."**
 
@@ -242,7 +242,18 @@ python3 scripts/deepthink_orchestrator_v2.py --runtime-failure --topic "TARGET" 
 python3 scripts/deepthink_orchestrator_v2.py --submit --topic "TARGET" \
     --det '<detective_json>' --inq '<inquisitor_json>' --judge '<judge_json>'
 #    → status=dispatch_subagents (loop), blocked_max_rounds, ready_for_report, OR for
-#      UNIVERSE_SEARCH/COMPARATIVE with screenable leads: dispatch_candidate_screeners.
+#      UNIVERSE_SEARCH/COMPARATIVE with screenable leads: dispatch_candidate_screeners;
+#      with only blocked evidence-backed leads: candidate_gap_tasks_planned.
+
+# 3a. Candidate maturation: after convergence, execute the bounded task rather than rewriting
+#     an OpportunitySeed or lowering the independent-source gate. Every attempt is appended.
+python3 scripts/deepthink_orchestrator_v2.py --plan-candidate-gaps --topic "TARGET"
+python3 scripts/deepthink_orchestrator_v2.py --submit-gap-evidence --topic "TARGET" \
+    --task-id "CGT-..." --supplement '<candidate-evidence-supplement JSON>'
+# If the bounded task ends without aligned evidence, preserve a terminal research result.
+python3 scripts/deepthink_orchestrator_v2.py --close-gap-task --topic "TARGET" \
+    --task-id "CGT-..." --close-status SOURCE_EXHAUSTED --close-reason "reason"
+# Read references/candidate-maturation-protocol.md before using these commands.
 
 # 4. Report: only converged states may render a formal report. Opportunity questions with an
 #    unscreened READY_FOR_SCREENING seed default to the bounded CandidateScreen continuation below;
@@ -373,6 +384,14 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > catalyst first. A NO or UNKNOWN core answer stops expanded research for that seed; the role still
 > returns all eight dimensions and marks unresearched fields UNKNOWN. Missing work never becomes YES.
 
+> **Candidate maturation integrity:** after convergence, an `EVIDENCE_BACKED` lead may receive one
+> deterministic, content-addressed CandidateGapTask per entity path. The original seed contract and
+> evidence are immutable; every aligned, contradicted, and not-aligned attempt is appended with a
+> four-search budget. Only independently published `SUPPORTED` evidence bound to a `COMPLETED`
+> resolution may enter the effective-seed projection. A contradiction, `SOURCE_EXHAUSTED`, or
+> `WAITING_EVENT` is terminal and cannot be hidden by automatic replanning. Read
+> `references/candidate-maturation-protocol.md` before continuing a blocked candidate.
+
 > **Source-content integrity:** capture each decisive URL with `scripts/evidence_snapshot.py`
 > or an equivalent host fetcher, then run `agents/claim_verifier.md` independently. SUPPORTS and
 > CONTRADICTS require a short exact span that physically occurs in the content-hashed snapshot;
@@ -392,7 +411,8 @@ raw role transcripts, an unverified JSON copy, or a historical state repaired af
 Lesson selection remains a separate human action in the product.
 Every new deepthink2 run pins a deterministic `method_identity` over the operational skill bundle
 and an explicit `run_purpose` before research begins. Resume fails closed after method drift, and
-project-handoff v3 refuses samples without that identity or purpose. Only
+project-handoff v4 refuses samples without that identity or purpose and preserves candidate-gap
+histories. Older importers must reject v4 instead of dropping those fields. Only
 `PRODUCTION_RESEARCH` is eligible for the product effectiveness cohort.
 
 **Data tiers (取数分层):** Tier-2 = WebSearch (the sub-agents' primary qualitative engine — broad,
@@ -419,6 +439,11 @@ python3 scripts/deepthink_orchestrator_v2.py --screen --topic "Topic Name" --as-
 # Gap-directed WATCHLIST rescreen: explicit seed and a strictly later as-of are mandatory.
 python3 scripts/deepthink_orchestrator_v2.py --screen --topic "Topic Name" \
   --seed-id "OS-..." --as-of "YYYY-MM-DD"
+
+# Plan and execute one bounded post-convergence CandidateGapTask
+python3 scripts/deepthink_orchestrator_v2.py --plan-candidate-gaps --topic "Topic Name"
+python3 scripts/deepthink_orchestrator_v2.py --submit-gap-evidence --topic "Topic Name" \
+  --task-id "CGT-..." --supplement '<json>'
 
 # Antigravity: execute both screen roles in distinct OS processes and submit a bound receipt
 python3 scripts/agy_candidate_screen_runner.py --topic "Topic Name" --as-of "YYYY-MM-DD"
@@ -491,7 +516,7 @@ copied with the skill.
 
 ---
 
-*Trade Nothing v0.9.5 — Hunt Alpha, Not Consensus.*
+*Trade Nothing v0.9.6 — Hunt Alpha, Not Consensus.*
 *Adversarial multi-agent architecture with full lifecycle negative feedback loops.*
 
 

@@ -18,10 +18,12 @@ python3 scripts/project_handoff.py \
   --report-path "/absolute/path/to/report.md"
 ```
 
-The v3 exporter:
+The v4 exporter:
 
 - retains the question contract, logic graph, Landscape Map, final trace, crux ledger, candidate
   screens and snapshot-bound claim-verification records;
+- retains immutable CandidateGapTask, evidence-supplement, and resolution histories so the product
+  can query the same bounded maturation state without rewriting an OpportunitySeed;
 - removes research rounds, raw role transcripts, search logs and dispatch prompts;
 - writes `lesson_injections=[]`; Lesson selection remains a separate human action in the product;
 - binds the compact state to `handoff_integrity.state_sha256`;
@@ -39,6 +41,10 @@ Only `PRODUCTION_RESEARCH` is eligible for the product effectiveness cohort. Liv
 closed-packet benchmarks, historical replays, and controlled fixtures remain audit-only even when
 their mechanics pass. The exporter records purpose; it never decides cohort membership for the
 product.
+
+Consumers supporting only v1-v3 must reject v4 explicitly. They may not normalize v4 through an
+older field allowlist because that would silently delete failed searches, contradictions, task
+budgets, and terminal resolutions.
 
 Never repair a blocked historical state by inventing a question type, logic graph, run ID,
 run purpose, three-axis verdict, isolation receipt, method identity or Landscape Map after the run.

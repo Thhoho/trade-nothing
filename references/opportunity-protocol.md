@@ -87,6 +87,11 @@ Fail closed without deleting the lead:
 - `NEEDS_CATALYST_CHECK`: the catalyst date is missing or malformed.
 - `OUT_OF_HORIZON_LEAD`: the catalyst is expired or outside the root horizon.
 
+After root convergence, an `EVIDENCE_BACKED` seed may enter the bounded Candidate Maturation loop.
+The planner converts its first deterministic blocker into a content-addressed `CandidateGapTask`;
+new evidence is appended as supplements and never edits the original seed contract. Read
+`references/candidate-maturation-protocol.md` before planning or submitting gap evidence.
+
 `READY_FOR_SCREENING` means “eligible for the two-sided CandidateScreen,” not
 “investable.” Run Candidate Analyst and Candidate Skeptic using
 `references/candidate-screen-protocol.md`. Valuation, liquidity, governance,
@@ -101,6 +106,8 @@ Use only the deterministic projection emitted by `opportunity_engine.promotion_a
 Only `VERIFIED_FOR_HUMAN` may be offered to a human for creation of a fresh DRAFT Thesis. It
 requires a `THESIS_CANDIDATE` screen, verified screen isolation, snapshot-bound claim verification,
 and a `DRAFT_REQUIRES_HUMAN` promotion packet. Human rationale cannot override a lower state.
+`COMPLETED` gap evidence means only that one bounded seed blocker was addressed; it does not skip
+CandidateScreen or any later gate.
 
 ## Entity de-duplication
 

@@ -16,8 +16,10 @@ import re
 import tempfile
 from typing import Any
 
+import candidate_gap_engine
 
-HANDOFF_SCHEMA = "trade-nothing.deepthink2.project-handoff.v3"
+
+HANDOFF_SCHEMA = "trade-nothing.deepthink2.project-handoff.v4"
 INTEGRITY_SCHEMA = "trade-nothing.project-handoff-integrity.v1"
 PREFLIGHT_SCHEMA = "trade-nothing.project-handoff-preflight.v1"
 QUESTION_TYPES = {
@@ -48,6 +50,9 @@ STATE_FIELDS = (
     "research_verdict",
     "last_convergence",
     "opportunity_seeds",
+    "candidate_gap_tasks",
+    "candidate_evidence_supplements",
+    "candidate_gap_resolutions",
     "candidate_screens",
     "claim_verifications",
     "runtime_contract",
@@ -168,6 +173,13 @@ def preflight_handoff(state: Any) -> dict[str, Any]:
     for field in ("topic", "decision_question"):
         if not str(state.get(field) or "").strip():
             block("REQUIRED_FIELD_MISSING", f"state.{field}", f"{field} is required")
+
+    for gap_blocker in candidate_gap_engine.validate_histories(state):
+        block(
+            "CANDIDATE_GAP_HISTORY_INVALID",
+            "state.candidate_gap_*",
+            gap_blocker,
+        )
 
     question_type = str(state.get("question_type") or "").upper()
     if question_type not in QUESTION_TYPES:
@@ -325,7 +337,7 @@ def preflight_handoff(state: Any) -> dict[str, Any]:
         block(
             "RUN_PURPOSE_INVALID",
             "state.runtime.run_purpose",
-            "project-handoff v3 requires an explicit production, benchmark, replay, or fixture purpose",
+            "project-handoff v4 requires an explicit production, benchmark, replay, or fixture purpose",
         )
 
     runtime_contract = (

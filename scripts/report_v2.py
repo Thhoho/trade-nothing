@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import crux_engine
 import landscape_engine
 import opportunity_engine
+import candidate_gap_engine
 import candidate_screen_engine
 import claim_verification_engine
 
@@ -275,6 +276,24 @@ def _candidate_cards(state):
         action_code, action_text = _candidate_next_action(
             candidate_state, promotion["blocking_reasons"]
         )
+        gap_task = candidate_gap_engine.open_task_for_seed(
+            state, str(seed.get("seed_id") or "")
+        )
+        gap_resolution = candidate_gap_engine.latest_resolution_for_seed(
+            state, str(seed.get("seed_id") or "")
+        )
+        if gap_task:
+            action_code = "EXECUTE_CANDIDATE_GAP_TASK"
+            action_text = (
+                f"执行 {gap_task['task_id']}：{gap_task['target_claim']}；"
+                f"最多 {gap_task['search_budget']} 次搜索，失败时按任务条件终止。"
+            )
+        elif gap_resolution and gap_resolution.get("status") == "SOURCE_EXHAUSTED":
+            action_code = "WAIT_FOR_NEW_INDEPENDENT_SOURCE"
+            action_text = "有界搜索已耗尽；等待新来源或新事实，不得重复扩写同一查询。"
+        elif gap_resolution and gap_resolution.get("status") == "WAITING_EVENT":
+            action_code = "WAIT_FOR_DEFINED_EVENT"
+            action_text = gap_resolution.get("reason") or "等待任务定义的观察事件。"
         screen_gaps = _screen_gap_summary(screen)
         if candidate_state == opportunity_engine.WATCHLIST and screen_gaps.get("primary"):
             action_text = (
@@ -313,6 +332,8 @@ def _candidate_cards(state):
             "path_count": len(entity.get("paths", [])),
             "next_action_code": action_code,
             "next_action": action_text,
+            "gap_task": gap_task,
+            "gap_resolution": gap_resolution,
         })
     priority = {
         opportunity_engine.VERIFIED_FOR_HUMAN: 0,
@@ -479,10 +500,11 @@ def _render_audit(state, include_title=True):
     for seed in state.get("opportunity_seeds", []):
         if not isinstance(seed, dict) or not str(seed.get("candidate", "")).strip():
             continue
-        valid = [c for c in seed.get("evidence", []) if crux_engine.valid_citation(c)]
+        effective = opportunity_engine.effective_seed(state, seed)
+        valid = [c for c in effective.get("evidence", []) if crux_engine.valid_citation(c)]
         if not valid:
             continue
-        item = dict(seed)
+        item = dict(effective)
         item["evidence"] = valid
         item["maturity"] = opportunity_engine.evidence_maturity(item)
         assessment = opportunity_engine.assess_seed(state, item)
@@ -1044,6 +1066,24 @@ def _render_candidate_cards(view):
                 lines.append(f"- **流程门槛**: {', '.join(gap_summary['process_gaps'])}。")
         elif card["blocking_reasons"]:
             lines.append(f"- **阻塞原因**: {', '.join(card['blocking_reasons'])}。")
+        gap_task = card.get("gap_task") or {}
+        if gap_task:
+            lines.append(
+                f"- **候选补证任务**: `{gap_task['task_id']}` ｜ blocker "
+                f"`{gap_task['blocker_code']}` ｜ 目标: {gap_task['target_claim']} ｜ "
+                f"来源: {', '.join(gap_task['required_source_types'])} ｜ "
+                f"预算: {gap_task['search_budget']} 次。"
+            )
+            lines.append(
+                f"- **任务终止条件**: 成功 — {gap_task['success_condition']}；"
+                f"失败 — {gap_task['failure_condition']}"
+            )
+        gap_resolution = card.get("gap_resolution") or {}
+        if gap_resolution:
+            lines.append(
+                f"- **候选补证结果**: `{gap_resolution.get('status')}` — "
+                f"{gap_resolution.get('reason') or '无附加说明'}。"
+            )
         lines.extend([
             f"- **下一动作**: `{card['next_action_code']}` — {card['next_action']}",
             "",

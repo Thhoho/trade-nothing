@@ -56,7 +56,8 @@ Use exactly one action per candidate:
 
 | Candidate state | Legal next action |
 | --- | --- |
-| `EVIDENCE_BACKED` | `COMPLETE_SEED_CONTRACT`; if the only blocker is source diversity, use `ADD_INDEPENDENT_SOURCE` |
+| `EVIDENCE_BACKED` with open gap task | `EXECUTE_CANDIDATE_GAP_TASK` |
+| `EVIDENCE_BACKED` without gap task | `COMPLETE_SEED_CONTRACT`; if the only blocker is source diversity, use `ADD_INDEPENDENT_SOURCE` |
 | `READY_FOR_SCREENING` | `RUN_CANDIDATE_SCREEN` |
 | `WATCHLIST` | `CLOSE_SCREEN_GAPS_OR_WAIT` |
 | `REJECTED` | `ARCHIVE_REJECTION` |
@@ -65,6 +66,10 @@ Use exactly one action per candidate:
 
 If there is no candidate, use `STOP_NO_PROMOTABLE_CANDIDATE`; if the root verdict is monitor-only,
 use `WAIT_FOR_MONITOR`.
+
+When `EXECUTE_CANDIDATE_GAP_TASK` is selected, the card must render its immutable task ID, target
+claim, allowed source types, remaining budget, success/failure conditions, attempts, and any terminal
+resolution. Do not paraphrase `SOURCE_EXHAUSTED` into a positive lead or hide contradicted evidence.
 
 ## Validation
 

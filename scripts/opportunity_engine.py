@@ -7,6 +7,7 @@ citations can be traced back to structured evidence produced by the same agent,
 for the same crux, in the same round. Seeds are a research queue, never a trade
 signal, expected-return estimate, or position-sizing input.
 """
+import copy
 import hashlib
 import re
 from datetime import date
@@ -324,7 +325,91 @@ def pricing_anchor_text(anchor):
     )
 
 
-def evidence_maturity(seed):
+def effective_seed(state, seed):
+    """Project immutable seed + verified append-only evidence supplements."""
+    projected = copy.deepcopy(seed) if isinstance(seed, dict) else {}
+    evidence = [
+        copy.deepcopy(item)
+        for item in projected.get("evidence", [])
+        if crux_engine.valid_citation(item)
+    ]
+    seen = {crux_engine.citation_identity(item) for item in evidence}
+    task_map = {
+        str(task.get("task_id") or ""): task
+        for task in state.get("candidate_gap_tasks", [])
+        if isinstance(task, dict)
+    } if isinstance(state, dict) else {}
+    completed_supplements = {
+        str(item.get("last_supplement_id") or "")
+        for item in state.get("candidate_gap_resolutions", [])
+        if isinstance(item, dict) and item.get("status") == "COMPLETED"
+    } if isinstance(state, dict) else set()
+    supplement_ids = []
+    for item in state.get("candidate_evidence_supplements", []) if isinstance(state, dict) else []:
+        if not isinstance(item, dict) or item.get("seed_id") != projected.get("seed_id"):
+            continue
+        task = task_map.get(str(item.get("task_id") or ""))
+        if not task or task.get("seed_id") != projected.get("seed_id"):
+            continue
+        if item.get("origin_crux") != projected.get("origin_crux"):
+            continue
+        if item.get("claim_alignment") != "SUPPORTED":
+            continue
+        if str(item.get("supplement_id") or "") not in completed_supplements:
+            continue
+        citation = item.get("citation")
+        key = crux_engine.citation_identity(citation) if isinstance(citation, dict) else ""
+        if key and key not in seen and crux_engine.valid_citation(citation):
+            evidence.append(copy.deepcopy(citation))
+            seen.add(key)
+        additions = item.get("field_additions")
+        for field, value in (
+            additions.items() if isinstance(additions, dict) else []
+        ):
+            if field in {
+                "economic_exposure", "why_market_may_miss", "pricing_anchor",
+                "catalyst", "catalyst_window", "falsifier",
+            }:
+                existing = projected.get(field)
+                if field in {"pricing_anchor", "catalyst_window"} and isinstance(value, dict):
+                    merged = copy.deepcopy(existing) if isinstance(existing, dict) else {}
+                    for key, nested_value in value.items():
+                        if merged.get(key) in (None, "", {}):
+                            merged[key] = copy.deepcopy(nested_value)
+                    projected[field] = merged
+                elif existing in (None, "", {}):
+                    projected[field] = copy.deepcopy(value)
+        if item.get("supplement_id"):
+            supplement_ids.append(item["supplement_id"])
+    projected["evidence"] = evidence
+    projected["evidence_supplement_ids"] = supplement_ids
+    return projected
+
+
+def _candidate_gap_blockers(state, seed_id):
+    blockers = []
+    tasks = {
+        str(task.get("task_id") or ""): task
+        for task in state.get("candidate_gap_tasks", [])
+        if isinstance(task, dict) and task.get("seed_id") == seed_id
+    }
+    for item in state.get("candidate_evidence_supplements", []):
+        if not isinstance(item, dict) or item.get("seed_id") != seed_id:
+            continue
+        if item.get("claim_alignment") == "CONTRADICTED":
+            blockers.append("candidate_evidence_contradicted")
+    for item in state.get("candidate_gap_resolutions", []):
+        if not isinstance(item, dict) or item.get("task_id") not in tasks:
+            continue
+        if item.get("status") == "SOURCE_EXHAUSTED":
+            blockers.append("candidate_gap_source_exhausted")
+        elif item.get("status") == "WAITING_EVENT":
+            blockers.append("candidate_gap_waiting_event")
+    return list(dict.fromkeys(blockers))
+
+
+def evidence_maturity(seed, state=None):
+    seed = effective_seed(state, seed) if isinstance(state, dict) else seed
     sources = {
         _source_organization(c)
         for c in seed.get("evidence", [])
@@ -407,24 +492,34 @@ def _catalyst_gate(state, seed):
 
 def assess_seed(state, seed):
     """Stateful screen-eligibility projection for one evidence path."""
-    evidence_state = evidence_maturity(seed)
+    effective = effective_seed(state, seed)
+    evidence_state = evidence_maturity(effective)
     blockers = []
     if evidence_state != READY:
-        seed_blockers = seed_contract_blockers(seed)
+        seed_blockers = seed_contract_blockers(effective)
         sources = {
             _source_organization(c)
-            for c in seed.get("evidence", [])
+            for c in effective.get("evidence", [])
             if crux_engine.valid_citation(c) and _source_organization(c)
         }
         if len(sources) < 2:
             seed_blockers.append("insufficient_independent_seed_sources")
+        seed_blockers.extend(_candidate_gap_blockers(state, seed.get("seed_id")))
         return {
             "evidence_maturity": evidence_state,
             "screening_status": EVIDENCE_BACKED,
             "blockers": list(dict.fromkeys(seed_blockers or ["seed_evidence_incomplete"])),
             "origin_status": state.get("cruxes", {}).get(seed.get("origin_crux"), {}).get("status"),
         }
-    origin_blockers = _origin_gate(state, seed)
+    gap_blockers = _candidate_gap_blockers(state, seed.get("seed_id"))
+    if gap_blockers:
+        return {
+            "evidence_maturity": evidence_state,
+            "screening_status": EVIDENCE_BACKED,
+            "blockers": gap_blockers,
+            "origin_status": state.get("cruxes", {}).get(seed.get("origin_crux"), {}).get("status"),
+        }
+    origin_blockers = _origin_gate(state, effective)
     if origin_blockers:
         return {
             "evidence_maturity": evidence_state,
@@ -439,7 +534,7 @@ def assess_seed(state, seed):
             "blockers": ["root_thesis_unconverged"],
             "origin_status": state.get("cruxes", {}).get(seed.get("origin_crux"), {}).get("status"),
         }
-    catalyst_state, catalyst_blockers = _catalyst_gate(state, seed)
+    catalyst_state, catalyst_blockers = _catalyst_gate(state, effective)
     return {
         "evidence_maturity": evidence_state,
         "screening_status": catalyst_state,
@@ -490,7 +585,7 @@ def promotion_assessment(state, seed):
     """Return the only cross-system Thesis-promotion contract."""
     state_name = candidate_state(state, seed)
     screen = _latest_screen(state, seed.get("seed_id"))
-    blockers = list(seed_contract_blockers(seed))
+    blockers = list(seed_contract_blockers(effective_seed(state, seed)))
     if state_name == EVIDENCE_BACKED:
         blockers.extend(assess_seed(state, seed).get("blockers", []))
     elif state_name == READY:
@@ -527,7 +622,7 @@ def refresh_candidate_states(state):
         if not isinstance(seed, dict) or not seed.get("seed_id"):
             continue
         promotion = promotion_assessment(state, seed)
-        seed["maturity"] = evidence_maturity(seed)
+        seed["maturity"] = evidence_maturity(seed, state)
         seed["candidate_state"] = promotion["candidate_state"]
         seed["promotion_eligibility"] = promotion["promotion_eligibility"]
         seed["promotion_blockers"] = promotion["blocking_reasons"]
@@ -554,11 +649,12 @@ def entity_views(state):
         assessed = [(seed, assess_seed(state, seed)) for seed in paths]
         assessed.sort(key=lambda item: (
             priority.get(item[1]["screening_status"], 99),
-            -len(item[0].get("evidence", [])),
+            -len(effective_seed(state, item[0]).get("evidence", [])),
             item[0].get("first_seen_round", 0),
             item[0].get("seed_id", ""),
         ))
-        representative, assessment = assessed[0]
+        representative_raw, assessment = assessed[0]
+        representative = effective_seed(state, representative_raw)
         out.append({
             "entity_id": entity_id(representative),
             "entity_identity": identity,
