@@ -17,12 +17,20 @@ from utils import get_scratch_dir, load_json_safe, save_json
 SCHEMA = "trade-nothing.run-manifest.v1"
 ENVELOPE_SCHEMA = "trade-nothing.stage-envelope.v1"
 RUN_ID_RE = re.compile(r"^RUN-[0-9]{8}-[A-F0-9]{12}$")
+RUN_PURPOSES = {
+    "UNSPECIFIED",
+    "PRODUCTION_RESEARCH",
+    "LIVE_DISCOVERY_BENCHMARK",
+    "CLOSED_PACKET_BENCHMARK",
+    "HISTORICAL_REPLAY",
+    "CONTROLLED_FIXTURE",
+}
 CONTROL_RESULT_KEYS = (
     "status", "topic", "stage_id", "round", "round_completed", "as_of_date",
     "formal_report_allowed", "instruction", "reason", "missing_roles", "issues",
     "blockers", "unresolved_cruxes", "candidate_state", "screening_state",
     "verification_state", "available_report_views", "report_view",
-    "state_path", "rounds_completed", "last_convergence", "execution_summary",
+    "state_path", "run_purpose", "rounds_completed", "last_convergence", "execution_summary",
 )
 
 
@@ -76,8 +84,15 @@ def new_run_id():
     return f"RUN-{day}-{uuid.uuid4().hex[:12].upper()}"
 
 
+def normalize_run_purpose(value):
+    purpose = str(value or "UNSPECIFIED").strip().upper()
+    if purpose not in RUN_PURPOSES:
+        raise ValueError("run_purpose_invalid")
+    return purpose
+
+
 def create_manifest(topic, *, state_path="", as_of_date="", runtime_isolation="unverified",
-                    adopted=False):
+                    run_purpose="UNSPECIFIED", adopted=False):
     topic = str(topic or "").strip()
     if not topic:
         raise ValueError("topic_required")
@@ -85,6 +100,7 @@ def create_manifest(topic, *, state_path="", as_of_date="", runtime_isolation="u
     state_path = _validated_state_path(state_path) if state_path else _validated_state_path(
         os.path.join(get_scratch_dir(), "v2-state", f"{run_id}_v2_state.json")
     )
+    run_purpose = normalize_run_purpose(run_purpose)
     manifest = {
         "schema": SCHEMA,
         "run_id": run_id,
@@ -97,6 +113,7 @@ def create_manifest(topic, *, state_path="", as_of_date="", runtime_isolation="u
         "stage": "adopted" if adopted else "created",
         "status": "active",
         "runtime_isolation": str(runtime_isolation or "unverified"),
+        "run_purpose": run_purpose,
         "latest_envelope": {},
         "failure_count": 0,
         "method_identity": method_identity.build_method_identity(),
@@ -121,6 +138,7 @@ def adopt_manifest(topic, state_path):
         runtime_isolation=(state.get("runtime_contract") or {}).get(
             "isolation_status", "unverified"
         ),
+        run_purpose=(state.get("runtime") or {}).get("run_purpose", "UNSPECIFIED"),
         adopted=True,
     )
 
@@ -133,6 +151,7 @@ def load_manifest(run_id):
         raise ValueError("run_manifest_id_mismatch")
     if data.get("method_identity"):
         method_identity.validate_method_identity(data["method_identity"])
+    data["run_purpose"] = normalize_run_purpose(data.get("run_purpose"))
     data["state_path"] = _validated_state_path(data.get("state_path"))
     return data
 
@@ -159,6 +178,9 @@ def resolve_context(*, run_id="", state_path="", topic=""):
             "run_id": "",
             "topic": state_topic or supplied_topic,
             "state_path": path,
+            "run_purpose": normalize_run_purpose(
+                (state.get("runtime") or {}).get("run_purpose", "UNSPECIFIED")
+            ),
             "schema": "state-path-only",
         }
     return None
@@ -170,6 +192,9 @@ def bind_context(context):
     os.environ["TRADE_NOTHING_STATE_PATH"] = context["state_path"]
     if context.get("run_id"):
         os.environ["TRADE_NOTHING_RUN_ID"] = context["run_id"]
+    os.environ["TRADE_NOTHING_RUN_PURPOSE"] = normalize_run_purpose(
+        context.get("run_purpose")
+    )
 
 
 def save_checkpoint(run_id, stage_id, payload):

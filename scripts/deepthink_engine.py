@@ -1,5 +1,5 @@
 """
-Trade Nothing v0.9.4 — DeepThink Engine
+Trade Nothing v0.9.5 — DeepThink Engine
 
 统一控制器：状态追踪 + 收敛判定 + 12轮熔断 + 未反驳攻击向量 JSON 数据存储。
 已升级为工业级/顶刊水平：集成邓氏抽象论证框架、信息商衰减、确定性贝叶斯赔率更新与平庸共识过滤器。
@@ -692,7 +692,7 @@ def cmd_status():
 # ─── CLI ───
 
 def main():
-    parser = argparse.ArgumentParser(description="DeepThink Engine v0.9.4")
+    parser = argparse.ArgumentParser(description="DeepThink Engine v0.9.5")
 
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--start", action="store_true", help="初始化新分析")

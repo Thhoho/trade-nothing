@@ -18,6 +18,7 @@ class RunRegistryTests(unittest.TestCase):
         self.old_scratch = os.environ.get("TRADE_NOTHING_SCRATCH_DIR")
         self.old_state = os.environ.pop("TRADE_NOTHING_STATE_PATH", None)
         self.old_run = os.environ.pop("TRADE_NOTHING_RUN_ID", None)
+        self.old_purpose = os.environ.pop("TRADE_NOTHING_RUN_PURPOSE", None)
         os.environ["TRADE_NOTHING_SCRATCH_DIR"] = self.tmp.name
 
     def tearDown(self):
@@ -33,6 +34,10 @@ class RunRegistryTests(unittest.TestCase):
             os.environ["TRADE_NOTHING_RUN_ID"] = self.old_run
         else:
             os.environ.pop("TRADE_NOTHING_RUN_ID", None)
+        if self.old_purpose is not None:
+            os.environ["TRADE_NOTHING_RUN_PURPOSE"] = self.old_purpose
+        else:
+            os.environ.pop("TRADE_NOTHING_RUN_PURPOSE", None)
         self.tmp.cleanup()
 
     def test_run_id_owns_state_path_and_rejects_topic_drift(self):
@@ -47,6 +52,18 @@ class RunRegistryTests(unittest.TestCase):
                 run_id=manifest["run_id"], topic="Exact topic?"
             )
 
+    def test_run_purpose_is_validated_frozen_and_bound_to_runtime(self):
+        manifest = run_registry.create_manifest(
+            "Production topic", run_purpose="PRODUCTION_RESEARCH"
+        )
+        self.assertEqual(manifest["run_purpose"], "PRODUCTION_RESEARCH")
+        run_registry.bind_context(manifest)
+        self.assertEqual(
+            os.environ["TRADE_NOTHING_RUN_PURPOSE"], "PRODUCTION_RESEARCH"
+        )
+        with self.assertRaisesRegex(ValueError, "run_purpose_invalid"):
+            run_registry.create_manifest("Bad purpose", run_purpose="LIVEISH")
+
     def test_manifest_rejects_method_contract_drift(self):
         manifest = run_registry.create_manifest("Pinned method")
         path = run_registry.manifest_path(manifest["run_id"])
@@ -59,11 +76,16 @@ class RunRegistryTests(unittest.TestCase):
 
     def test_adopt_existing_state_without_renaming_it(self):
         path = os.path.join(self.tmp.name, "v2-state", "legacy.json")
-        save_json(path, {"topic": "Legacy exact topic", "rounds": []})
+        save_json(path, {
+            "topic": "Legacy exact topic",
+            "rounds": [],
+            "runtime": {"run_purpose": "HISTORICAL_REPLAY"},
+        })
         manifest = run_registry.adopt_manifest("", path)
         self.assertEqual(manifest["topic"], "Legacy exact topic")
         self.assertEqual(manifest["state_path"], path)
         self.assertEqual(manifest["stage"], "adopted")
+        self.assertEqual(manifest["run_purpose"], "HISTORICAL_REPLAY")
 
     def test_envelope_is_bounded_and_updates_manifest(self):
         manifest = run_registry.create_manifest("Envelope topic")

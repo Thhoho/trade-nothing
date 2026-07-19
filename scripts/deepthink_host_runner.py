@@ -353,6 +353,9 @@ def main():
     start.add_argument("--topic", required=True)
     start.add_argument("--frame-json", required=True)
     start.add_argument("--runtime-isolation", default="verified")
+    start.add_argument(
+        "--run-purpose", required=True, choices=sorted(run_registry.RUN_PURPOSES - {"UNSPECIFIED"})
+    )
     _runner_args(start)
     adopt = sub.add_parser("adopt")
     adopt.add_argument("--topic", default="")
@@ -393,7 +396,9 @@ def main():
         return
     if args.command == "start":
         context = run_registry.create_manifest(
-            args.topic, runtime_isolation=args.runtime_isolation
+            args.topic,
+            runtime_isolation=args.runtime_isolation,
+            run_purpose=args.run_purpose,
         )
         run_registry.bind_context(context)
         initialized = orchestrator.cmd_init(

@@ -6,7 +6,8 @@ identity, stage checkpoints, and bounded continuation.
 
 ## Invariants
 
-1. Create one `RUN-YYYYMMDD-...` id before initialization, or adopt one exact existing state path.
+1. Create one `RUN-YYYYMMDD-...` id and select one explicit `run_purpose` before initialization,
+   or adopt one exact existing state path without inventing a missing purpose.
 2. After registration, address every stage by `run_id`; do not reconstruct topic strings.
 3. Keep state under `TRADE_NOTHING_SCRATCH_DIR`. A manifest may not point outside that root.
 4. Store structured role JSON, prompt hash, payload hash, process id, invocation id, exit status,
@@ -55,7 +56,7 @@ creation, or a trade.
 ```bash
 # New run after inline Framer output
 python3 scripts/deepthink_host_runner.py start --topic "TARGET" \
-  --frame-json '<json>' --round-budget 1
+  --frame-json '<json>' --run-purpose PRODUCTION_RESEARCH --round-budget 1
 
 # Existing legacy state
 python3 scripts/deepthink_host_runner.py adopt --state-path "/.../v2_state.json"

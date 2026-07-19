@@ -18,7 +18,7 @@ description: >
   or any agent framework supporting sub-agent delegation.
 ---
 
-# Trade Nothing v0.9.4 — The Sovereign Alpha Hunter
+# Trade Nothing v0.9.5 — The Sovereign Alpha Hunter
 
 > **"You are not a commentator explaining past facts; you are a hunter seeking misalignments in the mist. Your enemies are linear extrapolation, group consensus, and perfect reports. Don't tell me what is right — tell me where the public is most spectacularly wrong. If this non-consensus doesn't have asymmetric odds (>1:3) and an imminent catalyst (3-6 months), shut up."**
 
@@ -194,7 +194,7 @@ roles, dispatches Judge separately, and never retries a failed role automaticall
 
 ```bash
 python3 scripts/deepthink_host_runner.py start --topic "TARGET" \
-  --frame-json '<framer_output>' --round-budget 1
+  --frame-json '<framer_output>' --run-purpose PRODUCTION_RESEARCH --round-budget 1
 # Continue only after the caller authorizes more runtime/research budget:
 python3 scripts/deepthink_host_runner.py resume --run-id "RUN-..." --round-budget 1
 # Adopt a pre-v0.12 state once, then address it only by run_id:
@@ -390,8 +390,10 @@ When handing a state to `tradenothing-next`, read `references/project-handoff-pr
 `scripts/project_handoff.py --check` before export. Never hand the product a Markdown conclusion,
 raw role transcripts, an unverified JSON copy, or a historical state repaired after the fact.
 Lesson selection remains a separate human action in the product.
-Every new deepthink2 run pins a deterministic `method_identity` over the operational skill bundle.
-Resume fails closed after method drift, and project-handoff v2 refuses samples without that identity.
+Every new deepthink2 run pins a deterministic `method_identity` over the operational skill bundle
+and an explicit `run_purpose` before research begins. Resume fails closed after method drift, and
+project-handoff v3 refuses samples without that identity or purpose. Only
+`PRODUCTION_RESEARCH` is eligible for the product effectiveness cohort.
 
 **Data tiers (取数分层):** Tier-2 = WebSearch (the sub-agents' primary qualitative engine — broad,
 robust, carries URLs that flow into the ledger/References). Tier-1 = `scripts/tier1_providers.py`
@@ -436,7 +438,8 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "Topi
   --snapshots snapshots.json --verifier '<json>' --verifier-isolation verified
 
 # Create/adopt immutable run identity for low-level manual orchestration
-python3 scripts/deepthink_orchestrator_v2.py --create-run --topic "Topic Name"
+python3 scripts/deepthink_orchestrator_v2.py --create-run --topic "Topic Name" \
+  --run-purpose PRODUCTION_RESEARCH
 python3 scripts/deepthink_orchestrator_v2.py --adopt-run --state-path "/.../v2_state.json"
 # Thereafter replace --topic with --run-id RUN-... on low-level commands.
 
@@ -488,7 +491,7 @@ copied with the skill.
 
 ---
 
-*Trade Nothing v0.9.4 — Hunt Alpha, Not Consensus.*
+*Trade Nothing v0.9.5 — Hunt Alpha, Not Consensus.*
 *Adversarial multi-agent architecture with full lifecycle negative feedback loops.*
 
 

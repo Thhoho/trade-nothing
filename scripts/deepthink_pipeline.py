@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Trade Nothing v0.9.4 — DeepThink Pipeline Orchestration Helper
+Trade Nothing v0.9.5 — DeepThink Pipeline Orchestration Helper
 
 Automates:
 1. Dynamic prior active memory extraction and injection (with semantic concept aliasing).
@@ -231,7 +231,7 @@ def send_webhook_notification(webhook_url: str, topic: str, attack_text: str, re
                 "content": {
                     "post": {
                         "zh_cn": {
-                            "title": f"🚨 [Trade Nothing v0.9.4] 质证逻辑漏洞预警: {topic}",
+                            "title": f"🚨 [Trade Nothing v0.9.5] 质证逻辑漏洞预警: {topic}",
                             "content": [
                                 [
                                     {"tag": "text", "text": "未反驳致命攻击向量:\n"},
@@ -252,7 +252,7 @@ def send_webhook_notification(webhook_url: str, topic: str, attack_text: str, re
         else:
             payload = {
                 "text": (
-                    f"🚨 *[Trade Nothing v0.9.4] 质证逻辑漏洞预警: {topic}*\n\n"
+                    f"🚨 *[Trade Nothing v0.9.5] 质证逻辑漏洞预警: {topic}*\n\n"
                     f"*未反驳致命攻击向量*:\n> {attack_text}\n\n"
                     f"*未能推翻归因*:\n> {reason}\n\n"
                     f"*触发监控时间*: `{trigger_date_str}`\n"
@@ -343,7 +343,7 @@ target_date: {trigger_date_str}
 # [TODO] Trade Nothing: Unresolved Attack on {topic}
 
 ## Description
-This issue was dynamically harvested by the Trade Nothing v0.9.4 Pipeline due to an unresolved adversarial attack in Dung's graph.
+This issue was dynamically harvested by the Trade Nothing v0.9.5 Pipeline due to an unresolved adversarial attack in Dung's graph.
 
 **Attack Vector**:
 {attack_text}
@@ -593,7 +593,7 @@ def generate_next_round_prompts(topic: str, state_file: str):
         )
 
     # Detective next round prompt
-    detective_prompt = f"""Role: Trade Nothing v0.9.4 - The Detective [Round {next_round}]
+    detective_prompt = f"""Role: Trade Nothing v0.9.5 - The Detective [Round {next_round}]
 Topic: {topic}
 
 ## 核心任务
@@ -624,7 +624,7 @@ Topic: {topic}
 JSON: evidence_chain, rebuttals, variant_perception。"""
 
     # Inquisitor next round prompt
-    inquisitor_prompt = f"""Role: Trade Nothing v0.9.4 - The Inquisitor [Round {next_round}]
+    inquisitor_prompt = f"""Role: Trade Nothing v0.9.5 - The Inquisitor [Round {next_round}]
 Topic: {topic}
 
 ## 核心任务
@@ -665,7 +665,7 @@ JSON: lethal_attack_vectors, cognitive_biases_detected, death_path。"""
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Trade Nothing v0.9.4 Pipeline Manager")
+    parser = argparse.ArgumentParser(description="Trade Nothing v0.9.5 Pipeline Manager")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--extract", action="store_true", help="Extract context-aware prior constraints from Evolution.md")
     group.add_argument("--harvest", action="store_true", help="Harvest unrefuted attacks and convert to issues/reminders")

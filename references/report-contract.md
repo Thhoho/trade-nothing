@@ -9,7 +9,8 @@ words.
 - `brief`: root-thesis verdict, what survived/failed, candidate counts, the only legal next action,
   change trigger, and runtime limits. Prefer this when parent-context cost matters.
 - `cards`: one card per exact candidate identity. Show status before narrative, then economic
-  exposure, expectation gap, pricing anchor, catalyst, falsifier, blockers, and next action.
+  exposure, expectation gap, pricing anchor, explicit trading vehicle and bilateral tradability
+  assessment, catalyst, falsifier, blockers, and next action.
 - `audit`: complete crux ledger, source registry, CandidateScreen matrix, snapshot alignment, and
   runtime details.
 - `full`: `brief -> cards -> collapsed audit`. This is the default persisted Markdown artifact.

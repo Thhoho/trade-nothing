@@ -217,6 +217,28 @@ def _candidate_next_action(candidate_state, blockers=None):
     }.get(candidate_state, ("STOP_UNKNOWN_STATE", "停止晋级并检查候选状态。"))
 
 
+def _trading_vehicle(seed):
+    asset_type = _clean(seed.get("asset_type")) or "UNSPECIFIED_ASSET"
+    ticker = _clean(seed.get("ticker")) if seed.get("ticker") else ""
+    if ticker:
+        return f"{asset_type} / {ticker}"
+    return f"{asset_type} / 未给出可直接交易代码"
+
+
+def _screen_dimension_summary(screen, dimension):
+    dimensions = screen.get("dimensions") if isinstance(screen, dict) else None
+    combined = dimensions.get(dimension) if isinstance(dimensions, dict) else None
+    if not isinstance(combined, dict):
+        return "UNSCREENED：尚未由双边 CandidateScreen 验证"
+    findings = []
+    for side, label in (("analyst", "Analyst"), ("skeptic", "Skeptic")):
+        item = combined.get(side) if isinstance(combined.get(side), dict) else {}
+        answer = _clean(item.get("answer")) or "UNKNOWN"
+        finding = _clean(item.get("finding"))
+        findings.append(f"{label} {answer}" + (f"（{finding}）" if finding else ""))
+    return f"{_clean(combined.get('state')) or 'INCOMPLETE'}：" + "；".join(findings)
+
+
 def _candidate_cards(state):
     latest_screens = candidate_screen_engine.latest_by_seed(state)
     seed_by_id = {
@@ -278,6 +300,8 @@ def _candidate_cards(state):
             "economic_exposure": _clean(seed.get("economic_exposure")),
             "expectation_gap": _clean(seed.get("why_market_may_miss")),
             "pricing_anchor": opportunity_engine.pricing_anchor_text(seed.get("pricing_anchor")),
+            "trading_vehicle": _trading_vehicle(seed),
+            "tradability_assessment": _screen_dimension_summary(screen, "TRADABILITY"),
             "catalyst": _clean(seed.get("catalyst")),
             "falsifier": _clean(seed.get("falsifier")),
             "screen_status": screen.get("status", "UNSCREENED"),
@@ -1000,6 +1024,8 @@ def _render_candidate_cards(view):
             f"经济暴露: {card['economic_exposure']}。",
             f"- **预期差**: {card['expectation_gap']}。",
             f"- **定价锚**: {card['pricing_anchor']}。",
+            f"- **可交易载体**: {card['trading_vehicle']}；"
+            f"可交易性 `{card['tradability_assessment']}`。",
             f"- **催化 / 反证**: {card['catalyst']} / {card['falsifier']}。",
             f"- **证据边界**: 隔离 `{card['isolation_status']}`；独立价值路径 "
             f"{card['path_count']} 条，路径之间不得拼接证据晋级。",

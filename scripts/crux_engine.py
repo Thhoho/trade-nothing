@@ -6,9 +6,10 @@ Replaces the degenerate single-posterior + LFI layer with a per-CRUX ledger:
 
   * Each load-bearing crux carries a bounded debate-support score. It is a
     deterministic debate-control heuristic, not a calibrated market probability.
-  * Per round, ONE decorrelated update per crux (judge signal), with mean-reversion
-    decay and a hard clamp |L| <= ln(L_MAX_ODDS) -> a single crux can never exceed
-    ~80/20 from debate alone. No 0%/100% pinning.
+  * Per evidence-bearing round, ONE decorrelated update per crux (judge signal),
+    with mean-reversion decay and a hard clamp |L| <= ln(L_MAX_ODDS) -> a single
+    crux can never exceed ~80/20 from debate alone. A zero signal carries support
+    forward unchanged because missing evidence is not contrary evidence.
   * Convergence = decision-readiness: stop when every crux is RESOLVED or converted
     to a MONITORABLE watch-item AND the decision is stable. Achievable (unlike
     "no attack survives", which never converged: open_attacks went 2->30).
@@ -28,7 +29,7 @@ from urllib.parse import urlparse
 
 # ── tunables (configurable; defaults from the 绿色算力 PoC) ──
 K            = 0.9              # per-round gain. strong evidence (|s|=1) -> ±0.9 log-odds
-DECAY        = 0.88             # mean-reversion of stale belief toward 0.5
+DECAY        = 0.88             # mean-reversion applied only on evidence-bearing updates
 L_MAX        = math.log(4.0)    # clamp -> single-crux prob bounded to [0.20, 0.80]
 MIN_ROUNDS   = 3
 MAX_ROUNDS   = 12               # hard fuse (should rarely be hit now)
@@ -309,7 +310,8 @@ def submit_round(state, round_num, judge_signals, round_context=None):
         if cx["retired"]:
             cx["p_history"].append(_sig(cx["L"]))   # carry forward; not re-debated
             continue
-        cx["L"] = _clamp(DECAY * cx["L"] + K * s, -L_MAX, L_MAX)
+        if s != 0.0:
+            cx["L"] = _clamp(DECAY * cx["L"] + K * s, -L_MAX, L_MAX)
         cx["p_history"].append(_sig(cx["L"]))
         cx["last_signal"] = s
         if s != 0.0:                                # contested this round

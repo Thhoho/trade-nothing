@@ -381,6 +381,14 @@ def _save(topic, state):
     state.setdefault("runtime", {})["state_path"] = _path(topic)
     if os.environ.get("TRADE_NOTHING_RUN_ID"):
         state["runtime"]["run_id"] = os.environ["TRADE_NOTHING_RUN_ID"]
+    if os.environ.get("TRADE_NOTHING_RUN_PURPOSE"):
+        requested_purpose = run_registry.normalize_run_purpose(
+            os.environ["TRADE_NOTHING_RUN_PURPOSE"]
+        )
+        frozen_purpose = str(state["runtime"].get("run_purpose") or "").strip().upper()
+        if frozen_purpose and frozen_purpose != requested_purpose:
+            raise ValueError("run_purpose_drift")
+        state["runtime"]["run_purpose"] = requested_purpose
     save_json(_path(topic), state)
 
 
@@ -1581,6 +1589,7 @@ def main():
                     choices=["verified", "degraded", "unverified"])
     ap.add_argument("--runtime-isolation", default="unverified",
                     choices=["verified", "degraded", "unverified"])
+    ap.add_argument("--run-purpose", default="", choices=sorted(run_registry.RUN_PURPOSES))
     ap.add_argument("--isolation-receipt", default="")
     ap.add_argument("--snapshots", default=""); ap.add_argument("--verifier", default="")
     ap.add_argument("--claim-id", default="")
@@ -1601,18 +1610,22 @@ def main():
         return selftest()
     if a.create_run or a.adopt_run:
         try:
+            if a.create_run and not a.run_purpose:
+                raise ValueError("run_purpose_required_for_new_run")
             manifest = (
                 run_registry.adopt_manifest(a.topic, a.state_path)
                 if a.adopt_run
                 else run_registry.create_manifest(
                     a.topic, state_path=a.state_path,
                     runtime_isolation=a.runtime_isolation,
+                    run_purpose=a.run_purpose,
                 )
             )
             out = {
                 "status": "run_adopted" if a.adopt_run else "run_created",
                 "topic": manifest["topic"],
                 "run_id": manifest["run_id"],
+                "run_purpose": manifest["run_purpose"],
                 "state_path": manifest["state_path"],
                 "instruction": (
                     "后续命令只传 --run-id；不要再用自然语言 topic 寻址。"

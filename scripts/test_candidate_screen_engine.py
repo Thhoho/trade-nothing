@@ -652,6 +652,13 @@ class CandidateScreenReportTests(unittest.TestCase):
         model = report_v2.build_report_view_model(st)
         self.assertEqual(model["candidate_cards"][0]["candidate_state"], "THESIS_CANDIDATE")
         self.assertEqual(
+            model["candidate_cards"][0]["trading_vehicle"], "LISTED_EQUITY / AO"
+        )
+        self.assertTrue(
+            model["candidate_cards"][0]["tradability_assessment"].startswith("SUPPORTED：")
+        )
+        self.assertIn("**可交易载体**: LISTED_EQUITY / AO", md)
+        self.assertEqual(
             model["candidate_cards"][0]["next_action_code"],
             "RUN_CLAIM_VERIFICATION",
         )

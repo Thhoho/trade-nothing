@@ -70,7 +70,11 @@ def fixture_state():
             "lesson_constraints": [{"lesson_id": 7, "title": "fixture"}],
             "use_policy": "framing only",
         },
-        "runtime": {"run_id": "RUN-20260715-ABCDEF123456", "other": "drop"},
+        "runtime": {
+            "run_id": "RUN-20260715-ABCDEF123456",
+            "run_purpose": "PRODUCTION_RESEARCH",
+            "other": "drop",
+        },
         "rounds": [{"detective": {"raw": "must not cross handoff"}}],
         "candidate_screen_dispatches": [{"prompt": "drop"}],
     }
@@ -94,10 +98,29 @@ class ProjectHandoffTests(unittest.TestCase):
             "RSP-20260715-ABCDEF123456",
         )
         self.assertEqual(first["state"]["cruxes"]["C1"]["p_history"], [0.2])
+        self.assertEqual(
+            first["state"]["runtime"],
+            {
+                "run_id": "RUN-20260715-ABCDEF123456",
+                "run_purpose": "PRODUCTION_RESEARCH",
+            },
+        )
         expected = hashlib.sha256(
             project_handoff.canonical_json(first["state"]).encode("utf-8")
         ).hexdigest()
         self.assertEqual(first["handoff_integrity"]["state_sha256"], expected)
+
+    def test_v3_requires_explicit_run_purpose(self):
+        state = fixture_state()
+        state["runtime"].pop("run_purpose")
+        assessment = project_handoff.preflight_handoff(state)
+        self.assertFalse(assessment["exportable"])
+        self.assertIn(
+            "RUN_PURPOSE_INVALID",
+            {item["code"] for item in assessment["blockers"]},
+        )
+        with self.assertRaisesRegex(ValueError, "handoff preflight blocked"):
+            project_handoff.build_handoff(state)
 
     def test_preflight_reports_all_legacy_blockers_without_rewriting_state(self):
         legacy = fixture_state()

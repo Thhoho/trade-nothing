@@ -179,10 +179,27 @@ class EvidenceGateTests(unittest.TestCase):
         crux_engine.submit_round(st, 2, {"C1": {"signal": 1, "citations": [item]}})
         cx = st["cruxes"]["C1"]
         self.assertEqual(len(cx["citations"]), 1)
-        self.assertLessEqual(cx["p_history"][-1], first)
+        self.assertEqual(cx["p_history"][-1], first)
         flags = st["rounds"][-1]["signals"]["C1"]["quality_flags"]
         self.assertIn("dropped_duplicate_evidence:1", flags)
         self.assertIn("signal_zeroed_no_valid_citation", flags)
+
+    def test_zero_signal_carries_forward_support_without_decay(self):
+        st = state()
+        crux_engine.submit_round(
+            st, 1, {"C1": {"signal": 1, "citations": [citation("new-evidence")]}}
+        )
+        before = st["cruxes"]["C1"]["p_history"][-1]
+        before_log_odds = st["cruxes"]["C1"]["L"]
+
+        crux_engine.submit_round(
+            st, 2, {"C1": {"signal": 0, "rationale": "no new evidence", "citations": []}}
+        )
+
+        cx = st["cruxes"]["C1"]
+        self.assertEqual(cx["p_history"][-1], before)
+        self.assertEqual(cx["L"], before_log_odds)
+        self.assertNotIn("C1", st["rounds"][-1]["fired_cruxes"])
 
     def test_independent_evidence_can_retire_a_crux(self):
         st = state()

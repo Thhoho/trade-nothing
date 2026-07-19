@@ -72,10 +72,13 @@ class HostRunnerTests(unittest.TestCase):
         self.old_scratch = os.environ.get("TRADE_NOTHING_SCRATCH_DIR")
         self.old_state = os.environ.pop("TRADE_NOTHING_STATE_PATH", None)
         self.old_run = os.environ.pop("TRADE_NOTHING_RUN_ID", None)
+        self.old_purpose = os.environ.pop("TRADE_NOTHING_RUN_PURPOSE", None)
         self.old_evolution = os.environ.get("TRADE_NOTHING_EVOLUTION_PATH")
         os.environ["TRADE_NOTHING_SCRATCH_DIR"] = self.tmp.name
         os.environ["TRADE_NOTHING_EVOLUTION_PATH"] = os.path.join(self.tmp.name, "missing.md")
-        self.context = run_registry.create_manifest("Stable run topic")
+        self.context = run_registry.create_manifest(
+            "Stable run topic", run_purpose="PRODUCTION_RESEARCH"
+        )
         run_registry.bind_context(self.context)
         initialized = orchestrator.cmd_init(
             self.context["topic"], frame(), runtime_isolation="verified"
@@ -87,6 +90,7 @@ class HostRunnerTests(unittest.TestCase):
             ("TRADE_NOTHING_SCRATCH_DIR", self.old_scratch),
             ("TRADE_NOTHING_STATE_PATH", self.old_state),
             ("TRADE_NOTHING_RUN_ID", self.old_run),
+            ("TRADE_NOTHING_RUN_PURPOSE", self.old_purpose),
             ("TRADE_NOTHING_EVOLUTION_PATH", self.old_evolution),
         ):
             if value is None:
@@ -94,6 +98,14 @@ class HostRunnerTests(unittest.TestCase):
             else:
                 os.environ[name] = value
         self.tmp.cleanup()
+
+    def test_initialized_state_freezes_manifest_run_purpose(self):
+        state = orchestrator._load(self.context["topic"])
+        self.assertEqual(state["runtime"]["run_purpose"], "PRODUCTION_RESEARCH")
+        os.environ["TRADE_NOTHING_RUN_PURPOSE"] = "CONTROLLED_FIXTURE"
+        with self.assertRaisesRegex(ValueError, "run_purpose_drift"):
+            orchestrator._save(self.context["topic"], state)
+        os.environ["TRADE_NOTHING_RUN_PURPOSE"] = "PRODUCTION_RESEARCH"
 
     def test_permission_bypass_is_explicit(self):
         safe = runner._command("agy", "p", 60)

@@ -17,7 +17,7 @@ import tempfile
 from typing import Any
 
 
-HANDOFF_SCHEMA = "trade-nothing.deepthink2.project-handoff.v2"
+HANDOFF_SCHEMA = "trade-nothing.deepthink2.project-handoff.v3"
 INTEGRITY_SCHEMA = "trade-nothing.project-handoff-integrity.v1"
 PREFLIGHT_SCHEMA = "trade-nothing.project-handoff-preflight.v1"
 QUESTION_TYPES = {
@@ -30,6 +30,13 @@ QUESTION_TYPES = {
 EDGE_STATES = {"EDGE_FOUND", "NO_EDGE", "INSUFFICIENT_EVIDENCE"}
 EVIDENCE_DIRECTIONS = {"BULL", "BEAR", "MIXED", "UNDETERMINED"}
 ACTIONABILITY_STATES = {"NONE", "MONITOR", "READY_FOR_SCREENING"}
+RUN_PURPOSES = {
+    "PRODUCTION_RESEARCH",
+    "LIVE_DISCOVERY_BENCHMARK",
+    "CLOSED_PACKET_BENCHMARK",
+    "HISTORICAL_REPLAY",
+    "CONTROLLED_FIXTURE",
+}
 STATE_FIELDS = (
     "topic",
     "decision_question",
@@ -76,7 +83,10 @@ def build_handoff(
     run_id = str(runtime.get("run_id") or "")
     if not re.fullmatch(r"RUN-[0-9]{8}-[A-F0-9]{12}", run_id):
         raise ValueError("state.runtime.run_id is missing or invalid")
-    compact["runtime"] = {"run_id": run_id}
+    run_purpose = str(runtime.get("run_purpose") or "").strip().upper()
+    if run_purpose not in RUN_PURPOSES:
+        raise ValueError("state.runtime.run_purpose is missing or invalid")
+    compact["runtime"] = {"run_id": run_id, "run_purpose": run_purpose}
 
     state_sha256 = hashlib.sha256(canonical_json(compact).encode("utf-8")).hexdigest()
     external_run_id = compact["runtime"]["run_id"]
@@ -309,6 +319,13 @@ def preflight_handoff(state: Any) -> dict[str, Any]:
             "RUN_ID_INVALID",
             "state.runtime.run_id",
             "immutable run_id RUN-YYYYMMDD-XXXXXXXXXXXX is required",
+        )
+    run_purpose = str(runtime.get("run_purpose") or "").strip().upper()
+    if run_purpose not in RUN_PURPOSES:
+        block(
+            "RUN_PURPOSE_INVALID",
+            "state.runtime.run_purpose",
+            "project-handoff v3 requires an explicit production, benchmark, replay, or fixture purpose",
         )
 
     runtime_contract = (
