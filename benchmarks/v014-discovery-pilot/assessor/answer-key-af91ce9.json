@@ -1,0 +1,90 @@
+{
+  "schema_version": "trade-nothing.discovery-answer-key.v1",
+  "suite_id": "v014-discovery-pilot-af91ce9",
+  "warning": "EVALUATOR ONLY. NEVER LOAD INTO A RESEARCH ARM OR RETRIEVAL GATEWAY RESPONSE.",
+  "cases": {
+    "regional_bank_systemic_short_2024": {
+      "relevant_doc_ids": [
+        "DOC-NYCB-Q4-2023",
+        "DOC-FED-FSR-OCT2023",
+        "DOC-FDIC-Q3-2023",
+        "DOC-OCC-FALL-2023",
+        "DOC-MARKET-REGIONAL-BANK-PRICES"
+      ],
+      "major_paths": [
+        "institution-specific credit loss",
+        "commercial-real-estate concentration",
+        "deposit and wholesale funding",
+        "securities unrealized losses",
+        "capital and regulatory threshold",
+        "sector ETF versus single-name expression"
+      ],
+      "false_opportunity_traps": [
+        "one bank proves system-wide insolvency",
+        "commercial-real-estate concentration alone proves near-term failure",
+        "NO_EDGE automatically means short"
+      ],
+      "comprehension_questions": [
+        "报告的根结论是系统性做空、单名风险，还是证据不足？",
+        "报告区分了哪些资产压力、融资压力与资本约束？",
+        "报告建议的唯一下一步行动及其关键否证条件是什么？"
+      ]
+    },
+    "glp1_value_capture_2024": {
+      "relevant_doc_ids": [
+        "DOC-LLY-Q1-2024",
+        "DOC-NVO-Q1-2024",
+        "DOC-NVO-CATALENT-SITES",
+        "DOC-CATALENT-DEAL",
+        "DOC-MARKET-GLP1-PRICES"
+      ],
+      "major_paths": [
+        "brand-drug economics",
+        "active-ingredient capacity",
+        "fill-finish capacity",
+        "delivery devices and packaging",
+        "independent CDMO",
+        "access pricing and reimbursement"
+      ],
+      "false_opportunity_traps": [
+        "Catalent is open-ended GLP-1 upside despite signed takeout",
+        "prescription growth means every supplier wins",
+        "announced 2026 capacity solves 2024 supply immediately"
+      ],
+      "comprehension_questions": [
+        "报告认为价值主要由品牌药、产能、器械还是独立供应商捕获？",
+        "报告如何处理 Catalent 已签收购对可交易性的影响？",
+        "报告保留的最佳下一步研究对象及关键否证条件是什么？"
+      ]
+    },
+    "ai_power_infrastructure_2025": {
+      "relevant_doc_ids": [
+        "DOC-IEA-ELECTRICITY-2024",
+        "DOC-CEG-MSFT-PPA",
+        "DOC-FERC-SUSQUEHANNA",
+        "DOC-WULF-CORE42",
+        "DOC-YF-AI-POWER-PRICES"
+      ],
+      "major_paths": [
+        "existing dispatchable generation",
+        "new generation and long-duration PPA",
+        "transmission and interconnection",
+        "electrical equipment",
+        "thermal management",
+        "convertible powered sites",
+        "co-location regulation and backup service"
+      ],
+      "false_opportunity_traps": [
+        "planned MW equals delivered MW",
+        "any cheap-power site is AI-ready",
+        "thematic demand forecast proves valuation upside",
+        "ignore customer credit and financing closure"
+      ],
+      "comprehension_questions": [
+        "报告认为真正稀缺的是电量、可交付容量、并网能力还是融资？",
+        "报告如何区分主题需求、市场定价和可交易载体？",
+        "报告保留的最佳机会路径及其关键否证条件是什么？"
+      ]
+    }
+  }
+}
