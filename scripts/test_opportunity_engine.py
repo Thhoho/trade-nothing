@@ -11,6 +11,15 @@ import opportunity_engine
 import report_v2
 
 
+def evidence_plan(crux_id):
+    return [
+        {"plan_id": f"SP-{crux_id}-1", "publisher_class": "ISSUER_OR_FILING",
+         "target_claim": f"issuer anchor {crux_id}", "search_query": f"issuer {crux_id}"},
+        {"plan_id": f"SP-{crux_id}-2", "publisher_class": "REGULATOR_OR_OFFICIAL_DATASET",
+         "target_claim": f"official anchor {crux_id}", "search_query": f"official {crux_id}"},
+    ]
+
+
 def citation(path, claim="candidate captures the bottleneck", number="1"):
     publisher_slug = re.sub(r"[^a-z0-9]+", "-", path.lower()).strip("-")
     return {
@@ -260,11 +269,13 @@ class OpportunityOrchestratorTests(unittest.TestCase):
             "candidate_cruxes": [
                 {"id": "C1", "label": "c1", "logic_role": "THESIS_HINGE",
                  "definition": "d1", "monitor_anchor": "m1",
+                 "evidence_plan": evidence_plan("C1"),
                  "falsifier": "f1", "catalyst_window": {
                      "event": "e1", "expected_by": "2026-10-31",
                      "date_status": "REVIEW_CHECKPOINT", "basis_claim_id": "P1"}},
                 {"id": "C2", "label": "c2", "logic_role": "THESIS_HINGE",
                  "definition": "d2", "monitor_anchor": "m2",
+                 "evidence_plan": evidence_plan("C2"),
                  "falsifier": "f2", "catalyst_window": {
                      "event": "e2", "expected_by": "2026-12-31",
                      "date_status": "REVIEW_CHECKPOINT", "basis_claim_id": "P1"}},

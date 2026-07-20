@@ -414,6 +414,7 @@ def _compact_cruxes(raw_cruxes: Any) -> dict[str, Any]:
                 "status",
                 "monitor_anchor",
                 "falsifier",
+                "evidence_plan",
                 "catalyst_window",
                 "best_bull",
                 "best_bear",

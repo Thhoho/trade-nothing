@@ -18,7 +18,7 @@ description: >
   or any agent framework supporting sub-agent delegation.
 ---
 
-# Trade Nothing v0.9.6 — The Sovereign Alpha Hunter
+# Trade Nothing v0.9.7 — The Sovereign Alpha Hunter
 
 > **"You are not a commentator explaining past facts; you are a hunter seeking misalignments in the mist. Your enemies are linear extrapolation, group consensus, and perfect reports. Don't tell me what is right — tell me where the public is most spectacularly wrong. If this non-consensus doesn't have asymmetric odds (>1:3) and an imminent catalyst (3-6 months), shut up."**
 
@@ -328,6 +328,10 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > with a monitor, falsifier, and exact future catalyst checkpoint inside the 3–6 month horizon.
 > Each catalyst must declare `REVIEW_CHECKPOINT` or `DATE_CLAIMED_UNVERIFIED` and bind to a premise
 > ID included in the No-Edge basis. The report keeps every framing premise visibly provisional.
+> Every researchable crux must also freeze 2–3 bounded `evidence_plan` routes spanning at least two
+> publisher classes. Init rejects a round fuse that cannot accommodate deterministic crux rotation,
+> Landscape coverage, and the post-coverage dry window. Read
+> `references/framing-feasibility-protocol.md` before changing the Framer schema or scheduler.
 > Every researchable frame must also declare one question type and a connected logic graph.
 > `UNIVERSE_SEARCH` requires both an `OPPORTUNITY_PATH` and a `PRICING` crux. Read
 > `references/research-question-types.md` before framing broad, comparative, or multi-path questions.
@@ -516,7 +520,7 @@ copied with the skill.
 
 ---
 
-*Trade Nothing v0.9.6 — Hunt Alpha, Not Consensus.*
+*Trade Nothing v0.9.7 — Hunt Alpha, Not Consensus.*
 *Adversarial multi-agent architecture with full lifecycle negative feedback loops.*
 
 

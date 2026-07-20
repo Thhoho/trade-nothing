@@ -23,7 +23,9 @@ Given a raw topic, do seven things and nothing else (do not search during framin
 4. **Decompose into 2–5 load-bearing cruxes** — the claims on which the thesis *lives or dies*.
    Each crux must be: (a) the real hinge, not a side issue; (b) physically checkable; (c) paired
    with a **monitor_anchor** (the concrete future datum that would settle it); and (d) assigned a
-   `logic_role`: `THESIS_HINGE`, `OPPORTUNITY_PATH`, `PRICING`, or `COMPARISON_AXIS`.
+   `logic_role`: `THESIS_HINGE`, `OPPORTUNITY_PATH`, `PRICING`, or `COMPARISON_AXIS`. Freeze an
+   `evidence_plan` with 2–3 bounded routes from at least two distinct publisher classes. These are
+   search contracts, not evidence or claims that the source exists.
 5. **No-Edge pre-check**: is there a researchable asymmetric angle at all? If the only theses on
    offer are priced-in consensus, set `is_researchable=false` — the orchestrator then emits a
    No-Edge statement and **spawns no sub-agents** (this is a feature, not a failure).
@@ -37,7 +39,8 @@ Given a raw topic, do seven things and nothing else (do not search during framin
    five required archetypes. Do not name a familiar company and reverse-engineer a path around it.
 
 Also list the **forbidden consensus** (平庸共识禁区) the debaters may not recycle, and a
-**suggested_max_rounds** scaled to contestedness (settled/simple → 3–4; genuinely contested → 6–8).
+**suggested_max_rounds** large enough for deterministic crux rotation, Landscape coverage, and the
+post-coverage harvest-dry window. The init gate computes the minimum and rejects an undersized fuse.
 
 ## Output and side-effect contract
 
@@ -92,6 +95,14 @@ Also list the **forbidden consensus** (平庸共识禁区) the debaters may not 
       "definition": "<the exact dispute>",
       "monitor_anchor": "<datum that settles it>",
       "falsifier": "<observable result that kills this crux>",
+      "evidence_plan": [
+        {
+          "plan_id": "SP-C1-1",
+          "publisher_class": "ISSUER_OR_FILING | CUSTOMER_OR_COUNTERPARTY | REGULATOR_OR_OFFICIAL_DATASET | EXCHANGE_OR_MARKET_DATA | PROJECT_OWNER | CREDITOR_OR_FINANCING_COUNTERPARTY | INDEPENDENT_INDUSTRY_SOURCE",
+          "target_claim": "<exact claim or number this route must support or refute>",
+          "search_query": "<one bounded primary-source query>"
+        }
+      ],
       "catalyst_window": {
         "event": "<observable event or review checkpoint>",
         "expected_by": "YYYY-MM-DD",
@@ -135,6 +146,11 @@ after `as_of_date` and no more than 190 days later for a `3-6M` frame.
 Every catalyst `basis_claim_id` must exist in `premise_audit` and also appear in
 `no_edge_precheck.basis_claim_ids`.
 
+Every researchable crux must contain 2–3 `evidence_plan` routes. `plan_id` and `search_query` must
+be unique within the crux, and the routes must use at least two distinct `publisher_class` values.
+Do not disguise two pages or query rewrites from the same publisher class as independent routes.
+The route only states where and what later agents should test; it does not establish a citation.
+
 Every crux must appear in `logic_graph.nodes` and have a directed path to `root_id`.
 Use `REQUIRED_FOR` for conjunctive hinges, `ALTERNATIVE_PATH` for disjunctive paths,
 `CAUSAL_PRECEDES` for chain links, `COMPARED_ON` for comparison axes, and `PRICING_FOR`
@@ -145,4 +161,6 @@ For an opportunity frame, return 5–7 landscape paths and include each archetyp
 more across the map. Every path must link to an existing crux, start as `HYPOTHESIS`, contain 3–6
 value-transfer nodes, and contain exactly two distinct search queries. Set `suggested_max_rounds`
 high enough for both Detective and Inquisitor to probe every path at two paths per role per round,
-plus one verdict-stability round. Omit `landscape_map` only for a pure thesis-challenge frame.
+rotate through every root crux, and then complete two harvest-dry rounds after the last required
+coverage round. Omit `landscape_map` only for a pure thesis-challenge frame. Read
+`references/framing-feasibility-protocol.md` for the exact deterministic gate.

@@ -938,8 +938,14 @@ def _render_audit(state, include_title=True):
         ref_text = " ".join(f"[{n}]" for n in nums) or "—"
         catalyst = item.get("catalyst_window", {}) if isinstance(item.get("catalyst_window"), dict) else {}
         trigger = catalyst.get("event") or item.get("monitor_anchor") or "—"
+        route_classes = [
+            str(route.get("publisher_class") or "")
+            for route in item.get("evidence_plan", [])
+            if isinstance(route, dict) and route.get("publisher_class")
+        ]
+        route_text = " / ".join(route_classes) or "—"
         L.append(f"- **{item['id']} {item['status']}**: 监控 {trigger}；"
-                 f"证伪 {item.get('falsifier') or '—'}。{ref_text}")
+                 f"证伪 {item.get('falsifier') or '—'}；冻结来源路线 {route_text}。{ref_text}")
     L.append("")
     L.append("### 候选线索边界")
     L.append(f"- 证据路径已按唯一候选去重展示；当前只有 "

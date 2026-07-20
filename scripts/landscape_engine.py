@@ -170,7 +170,7 @@ def _path_by_id(state):
     }
 
 
-def ensure_round_plan(state, round_num):
+def ensure_round_plan(state, round_num, dispatch_cruxes=None):
     """Assign the first two role-unprobed paths to each role, deterministically."""
     landscape = state.get("landscape_map")
     if not isinstance(landscape, dict):
@@ -179,13 +179,20 @@ def ensure_round_plan(state, round_num):
         if int(plan.get("round") or 0) == int(round_num):
             return plan
     paths = sorted(landscape.get("paths", []), key=lambda item: item.get("path_id", ""))
+    dispatch_cruxes = set(dispatch_cruxes or [])
     assignments = {}
     for role in ROLES:
         pending = [
-            item["path_id"] for item in paths
+            item for item in paths
             if role not in item.get("probes", {})
         ]
-        assignments[role] = pending[:MAX_PATHS_PER_ROLE_ROUND]
+        pending.sort(key=lambda item: (
+            0 if item.get("linked_crux_id") in dispatch_cruxes else 1,
+            item.get("path_id", ""),
+        ))
+        assignments[role] = [
+            item["path_id"] for item in pending[:MAX_PATHS_PER_ROLE_ROUND]
+        ]
     plan = {"round": int(round_num), "assignments": assignments}
     landscape["round_plans"].append(plan)
     landscape["round_plans"].sort(key=lambda item: int(item.get("round") or 0))

@@ -40,6 +40,7 @@ import opportunity_engine
 import candidate_gap_engine
 import candidate_screen_engine
 import claim_verification_engine
+import framing_feasibility
 import research_output
 import run_registry
 import research_start_packet
@@ -324,6 +325,7 @@ def _validate_frame(frame):
             issues.append("universe_search_requires_pricing_crux")
     issues.extend(_validate_logic_graph(frame.get("logic_graph"), crux_role_by_id))
     issues.extend(landscape_engine.validate_frame(frame))
+    issues.extend(framing_feasibility.validate_frame(frame))
     return sorted(set(issues))
 
 
@@ -526,9 +528,17 @@ def _dispatch_cruxes(state, open_ids, limit=2):
     except (TypeError, ValueError):
         configured = limit
     configured = max(1, min(3, configured))
+    pending_landscape_cruxes = {
+        str(item.get("linked_crux_id") or "")
+        for item in state.get("landscape_map", {}).get("paths", [])
+        if isinstance(item, dict)
+        and item.get("state", "UNPROBED") == "UNPROBED"
+        and item.get("linked_crux_id")
+    }
     ranked = sorted(
         open_ids,
         key=lambda cid: (
+            0 if cid in pending_landscape_cruxes else 1,
             0 if state["cruxes"][cid].get("first_contested") is None else 1,
             _last_scored_round(state, cid),
             abs(float(state["cruxes"][cid].get("p_history", [0.5])[-1]) - 0.5),
@@ -673,7 +683,7 @@ def frame_prompt(topic, start_context=None):
             f"[Framer · framer.md] Topic: {topic}\n"
             "立题：输出 decision_question / question_type / logic_graph / horizon / as_of_date / "
             "unit_of_analysis / thesis_seed / premise_audit / 2–5 candidate_cruxes(每条带 "
-            "logic_role、monitor_anchor、falsifier、catalyst_window) / "
+            "logic_role、monitor_anchor、falsifier、evidence_plan、catalyst_window) / "
             "forbidden_consensus / no_edge_precheck / suggested_max_rounds。机会型问题还必须输出 "
             "5–7 路 entity-agnostic landscape_map。严格按 framer.md 的 JSON 输出。"
             "只返回内联 JSON；禁止创建 Markdown、Google Drive、云文档或自选输出路径。")
@@ -696,7 +706,9 @@ def frame_prompt(topic, start_context=None):
 def dispatch_prompts(state, round_num):
     policy = _round_policy(state, round_num)
     open_ids = policy["dispatch_cruxes"]
-    landscape_plan = landscape_engine.ensure_round_plan(state, round_num)
+    landscape_plan = landscape_engine.ensure_round_plan(
+        state, round_num, dispatch_cruxes=open_ids
+    )
     fc = state.get("forbidden_consensus", [])
     lines = []
     for cid in open_ids:
@@ -712,7 +724,9 @@ def dispatch_prompts(state, round_num):
                      f"    我方当前最强点(bull): {cx.get('best_bull') or '（暂无）'}\n"
                      f"    监控锚点: {cx.get('monitor_anchor','')}\n"
                      f"    反证条件: {cx.get('falsifier','')}\n"
-                     f"    催化窗口: {catalyst_text}")
+                     f"    催化窗口: {catalyst_text}\n"
+                     f"    冻结证据路线: "
+                     f"{json.dumps(cx.get('evidence_plan', []), ensure_ascii=False)}")
     scope = "\n".join(lines)
     resolved = [f"{cid}({state['cruxes'][cid]['label']})" for cid, cx in state["cruxes"].items()
                 if cx["retired"] and cx["status"].startswith("RESOLVED")]
@@ -765,7 +779,8 @@ def dispatch_prompts(state, round_num):
         "每条本轮 crux 最多 2 次\n"
         "  2. 每条 crux 最多保留 2 个一级来源 + 1 个补充来源\n"
         "  3. 连续 2 次搜索没有新增一级证据，立即返回 UNKNOWN/INSUFFICIENT_EVIDENCE\n"
-        "  4. 禁止重复查询、重复域名和为了必须回答而换词无限搜索"
+        "  4. 优先执行该 crux 冻结的不同 publisher_class 证据路线；不得把同一发布者的换页查询当成第二路线\n"
+        "  5. 禁止重复查询、重复域名和为了必须回答而换词无限搜索"
     )
     scope_directive = (
         f"\n🎯 本轮调度契约: free_roam_allowed={str(policy['free_roam_allowed']).lower()}, "

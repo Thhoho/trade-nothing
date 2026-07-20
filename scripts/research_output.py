@@ -113,6 +113,7 @@ def _crux_view(cid, cx):
         "best_bear": cx.get("best_bear"),
         "monitor_anchor": cx.get("monitor_anchor", ""),
         "falsifier": cx.get("falsifier", ""),
+        "evidence_plan": cx.get("evidence_plan", []),
         "catalyst_window": catalyst,
         "seen_source_urls": sources[:5],
     }
@@ -326,7 +327,17 @@ def render_resolution_memo(state):
         L.append("| 优先 | crux | 状态 | 缺口代码 | 下一步只查什么 |")
         L.append("|:---:|:---|:---|:---|:---|")
         for index, item in enumerate(view["blocking_cruxes"], 1):
-            next_check = item["monitor_anchor"] or item["definition"] or "补充一级来源并形成双侧质证"
+            planned = [
+                f"{route.get('publisher_class')}: {route.get('target_claim')}"
+                for route in item.get("evidence_plan", [])
+                if isinstance(route, dict) and route.get("target_claim")
+            ]
+            next_check = (
+                "；".join(planned)
+                or item["monitor_anchor"]
+                or item["definition"]
+                or "补充一级来源并形成双侧质证"
+            )
             L.append(
                 f"| {index} | **{item['id']} {item['label']}** | {_status_label(item['status'])} | "
                 f"{', '.join(item['gap_codes']) or 'UNSTABLE'} | {_text(next_check)} |"

@@ -11,6 +11,15 @@ import opportunity_engine
 import report_v2
 
 
+def evidence_plan(crux_id):
+    return [
+        {"plan_id": f"SP-{crux_id}-1", "publisher_class": "ISSUER_OR_FILING",
+         "target_claim": f"issuer anchor {crux_id}", "search_query": f"issuer {crux_id}"},
+        {"plan_id": f"SP-{crux_id}-2", "publisher_class": "REGULATOR_OR_OFFICIAL_DATASET",
+         "target_claim": f"official anchor {crux_id}", "search_query": f"official {crux_id}"},
+    ]
+
+
 def citation(path, claim="path evidence"):
     return {
         "claim": claim,
@@ -50,8 +59,10 @@ def frame(path_count=5, suggested_max_rounds=5):
     return {
         "question_type": "UNIVERSE_SEARCH",
         "candidate_cruxes": [
-            {"id": "C1", "logic_role": "OPPORTUNITY_PATH"},
-            {"id": "C2", "logic_role": "PRICING"},
+            {"id": "C1", "logic_role": "OPPORTUNITY_PATH",
+             "evidence_plan": evidence_plan("C1")},
+            {"id": "C2", "logic_role": "PRICING",
+             "evidence_plan": evidence_plan("C2")},
         ],
         "landscape_map": {"paths": paths},
         "suggested_max_rounds": suggested_max_rounds,
@@ -101,11 +112,13 @@ def orchestrator_frame():
         "candidate_cruxes": [
             {"id": "C1", "label": "path", "logic_role": "OPPORTUNITY_PATH",
              "definition": "who captures economics", "monitor_anchor": "reported economics",
+             "evidence_plan": evidence_plan("C1"),
              "falsifier": "no measurable capture", "catalyst_window": {
                  "event": "path review", "expected_by": "2026-10-15",
                  "date_status": "REVIEW_CHECKPOINT", "basis_claim_id": "P1"}},
             {"id": "C2", "label": "pricing", "logic_role": "PRICING",
              "definition": "whether capture is priced", "monitor_anchor": "as-of anchor",
+             "evidence_plan": evidence_plan("C2"),
              "falsifier": "expectation already embeds capture", "catalyst_window": {
                  "event": "pricing review", "expected_by": "2026-10-15",
                  "date_status": "REVIEW_CHECKPOINT", "basis_claim_id": "P1"}},
@@ -192,6 +205,38 @@ class LandscapeDispatchTests(unittest.TestCase):
         self.assertEqual(first["assignments"]["detective"], ["L1", "L2"])
         self.assertEqual(first["assignments"]["inquisitor"], ["L1", "L2"])
         self.assertEqual(landscape_engine.ensure_round_plan(state, 1), first)
+
+    def test_assignment_prioritizes_paths_linked_to_dispatched_crux(self):
+        state = mapped_state()
+        state["landscape_map"]["paths"][-1]["linked_crux_id"] = "C2"
+        first = landscape_engine.ensure_round_plan(
+            state, 1, dispatch_cruxes=["C2"]
+        )
+        self.assertEqual(first["assignments"]["detective"][0], "L5")
+        self.assertEqual(first["assignments"]["inquisitor"][0], "L5")
+
+    def test_dispatch_keeps_pending_landscape_crux_in_scope(self):
+        raw = frame()
+        state = crux_engine.new_state(
+            "mapped", "find value capture", "3-6M",
+            [
+                {"id": "C1", "label": "path"},
+                {"id": "C2", "label": "pricing"},
+                {"id": "C3", "label": "economics"},
+            ],
+            question_type="UNIVERSE_SEARCH",
+        )
+        state["landscape_map"] = landscape_engine.initialize(raw)
+        state["cruxes"]["C1"]["first_contested"] = 1
+        state["cruxes"]["C2"]["first_contested"] = 1
+        state["rounds"] = [{
+            "round": 1,
+            "judge_raw": {"crux_signals": {"C1": {}, "C2": {}}},
+        }]
+        self.assertEqual(
+            orchestrator._dispatch_cruxes(state, ["C1", "C2", "C3"]),
+            ["C1", "C3"],
+        )
 
     def test_both_roles_must_probe_and_conflict_becomes_unknown(self):
         state = mapped_state()

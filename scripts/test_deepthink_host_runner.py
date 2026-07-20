@@ -10,6 +10,15 @@ import deepthink_orchestrator_v2 as orchestrator
 import run_registry
 
 
+def evidence_plan(crux_id):
+    return [
+        {"plan_id": f"SP-{crux_id}-1", "publisher_class": "ISSUER_OR_FILING",
+         "target_claim": f"issuer anchor {crux_id}", "search_query": f"issuer {crux_id}"},
+        {"plan_id": f"SP-{crux_id}-2", "publisher_class": "REGULATOR_OR_OFFICIAL_DATASET",
+         "target_claim": f"official anchor {crux_id}", "search_query": f"official {crux_id}"},
+    ]
+
+
 def frame():
     return {
         "decision_question": "test", "horizon": "3-6M", "as_of_date": "2026-07-14",
@@ -36,10 +45,12 @@ def frame():
         "candidate_cruxes": [
             {"id": "C1", "label": "c1", "logic_role": "THESIS_HINGE",
              "definition": "d1", "monitor_anchor": "m1", "falsifier": "f1",
+             "evidence_plan": evidence_plan("C1"),
              "catalyst_window": {"event": "e1", "expected_by": "2026-10-31",
                                  "date_status": "REVIEW_CHECKPOINT", "basis_claim_id": "P1"}},
             {"id": "C2", "label": "c2", "logic_role": "THESIS_HINGE",
              "definition": "d2", "monitor_anchor": "m2", "falsifier": "f2",
+             "evidence_plan": evidence_plan("C2"),
              "catalyst_window": {"event": "e2", "expected_by": "2026-12-31",
                                  "date_status": "REVIEW_CHECKPOINT", "basis_claim_id": "P1"}},
         ],
