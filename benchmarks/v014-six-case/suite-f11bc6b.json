@@ -1,0 +1,197 @@
+{
+  "schema_version": "trade-nothing.benchmark-suite.v3",
+  "suite_id": "v014-six-case-f11bc6b",
+  "variants": [
+    "single_agent",
+    "v0_14",
+    "48e0366",
+    "55c3640",
+    "af91ce9",
+    "c768f81",
+    "f11bc6b"
+  ],
+  "variant_manifest": {
+    "single_agent": {
+      "runner_kind": "PROMPT_ONLY",
+      "engine_version": "prompt:7f6b6adce6ebcf093691c2d9a334b2b55369f854a7d57162ddaf911ad4a3a2f8",
+      "instruction_path": "arms/single_agent.md",
+      "instruction_sha256": "7f6b6adce6ebcf093691c2d9a334b2b55369f854a7d57162ddaf911ad4a3a2f8"
+    },
+    "v0_14": {
+      "runner_kind": "GIT_SKILL_SNAPSHOT",
+      "engine_version": "git:50b4ed9d59df8dd9b0753d0432e6a15e8d95d18f",
+      "git_commit": "50b4ed9d59df8dd9b0753d0432e6a15e8d95d18f",
+      "entrypoint_path": "SKILL.md",
+      "entrypoint_sha256": "17f931e1edf58f02a053e921e3ac6543c5a1cff72be5b0180481aaf704aef6f7",
+      "orchestrator_path": "scripts/deepthink_orchestrator_v2.py",
+      "orchestrator_sha256": "daef5fbb86b5edde5bd54c24cffb2942231e481667ef1619a910c6b4ce1747b9"
+    },
+    "48e0366": {
+      "runner_kind": "GIT_SKILL_SNAPSHOT",
+      "engine_version": "git:48e0366cb5069e28540ef3f45e948e635f171fcc",
+      "git_commit": "48e0366cb5069e28540ef3f45e948e635f171fcc",
+      "entrypoint_path": "SKILL.md",
+      "entrypoint_sha256": "dcf9d2dec80a8e93cbc4e8d2d45deb2392d9eec86c0efe88285c411d5d0c3173",
+      "orchestrator_path": "scripts/deepthink_orchestrator_v2.py",
+      "orchestrator_sha256": "e9bc82abff8d9450539f5d167819a0f40c1bcde8251832bea1ef3a68cb896f88",
+      "method_contract_sha256": "1d68e4ace893ad8e91541af12a8f5da32a9c6b4ac003855dab0395697568107e"
+    },
+    "55c3640": {
+      "runner_kind": "GIT_SKILL_SNAPSHOT",
+      "engine_version": "git:55c364012afeea6c05710464f1dd77bfd0316d86",
+      "git_commit": "55c364012afeea6c05710464f1dd77bfd0316d86",
+      "entrypoint_path": "SKILL.md",
+      "entrypoint_sha256": "5387c2a7c661bf934ed6295af29afaead6723e302b193d0c4311ac31ed48a247",
+      "orchestrator_path": "scripts/deepthink_orchestrator_v2.py",
+      "orchestrator_sha256": "f5b22ac678034bef28c49c5e4ca54b3e76c5f534aa78c963907bb30de7c03ce1",
+      "method_contract_sha256": "e92c5b89ca0ad03cece6ffafa3e4a0cc30a19d86ae1aac9e34bd11c427bd49a5"
+    },
+    "af91ce9": {
+      "runner_kind": "GIT_SKILL_SNAPSHOT",
+      "engine_version": "git:af91ce9aaa1d66258ee5b7120134990457a4fdad",
+      "git_commit": "af91ce9aaa1d66258ee5b7120134990457a4fdad",
+      "entrypoint_path": "SKILL.md",
+      "entrypoint_sha256": "0946fd18dadb715646b7dad822060047d8f06a36f6c2657606b2285f4041efc4",
+      "orchestrator_path": "scripts/deepthink_orchestrator_v2.py",
+      "orchestrator_sha256": "80b021d82673210d27d389f75192221ca2a9af604608b6a41cd463c0e144c57f",
+      "method_contract_sha256": "511a36d10f6a477015f107ef82bb082fff533f21b00be5b73db36a8b867bb3c2"
+    },
+    "c768f81": {
+      "runner_kind": "GIT_SKILL_SNAPSHOT",
+      "engine_version": "git:c768f81878c4d4d13e2238f2bac97ec817e8f3d3",
+      "git_commit": "c768f81878c4d4d13e2238f2bac97ec817e8f3d3",
+      "entrypoint_path": "SKILL.md",
+      "entrypoint_sha256": "c0ab2d5ce935c10f6021dd742f7c3d1c6d09b89d1837323e82c93f4f6547e9d9",
+      "orchestrator_path": "scripts/deepthink_orchestrator_v2.py",
+      "orchestrator_sha256": "5449d3105eeb8b44113eea48c95512c67f631e949eaba9571015b655f2113917",
+      "method_contract_sha256": "0e9804b64748aa47f6cfe9d67c7ec9a7f58de77507932e832858d9c5fd173752"
+    },
+    "f11bc6b": {
+      "runner_kind": "GIT_SKILL_SNAPSHOT",
+      "engine_version": "git:f11bc6bb6a7a3a105fd2bc9d33ea7319de1fa5e5",
+      "git_commit": "f11bc6bb6a7a3a105fd2bc9d33ea7319de1fa5e5",
+      "entrypoint_path": "SKILL.md",
+      "entrypoint_sha256": "1fa80a02bf674cea83e83c2c27ee6b7b57762e887d7841be2019db7f9b0975aa",
+      "orchestrator_path": "scripts/deepthink_orchestrator_v2.py",
+      "orchestrator_sha256": "5449d3105eeb8b44113eea48c95512c67f631e949eaba9571015b655f2113917",
+      "method_contract_sha256": "4e67d8c6062a14cf9b8553694ebb70f40017c13d3f14151a0f653fdac19efca0"
+    }
+  },
+  "evaluation_scope": "CLOSED_PACKET_REASONING",
+  "research_access": {
+    "external_search_allowed": false,
+    "filesystem_allowed": false
+  },
+  "evidence_manifest": {
+    "EV-AI-GPU-2024": {
+      "path": "evidence/ai_gpu_bottleneck_2024.json",
+      "sha256": "9014b02e826fb3cbd95d8730fff370f0e5f195abcacaaf49cf371249c21851ec"
+    },
+    "EV-AI-POWER-2025": {
+      "path": "evidence/ai_power_infrastructure_2025.json",
+      "sha256": "c6661f94ad8fdd7cf180ea979488b467198522f130d46b931934d8892edb3156"
+    },
+    "EV-EU-EV-2024": {
+      "path": "evidence/eu_ev_tariffs_2024.json",
+      "sha256": "0cdc49e2b0543d71fb83b89b29f56c5df9d23aad520ad87b86c6aec29f835aad"
+    },
+    "EV-GLP1-2024": {
+      "path": "evidence/glp1_value_capture_2024.json",
+      "sha256": "3eabe2d7555a82a58a22decb3120927fd10c77a6c1fb1256e6f11ed079c607e0"
+    },
+    "EV-RED-SEA-2024": {
+      "path": "evidence/red_sea_shipping_2024.json",
+      "sha256": "fa7e6c95a238037306da7f7e7377ff4ff902761deae5ee42265f244c447174a4"
+    },
+    "EV-REGIONAL-BANK-2024": {
+      "path": "evidence/regional_bank_cre_2024.json",
+      "sha256": "a55b50e3411df04fda343a25fe24c296d4e3480c2dff639f0d3cd0917f4f3e8c"
+    }
+  },
+  "cases": [
+    {
+      "case_id": "ai_gpu_bottleneck_2024",
+      "question_type": "CAUSAL_CHAIN",
+      "as_of": "2024-08-29",
+      "prompt": "截至 2024-08-29，质证‘超大规模云厂商持续扩张 AI 资本开支，因此 NVIDIA 仍是最有吸引力的上市载体’。分开判断需求真实性、价值捕获、市场定价和可交易载体，并寻找最多 3 个值得跟踪的替代或补充对象。只使用冻结证据和当时可知事实，不得使用事后结果。",
+      "frozen_evidence": [
+        "EV-AI-GPU-2024"
+      ],
+      "budget": {
+        "max_tokens": 50000,
+        "max_searches": 0,
+        "max_wall_seconds": 1800
+      }
+    },
+    {
+      "case_id": "eu_ev_tariffs_2024",
+      "question_type": "COMPARATIVE",
+      "as_of": "2024-06-13",
+      "prompt": "截至 2024-06-13，欧盟披露拟对中国制造的纯电动车征收差异化反补贴税。比较 BYD、Geely、SAIC 谁更可能保留欧洲经济性，并寻找可能更好地捕获价值转移的路径。最多保留 3 个候选，明确法规成熟度和定价缺口。",
+      "frozen_evidence": [
+        "EV-EU-EV-2024"
+      ],
+      "budget": {
+        "max_tokens": 50000,
+        "max_searches": 0,
+        "max_wall_seconds": 1800
+      }
+    },
+    {
+      "case_id": "glp1_value_capture_2024",
+      "question_type": "DISJUNCTIVE",
+      "as_of": "2024-05-02",
+      "prompt": "截至 2024-05-02，GLP-1 药物需求快速增长但供给受限。画出主要价值捕获路径，识别最多 3 个可交易载体，并检查每个载体的成熟度、价值捕获、供给变化和定价风险。",
+      "frozen_evidence": [
+        "EV-GLP1-2024"
+      ],
+      "budget": {
+        "max_tokens": 50000,
+        "max_searches": 0,
+        "max_wall_seconds": 1800
+      }
+    },
+    {
+      "case_id": "red_sea_shipping_2024",
+      "question_type": "CAUSAL_CHAIN",
+      "as_of": "2024-01-31",
+      "prompt": "截至 2024-01-31，红海航线中断和集装箱即期运价暴涨是否构成航运股机会？建立从运营冲击到股东收益的完整因果链，区分短期冲击与可持续权益价值，最多保留 3 个载体。",
+      "frozen_evidence": [
+        "EV-RED-SEA-2024"
+      ],
+      "budget": {
+        "max_tokens": 50000,
+        "max_searches": 0,
+        "max_wall_seconds": 1800
+      }
+    },
+    {
+      "case_id": "regional_bank_cre_2024",
+      "question_type": "CONJUNCTIVE",
+      "as_of": "2024-02-07",
+      "prompt": "截至 2024-02-07，NYCB 的亏损、分红削减与商业地产拨备是否证明美国区域银行存在可做空的系统性偿付危机？检验从单一机构事件外推到行业结论所需的关键条件；不得把 NO_EDGE 自动翻译成做空，最多给出 3 个研究对象或对冲载体。",
+      "frozen_evidence": [
+        "EV-REGIONAL-BANK-2024"
+      ],
+      "budget": {
+        "max_tokens": 50000,
+        "max_searches": 0,
+        "max_wall_seconds": 1800
+      }
+    },
+    {
+      "case_id": "ai_power_infrastructure_2025",
+      "question_type": "UNIVERSE_SEARCH",
+      "as_of": "2025-01-31",
+      "prompt": "截至 2025-01-31，从 AI 数据中心电力瓶颈出发寻找真正可投资的价值捕获者，不从热门股票名单反推故事。建立主要价值转移路径，并对每个候选检验容量成熟度、客户、融资、交付和定价；最多保留 3 个。",
+      "frozen_evidence": [
+        "EV-AI-POWER-2025"
+      ],
+      "budget": {
+        "max_tokens": 50000,
+        "max_searches": 0,
+        "max_wall_seconds": 1800
+      }
+    }
+  ]
+}
