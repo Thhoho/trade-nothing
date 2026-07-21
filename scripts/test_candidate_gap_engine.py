@@ -118,6 +118,27 @@ class CandidateGapEngineTests(unittest.TestCase):
         self.assertEqual(state["opportunity_seeds"], before)
         self.assertEqual(candidate_gap_engine.validate_histories(state), [])
 
+    def test_plan_skips_seed_blocked_by_immutable_landscape_gate(self):
+        state = fixture_state()
+        state["opportunity_seeds"][0]["evidence"].append(
+            citation("customer-source.com", "customer confirms contracted use")
+        )
+        state["landscape_map"]["paths"][0]["state"] = "UNKNOWN"
+        opportunity_engine.refresh_candidate_states(state)
+
+        assessment = opportunity_engine.assess_seed(
+            state, state["opportunity_seeds"][0]
+        )
+        self.assertEqual(assessment["evidence_maturity"], "READY_FOR_SCREENING")
+        self.assertIn("landscape_path_not_supported", assessment["blockers"])
+
+        before = copy.deepcopy(state["opportunity_seeds"])
+        result = candidate_gap_engine.plan_tasks(state)
+        self.assertEqual(result["status"], "no_candidate_gap_tasks")
+        self.assertEqual(result["tasks"], [])
+        self.assertEqual(state["candidate_gap_tasks"], [])
+        self.assertEqual(state["opportunity_seeds"], before)
+
     def test_same_publisher_cannot_satisfy_independent_source(self):
         state = fixture_state()
         task = candidate_gap_engine.plan_tasks(state)["tasks"][0]

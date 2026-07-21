@@ -250,6 +250,13 @@ def plan_tasks(state: dict[str, Any], max_batch: int = MAX_BATCH) -> dict[str, A
             continue
         if opportunity_engine.candidate_state(state, seed) != opportunity_engine.EVIDENCE_BACKED:
             continue
+        # Candidate supplements can only append seed evidence or fill an empty
+        # seed-contract field.  They cannot rewrite a converged root crux or a
+        # Landscape path, so do not manufacture tasks for immutable origin
+        # blockers that no legal supplement could ever clear.
+        effective = opportunity_engine.effective_seed(state, seed)
+        if opportunity_engine._origin_gate(state, effective):
+            continue
         if opportunity_engine._candidate_gap_blockers(state, str(seed["seed_id"])):
             continue
         if open_task_for_seed(state, str(seed["seed_id"])):
