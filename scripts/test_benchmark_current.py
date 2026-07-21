@@ -15,10 +15,10 @@ class BenchmarkCurrentTests(unittest.TestCase):
         self.assertEqual(result["status"], "VERIFIED")
         self.assertEqual(
             result["method_identity"]["contract_sha256"],
-            "511a36d10f6a477015f107ef82bb082fff533f21b00be5b73db36a8b867bb3c2",
+            "0e9804b64748aa47f6cfe9d67c7ec9a7f58de77507932e832858d9c5fd173752",
         )
-        self.assertEqual(result["closed_packet"]["current_variant"], "af91ce9")
-        self.assertEqual(result["discovery"]["current_variant"], "af91ce9")
+        self.assertEqual(result["closed_packet"]["current_variant"], "c768f81")
+        self.assertEqual(result["discovery"]["current_variant"], "c768f81")
 
     def test_pointer_rejects_method_drift(self):
         pointer = json.loads(
