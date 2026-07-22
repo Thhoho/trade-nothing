@@ -73,8 +73,8 @@ def validate_packet(raw: Any) -> dict[str, Any]:
         raise PacketValidationError("question.as_of_date must use YYYY-MM-DD")
 
     lessons = raw.get("lesson_context")
-    if not isinstance(lessons, list) or not 1 <= len(lessons) <= 10:
-        raise PacketValidationError("lesson_context must contain 1-10 items")
+    if not isinstance(lessons, list) or not 0 <= len(lessons) <= 10:
+        raise PacketValidationError("lesson_context must contain 0-10 items")
     seen = set()
     for index, item in enumerate(lessons):
         if not isinstance(item, dict):
@@ -101,10 +101,10 @@ def validate_packet(raw: Any) -> dict[str, Any]:
     for key in DENIED_KEYS:
         if policy.get(key) is not False:
             raise PacketValidationError(f"inheritance_policy.{key} must be false")
-    if policy.get("allowed_context") != [
-        "question_contract",
-        "human_selected_active_lesson_snapshots",
-    ]:
+    expected_context = ["question_contract"]
+    if lessons:
+        expected_context.append("human_selected_active_lesson_snapshots")
+    if policy.get("allowed_context") != expected_context:
         raise PacketValidationError("inheritance_policy.allowed_context is invalid")
 
     integrity = raw.get("integrity")

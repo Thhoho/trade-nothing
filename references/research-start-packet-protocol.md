@@ -3,10 +3,12 @@
 `tradenothing-next` may return an `ACTIVE` Lesson to a future `trade-nothing` run only through
 `trade-nothing.research-start-packet.v1`.
 
-The product creates the packet after a human selects one to ten `ACTIVE` Lessons and writes a
-specific reason for each. The packet contains immutable Lesson snapshots, a question contract,
-an explicit no-inheritance policy, and a SHA-256 checksum. It contains no prior verdict, support
-score, candidate state, actionability, or prior evidence.
+The product creates the packet with zero to ten human-selected `ACTIVE` Lessons and a specific
+reason for each selected Lesson. Zero Lessons is valid only for a first run with no reusable
+Lesson yet; its `allowed_context` contains only `question_contract`. A non-empty packet contains
+immutable Lesson snapshots, a question contract, an explicit no-inheritance policy, and a SHA-256
+checksum. Every packet contains no prior verdict, support score, candidate state, actionability,
+or prior evidence.
 
 Validate before framing:
 

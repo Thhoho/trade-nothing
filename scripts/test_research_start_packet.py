@@ -56,6 +56,17 @@ def fixture_packet():
     return packet
 
 
+def first_run_packet():
+    packet = fixture_packet()
+    packet["lesson_context"] = []
+    packet["inheritance_policy"]["allowed_context"] = ["question_contract"]
+    payload = {key: value for key, value in packet.items() if key != "integrity"}
+    packet["integrity"]["payload_sha256"] = hashlib.sha256(
+        research_start_packet.canonical_json(payload).encode("utf-8")
+    ).hexdigest()
+    return packet
+
+
 class ResearchStartPacketTests(unittest.TestCase):
     def test_valid_packet_becomes_bounded_framing_context(self):
         context = research_start_packet.framing_context(fixture_packet())
@@ -63,6 +74,26 @@ class ResearchStartPacketTests(unittest.TestCase):
         self.assertEqual(context["lesson_constraints"][0]["lesson_id"], 7)
         self.assertNotIn("prior_verdict", context)
         self.assertNotIn("prior_evidence", context)
+
+    def test_first_run_without_lessons_keeps_only_the_question_contract(self):
+        packet = first_run_packet()
+        context = research_start_packet.framing_context(packet)
+        self.assertEqual(context["lesson_constraints"], [])
+        self.assertEqual(
+            packet["inheritance_policy"]["allowed_context"],
+            ["question_contract"],
+        )
+
+        widened = first_run_packet()
+        widened["inheritance_policy"]["allowed_context"].append(
+            "human_selected_active_lesson_snapshots"
+        )
+        payload = {key: value for key, value in widened.items() if key != "integrity"}
+        widened["integrity"]["payload_sha256"] = hashlib.sha256(
+            research_start_packet.canonical_json(payload).encode("utf-8")
+        ).hexdigest()
+        with self.assertRaisesRegex(ValueError, "allowed_context"):
+            research_start_packet.validate_packet(widened)
 
     def test_tamper_and_state_inheritance_are_rejected(self):
         tampered = fixture_packet()

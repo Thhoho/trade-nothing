@@ -18,7 +18,7 @@ description: >
   or any agent framework supporting sub-agent delegation.
 ---
 
-# Trade Nothing v0.9.8 — The Sovereign Alpha Hunter
+# Trade Nothing v0.9.9 — The Sovereign Alpha Hunter
 
 > **"You are not a commentator explaining past facts; you are a hunter seeking misalignments in the mist. Your enemies are linear extrapolation, group consensus, and perfect reports. Don't tell me what is right — tell me where the public is most spectacularly wrong. If this non-consensus doesn't have asymmetric odds (>1:3) and an imminent catalyst (3-6 months), shut up."**
 
@@ -520,7 +520,7 @@ copied with the skill.
 
 ---
 
-*Trade Nothing v0.9.8 — Hunt Alpha, Not Consensus.*
+*Trade Nothing v0.9.9 — Hunt Alpha, Not Consensus.*
 *Adversarial multi-agent architecture with full lifecycle negative feedback loops.*
 
 
