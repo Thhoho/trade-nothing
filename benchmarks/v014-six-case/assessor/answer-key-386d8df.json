@@ -1,0 +1,163 @@
+{
+  "schema_version": "trade-nothing.benchmark-answer-key.v1",
+  "suite_id": "v014-six-case-386d8df",
+  "warning": "EVALUATOR ONLY. NEVER LOAD INTO A RESEARCH ARM.",
+  "cases": {
+    "ai_gpu_bottleneck_2024": {
+      "decisive_claims": [
+        "AI infrastructure demand and hyperscaler capex were real as of the date.",
+        "NVIDIA revenue growth proves demand/value capture but not an unpriced equity opportunity.",
+        "Cloud capex includes long-lived land/build assets and serves workloads beyond one AI product.",
+        "Power and thermal infrastructure are separate bottlenecks with their own conversion and valuation risks."
+      ],
+      "major_paths": [
+        "accelerator compute",
+        "custom accelerators and networking",
+        "power conversion and distribution",
+        "thermal management",
+        "hyperscaler monetization and capex return"
+      ],
+      "false_opportunity_traps": [
+        "demand growth alone proves NVDA is cheap",
+        "all cloud capex is near-term GPU demand",
+        "VRT order growth guarantees margin and upside"
+      ],
+      "comprehension_questions": [
+        "What is the legal current action?",
+        "Which layer is weakest: truth, pricing, or vehicle?",
+        "What fact would change the conclusion?"
+      ]
+    },
+    "eu_ev_tariffs_2024": {
+      "decisive_claims": [
+        "The June 12 communication was pre-disclosure, not final definitive law.",
+        "Rates were differentiated and additional to the existing 10% duty.",
+        "China-made vehicle exposure is not identical to Chinese manufacturer exposure.",
+        "A lower duty rate does not establish EU margin resilience without mix, local production, and price elasticity."
+      ],
+      "major_paths": [
+        "relative OEM duty burden",
+        "EU local production",
+        "non-EU export substitution",
+        "EU incumbent or supplier substitution",
+        "consumer demand and pass-through"
+      ],
+      "false_opportunity_traps": [
+        "pre-disclosed rate is final",
+        "BYD automatically wins because its rate is lowest",
+        "all China-made BEVs belong to Chinese brands"
+      ],
+      "comprehension_questions": [
+        "What regulatory stage existed as of the date?",
+        "Which OEM comparison is most defensible?",
+        "What evidence is still missing for an investable gap?"
+      ]
+    },
+    "glp1_value_capture_2024": {
+      "decisive_claims": [
+        "Demand growth and supply constraints were both present.",
+        "Lilly and Novo were investing to expand or internalize manufacturing capacity.",
+        "Catalent had a signed $63.50 takeout and was no longer an unconstrained independent upside vehicle.",
+        "A bottleneck does not imply external suppliers retain bargaining power after capacity internalization."
+      ],
+      "major_paths": [
+        "brand drug economics",
+        "active ingredient capacity",
+        "fill-finish capacity",
+        "delivery devices and packaging",
+        "independent CDMO",
+        "access, pricing, and reimbursement"
+      ],
+      "false_opportunity_traps": [
+        "buy CTLT as open-ended GLP-1 upside despite signed takeout",
+        "prescription growth means every supplier wins",
+        "announced 2026 capacity solves 2024 supply immediately"
+      ],
+      "comprehension_questions": [
+        "Who most clearly captured value as of the date?",
+        "Why is CTLT maturity different?",
+        "What observable would validate an external bottleneck beneficiary?"
+      ]
+    },
+    "red_sea_shipping_2024": {
+      "decisive_claims": [
+        "Suez/container transit and effective capacity were materially disrupted.",
+        "Spot rates rose sharply, but rerouting also raised fuel, insurance, labor, and charter costs.",
+        "Duration was unresolved and carriers repeatedly reassessed routes.",
+        "Equity capture depends on contract mix, fleet ownership/charter structure, balance sheet, and valuation."
+      ],
+      "major_paths": [
+        "effective capacity withdrawal",
+        "spot versus contract repricing",
+        "fuel and insurance cost",
+        "owned versus chartered fleet",
+        "duration and orderbook oversupply",
+        "shipper and logistics substitution"
+      ],
+      "false_opportunity_traps": [
+        "spot freight up means all carriers' profits rise equally",
+        "temporary disruption is a durable moat",
+        "ignore new-vessel supply and charter costs"
+      ],
+      "comprehension_questions": [
+        "What part of the causal chain is proven?",
+        "What prevents a blanket buy signal?",
+        "Which company attribute most changes value capture?"
+      ]
+    },
+    "regional_bank_cre_2024": {
+      "decisive_claims": [
+        "CRE credit stress and unrealized-loss/funding pressure were real sector risks.",
+        "NYCB's quarter included two-loan charge-offs and a bank-specific $100 billion regulatory threshold effect.",
+        "Regulators described the system as sound while identifying pockets of CRE vulnerability.",
+        "Sector-wide insolvency requires institution-level evidence on capital, liquidity, deposits, concentration, and loss severity."
+      ],
+      "major_paths": [
+        "office and multifamily credit loss",
+        "deposit and wholesale funding",
+        "securities unrealized losses",
+        "capital and regulatory threshold",
+        "governance and loan review",
+        "sector ETF versus single-name expression"
+      ],
+      "false_opportunity_traps": [
+        "NYCB proves every regional bank is insolvent",
+        "NO_EDGE automatically means short",
+        "CRE concentration alone proves near-term failure"
+      ],
+      "comprehension_questions": [
+        "Is the root thesis systemic or institution-specific?",
+        "What data is required before a short?",
+        "What is the current legal action?"
+      ]
+    },
+    "ai_power_infrastructure_2025": {
+      "decisive_claims": [
+        "Data-center electricity demand growth was credible but forecast uncertainty was large.",
+        "A long PPA supplies customer credit but an announced 2028 restart is not deliverable MW today.",
+        "FERC's Susquehanna order proves co-location can face material regulatory and grid-allocation barriers.",
+        "Contracted data-center MW still require financing, construction, commissioning, and counterparty analysis."
+      ],
+      "major_paths": [
+        "existing dispatchable generation",
+        "new generation and long-duration PPAs",
+        "transmission and interconnection",
+        "electrical equipment",
+        "thermal management",
+        "convertible powered sites",
+        "co-location regulation and backup service"
+      ],
+      "false_opportunity_traps": [
+        "planned MW equals delivered MW",
+        "any cheap-power site is AI-ready",
+        "a thematic demand forecast proves valuation upside",
+        "ignore customer credit and financing closure"
+      ],
+      "comprehension_questions": [
+        "Which capacity maturity matters most?",
+        "What does the FERC order invalidate?",
+        "What four fields are required before a site becomes investable?"
+      ]
+    }
+  }
+}
