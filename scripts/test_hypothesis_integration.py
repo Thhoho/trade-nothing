@@ -1466,6 +1466,10 @@ class TrackIsolationTests(unittest.TestCase):
 class ReportAndFuseTests(unittest.TestCase):
     def state_with_exploration(self):
         state = converged_state()
+        state["frame_contract"] = {
+            "as_of_date": "2026-07-15",
+            "forecast_target_date": "",
+        }
         state["hypothesis_ledger"] = hypothesis_engine.initialize(
             hypothesis_frame(hypotheses=garden())
         )
@@ -1486,6 +1490,12 @@ class ReportAndFuseTests(unittest.TestCase):
         self.assertTrue(
             model["exploration_action"]["requires_human_authorization"]
         )
+        self.assertTrue(model["research_allocation"])
+        self.assertEqual(
+            model["temporal_contract"]["evidence_as_of_date"],
+            state["frame_contract"]["as_of_date"],
+        )
+        self.assertIn("evidence_matrix", model)
         self.assertEqual(model["candidate_counts"]["lead_count"], 0)
         self.assertLess(
             markdown.index("## 正式晋级动作"),
@@ -1495,6 +1505,8 @@ class ReportAndFuseTests(unittest.TestCase):
             markdown.index("# Insight Cards"),
             markdown.index("# Candidate Cards"),
         )
+        self.assertIn("## 研究资源与风险收益匹配", markdown)
+        self.assertIn("## 证据矩阵（按对象绑定）", markdown)
 
     def test_resolution_memo_preserves_hypotheses_without_authorizing_resume(self):
         state = self.state_with_exploration()
@@ -1546,6 +1558,19 @@ class ReportAndFuseTests(unittest.TestCase):
                 }],
             },
             allowed_crux_ids=["C1"],
+        )
+        model = report_v2.build_report_view_model(state)
+        card = next(
+            item
+            for item in model["hypothesis_exploration"]["hypotheses"]
+            if item["hypothesis_id"] == hypothesis_id
+        )
+        self.assertEqual(card["observation_status"], "CITED_PROXY_TRAIL")
+        self.assertEqual(card["proxy_evidence_count"], 2)
+        markdown = report_v2.render(state)
+        self.assertIn(
+            "`CITED_PROXY_TRAIL` 见下方 2 条 ProxyTrail 引用",
+            markdown,
         )
         state["last_convergence"] = {
             "decision": "fuse_break",

@@ -70,8 +70,12 @@ post-coverage harvest-dry window. The init gate computes the minimum and rejects
 - Keep intuition and verification in separate lanes. A `wild_hypothesis` may be imaginative, but
   any factual clause inside it must point to `premise_audit` or be phrased as an explicit
   counterfactual. Its `HYPOTHESIS_ONLY` status cannot be upgraded during framing.
-- Use an exact `as_of_date` and exact ISO catalyst checkpoint dates. If the official event date is
-  unknown, set a review deadline within the horizon instead of inventing a quarter or date.
+- Use an exact `as_of_date` for the last admissible evidence. If the decision question names a
+  later calendar date, copy that date into the separate `forecast_target_date`; never phrase or
+  render the future target as though evidence already exists through that date. Use an empty string
+  when the frame has only a relative horizon. Use exact ISO catalyst checkpoint dates. If the
+  official event date is unknown, set a review deadline within the horizon instead of inventing a
+  quarter or date.
 - Bind every catalyst to a `premise_audit` ID. Use `REVIEW_CHECKPOINT` for a researcher-chosen
   deadline and `DATE_CLAIMED_UNVERIFIED` for a purported official date that still needs checking.
 
@@ -94,6 +98,7 @@ post-coverage harvest-dry window. The init gate computes the minimum and rejects
   },
   "horizon": "3-6M",
   "as_of_date": "YYYY-MM-DD",
+  "forecast_target_date": "YYYY-MM-DD | empty string",
   "unit_of_analysis": "<asset, company, project, or candidate universe under decision>",
   "thesis_seed": "<one-sentence conditional non-consensus hypothesis, or 'No obvious non-consensus angle'>",
   "premise_audit": [
@@ -199,7 +204,9 @@ the URL and claim remain unverified until later snapshot-bound verification. Oth
 `source_url=null`, `as_of=UNKNOWN`, and status `HYPOTHESIS`. `expected_by` must be a real ISO date
 after `as_of_date` and no more than 190 days later for a `3-6M` frame.
 Every catalyst `basis_claim_id` must exist in `premise_audit` and also appear in
-`no_edge_precheck.basis_claim_ids`.
+`no_edge_precheck.basis_claim_ids`. `forecast_target_date`, when present, must be later than
+`as_of_date`. Any date later than `as_of_date` that appears in `decision_question` requires this
+explicit field; otherwise the frame is invalid rather than silently relabelled.
 
 Every researchable crux must contain 2–3 `evidence_plan` routes. `plan_id` and `search_query` must
 be unique within the crux, and the routes must use at least two distinct `publisher_class` values.

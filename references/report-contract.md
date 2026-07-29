@@ -4,6 +4,19 @@ Use one deterministic `trade-nothing.report-view-model.v2` projection for every 
 report. Never derive candidate maturity from prose and never let a narrative model rewrite status
 words.
 
+## Time semantics
+
+Every report renders three different concepts explicitly:
+
+- `evidence_as_of_date`: the latest date evidence may enter the run;
+- `decision_horizon`: the relative period over which the mechanism is judged; and
+- `forecast_target_date`: an optional exact future target, required whenever the decision question
+  names a date later than the evidence cutoff.
+
+Never label a future target as “as of” or imply evidence extends to that date. An ambiguous or
+invalid temporal contract blocks a new project handoff. Historical artifacts keep the conflict
+visible for human resolution; they are not silently rewritten.
+
 ## Views
 
 - `brief`: root-thesis verdict, what survived/failed, candidate counts, the deterministic
@@ -211,3 +224,18 @@ three separate claims:
 No one result implies either of the other two.
 Exploration richness is not a fourth promotion gate. A valid report may contain
 `HYPOTHESIS_ONLY` insight cards, provided their labels and evidence boundaries match state.
+
+## Research allocation and evidence matrix
+
+The brief and full views expose `research_allocation` as a first-class comparison of the top
+exploration hypotheses. Each row includes qualitative upside shape, convexity, downside shape,
+time to signal, information gap, testability, cheapest discriminating test, bounded validation
+budget when selected, and stop condition. This ranks research attention only; it is not a
+probability, expected return, trade ranking, or sizing input. Missing qualitative asymmetry is
+rendered as a gap rather than defaulted to low risk.
+
+Every report also exposes `evidence_matrix.rows`, each bound to exactly one `FORMAL_CRUX`,
+`CANDIDATE_PATH`, or `EXPLORATION_PROXY`. Show claim, source, date, URL, direction, and binding ID.
+Do not merge a ProxyTrail citation into a formal crux merely because the URL is shared. If the
+archived method recorded no hypothesis ledger, render an explicit exploration method gap; absence
+of recorded exploration is not evidence that no adjacent opportunity exists.

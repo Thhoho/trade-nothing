@@ -95,6 +95,33 @@ class ResearchStartPacketTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "allowed_context"):
             research_start_packet.validate_packet(widened)
 
+    def test_future_date_requires_a_separate_forecast_target(self):
+        packet = first_run_packet()
+        packet["question"]["decision_question"] = (
+            "By 2027-01-15, will the mechanism be validated?"
+        )
+        payload = {
+            key: value for key, value in packet.items() if key != "integrity"
+        }
+        packet["integrity"]["payload_sha256"] = hashlib.sha256(
+            research_start_packet.canonical_json(payload).encode("utf-8")
+        ).hexdigest()
+        with self.assertRaisesRegex(ValueError, "forecast_target_date"):
+            research_start_packet.validate_packet(packet)
+
+        packet["question"]["forecast_target_date"] = "2027-01-15"
+        payload = {
+            key: value for key, value in packet.items() if key != "integrity"
+        }
+        packet["integrity"]["payload_sha256"] = hashlib.sha256(
+            research_start_packet.canonical_json(payload).encode("utf-8")
+        ).hexdigest()
+        validated = research_start_packet.validate_packet(packet)
+        self.assertEqual(
+            validated["question"]["forecast_target_date"],
+            "2027-01-15",
+        )
+
     def test_tamper_and_state_inheritance_are_rejected(self):
         tampered = fixture_packet()
         tampered["lesson_context"][0]["body_snapshot"] = "changed"

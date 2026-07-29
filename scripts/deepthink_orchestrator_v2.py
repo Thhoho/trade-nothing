@@ -51,6 +51,7 @@ import framing_feasibility
 import research_output
 import run_registry
 import research_start_packet
+import temporal_contract
 from utils import (
     CrossPlatformFileLock,
     get_scratch_dir,
@@ -239,6 +240,18 @@ def _validate_frame(frame):
         frame_as_of = date.fromisoformat(str(frame.get("as_of_date", "")))
     except ValueError:
         issues.append("as_of_date_requires_iso_date")
+    try:
+        temporal_contract.validate_question({
+            "decision_question": frame.get("decision_question"),
+            "horizon": frame.get("horizon"),
+            "as_of_date": frame.get("as_of_date"),
+            "forecast_target_date": frame.get("forecast_target_date"),
+        }, prefix="frame")
+    except temporal_contract.TemporalContractError as exc:
+        issues.append(
+            "temporal_contract_invalid:"
+            + re.sub(r"\s+", "_", str(exc)).lower()
+        )
     question_type = str(frame.get("question_type", "")).upper()
     if question_type not in crux_engine.QUESTION_TYPES:
         issues.append("invalid_question_type")
@@ -832,6 +845,7 @@ def frame_prompt(topic, start_context=None):
             "sub-agent mechanism. Do not browse or call tools during framing.\n"
             f"[Framer · framer.md] Topic: {topic}\n"
             "立题：输出 decision_question / question_type / logic_graph / horizon / as_of_date / "
+            "forecast_target_date / "
             "research_intent / unit_of_analysis / thesis_seed / premise_audit / "
             "2–5 candidate_cruxes(每条带 "
             "logic_role、monitor_anchor、falsifier、evidence_plan、catalyst_window) / "
@@ -1101,9 +1115,17 @@ def _research_start_context(topic, packet, frame=None):
             "question_type": frame.get("question_type"),
             "horizon": frame.get("horizon"),
             "as_of_date": frame.get("as_of_date"),
+            "forecast_target_date": str(
+                frame.get("forecast_target_date") or ""
+            ),
         }
         for key, actual in bindings.items():
-            if actual != question.get(key):
+            expected = (
+                str(question.get(key) or "")
+                if key == "forecast_target_date"
+                else question.get(key)
+            )
+            if actual != expected:
                 raise research_start_packet.PacketValidationError(
                     f"framer {key} must exactly match research-start question.{key}"
                 )
@@ -1197,6 +1219,9 @@ def cmd_init(topic, frame, runtime_isolation="unverified", start_packet=None):
         "research_intent": hypothesis_engine.infer_research_intent(frame),
         "logic_graph": frame.get("logic_graph"),
         "as_of_date": frame.get("as_of_date", ""),
+        "forecast_target_date": str(
+            frame.get("forecast_target_date") or ""
+        ),
         "unit_of_analysis": frame.get("unit_of_analysis", ""),
         "premise_audit": frame.get("premise_audit", []),
         "no_edge_precheck": pre,

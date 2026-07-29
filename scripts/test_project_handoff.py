@@ -128,6 +128,23 @@ class ProjectHandoffTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "handoff preflight blocked"):
             project_handoff.build_handoff(state)
 
+    def test_preflight_blocks_ambiguous_future_target_without_rewriting(self):
+        state = fixture_state()
+        state["decision_question"] = (
+            "By 2027-01-15, is this importable?"
+        )
+        assessment = project_handoff.preflight_handoff(state)
+
+        self.assertFalse(assessment["exportable"])
+        self.assertIn(
+            "TEMPORAL_CONTRACT_INVALID",
+            {item["code"] for item in assessment["blockers"]},
+        )
+        self.assertNotIn(
+            "forecast_target_date",
+            state["frame_contract"],
+        )
+
     def test_preflight_reports_all_legacy_blockers_without_rewriting_state(self):
         legacy = fixture_state()
         legacy.pop("question_type")

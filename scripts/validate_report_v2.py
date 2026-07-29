@@ -21,6 +21,7 @@ import crux_engine
 import hypothesis_engine
 import opportunity_engine
 import report_v2
+from version import __version__
 
 
 REF_RE = re.compile(r"^- \[(\d+)\].*?(https?://\S+)\s*$")
@@ -113,7 +114,10 @@ def validate_report(path, state_path=""):
             official_view = "brief"
         elif state_bound_md.startswith("# Candidate Cards"):
             official_view = "cards"
-        elif state_bound_md.startswith("# Trade Nothing v0.10"):
+        elif (
+            state_bound_md.startswith(f"# Trade Nothing v{__version__}")
+            or state_bound_md.startswith("# Trade Nothing v0.10")
+        ):
             official_view = "audit"
         if official_view:
             try:

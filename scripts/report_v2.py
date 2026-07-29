@@ -16,7 +16,7 @@ Architecture:
 The support score is a debate-control heuristic, not a calibrated probability,
 expected return, trade signal, or position-sizing input.
 """
-import os, sys, json
+import os, sys, json, hashlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import crux_engine
 import hypothesis_engine
@@ -25,6 +25,8 @@ import opportunity_engine
 import candidate_gap_engine
 import candidate_screen_engine
 import claim_verification_engine
+import temporal_contract
+from version import __version__
 
 _STATUS = {
     "RESOLVED_BULL": "🟢 当前证据偏多", "RESOLVED_BEAR": "🔴 当前证据偏空",
@@ -458,6 +460,108 @@ def _candidate_cards(state):
     return cards
 
 
+def _evidence_matrix(state, report_data, exploration):
+    rows = []
+
+    def add(citation, track, direction, binding_id, binding_label):
+        if not isinstance(citation, dict) or not crux_engine.valid_citation(citation):
+            return
+        identity = "|".join([
+            track,
+            str(binding_id or ""),
+            str(citation.get("url") or ""),
+            str(citation.get("claim") or ""),
+        ])
+        rows.append({
+            "evidence_id": "EV-" + hashlib.sha256(
+                identity.encode("utf-8")
+            ).hexdigest()[:12].upper(),
+            "track": track,
+            "direction": direction,
+            "binding_id": str(binding_id or ""),
+            "binding_label": _clean(binding_label),
+            "claim": _clean(citation.get("claim")),
+            "source": _clean(citation.get("source")),
+            "date": _clean(citation.get("date")),
+            "url": _clean(citation.get("url")),
+            "source_tier": _clean(citation.get("source_tier")),
+        })
+
+    for crux in report_data.get("cruxes", []):
+        status = str(crux.get("status") or "").upper()
+        direction = (
+            "SUPPORTS"
+            if status == "RESOLVED_BULL"
+            else "CONTRADICTS"
+            if status == "RESOLVED_BEAR"
+            else "CONTEXT"
+        )
+        for citation in crux.get(
+            "valid_citations",
+            crux.get("citations", []),
+        ):
+            add(
+                citation,
+                "FORMAL_CRUX",
+                direction,
+                crux.get("id"),
+                crux.get("label"),
+            )
+    for seed in state.get("opportunity_seeds", []):
+        if not isinstance(seed, dict):
+            continue
+        for citation in seed.get("evidence", []):
+            add(
+                citation,
+                "CANDIDATE_PATH",
+                "SUPPORTS_PATH",
+                seed.get("seed_id"),
+                seed.get("candidate"),
+            )
+    for hypothesis in exploration.get("hypotheses", []):
+        for proxy in hypothesis.get("proxy_trails", []):
+            for citation in proxy.get("evidence", []):
+                add(
+                    citation,
+                    "EXPLORATION_PROXY",
+                    proxy.get("direction", "AMBIGUOUS"),
+                    hypothesis.get("hypothesis_id"),
+                    proxy.get("proxy"),
+                )
+    deduplicated = {
+        (
+            item["track"],
+            item["binding_id"],
+            item["url"],
+            item["claim"],
+        ): item
+        for item in rows
+    }
+    ordered = sorted(
+        deduplicated.values(),
+        key=lambda item: (
+            item["track"],
+            item["binding_id"],
+            item["date"],
+            item["evidence_id"],
+        ),
+    )
+    direction_counts = {}
+    for item in ordered:
+        direction = item["direction"]
+        direction_counts[direction] = direction_counts.get(direction, 0) + 1
+    return {
+        "schema_version": "trade-nothing.evidence-matrix.v1",
+        "row_count": len(ordered),
+        "direction_counts": direction_counts,
+        "rows": ordered,
+        "boundary": (
+            "Each row binds to one crux, candidate path, or ProxyTrail; "
+            "exploration evidence does not become formal evidence."
+        ),
+    }
+
+
 def build_report_view_model(state):
     """Build the deterministic user-facing projection used by every report view.
 
@@ -526,6 +630,26 @@ def build_report_view_model(state):
         "candidate": next_action_candidate,
         "instruction": next_action,
     }
+    temporal = temporal_contract.from_state(state)
+    hypotheses = exploration.get("hypotheses", [])
+    exploration_gap = {
+        "status": (
+            "AVAILABLE"
+            if hypotheses
+            else "DECLARED_BUT_EMPTY"
+            if isinstance(state.get("hypothesis_ledger"), dict)
+            or isinstance(state.get("landscape_map"), dict)
+            else "NOT_RECORDED_IN_ARCHIVED_ARTIFACT"
+        ),
+        "is_method_gap": not bool(hypotheses),
+        "message": (
+            "Auditable hypotheses and ProxyTrails are available."
+            if hypotheses
+            else
+            "No auditable exploration hypothesis was recorded. This is a method "
+            "gap, not evidence that no adjacent opportunity exists."
+        ),
+    }
     return {
         "schema_version": "trade-nothing.report-view-model.v2",
         "topic": _clean(state.get("topic")),
@@ -535,6 +659,8 @@ def build_report_view_model(state):
             state.get("frame_contract", {}).get("as_of_date")
             or state.get("as_of_date")
         ),
+        "forecast_target_date": temporal["forecast_target_date"],
+        "temporal_contract": temporal,
         "question_type": verdict.get("question_type", rd.get("question_type", "CONJUNCTIVE")),
         "verdict": {
             "edge_state": verdict.get("edge_state", "INSUFFICIENT_EVIDENCE"),
@@ -552,6 +678,9 @@ def build_report_view_model(state):
         "candidate_cards": cards,
         "landscape_map": landscape,
         "hypothesis_exploration": exploration,
+        "exploration_gap": exploration_gap,
+        "research_allocation": exploration.get("research_allocation", []),
+        "evidence_matrix": _evidence_matrix(state, rd, exploration),
         "formal_action": formal_action,
         "exploration_action": exploration["exploration_action"],
         "scenario_paths": scenario_paths,
@@ -741,7 +870,7 @@ def _render_audit(state, include_title=True):
 
     # ─────────── FIXED LAYER ───────────
     if include_title:
-        L.append(f"# Trade Nothing v0.10 深度研究报告 — {topic}")
+        L.append(f"# Trade Nothing v{__version__} 深度研究报告 — {topic}")
         L.append(f"> 决策问题: {state.get('decision_question','')} ｜ 视野: {state.get('horizon','')}")
         L.append(f"> 假设种子: {state.get('thesis_seed','')}")
         L.append("")
@@ -1071,7 +1200,9 @@ def _render_audit(state, include_title=True):
     L.append("### A.2 · 证据与流程仪表盘")
     L.append("```text")
     L.append("═══════════════════════════════════════════")
-    L.append("  TRADE NOTHING v0.10 ADVERSARIAL DASHBOARD")
+    L.append(
+        f"  TRADE NOTHING v{__version__} ADVERSARIAL DASHBOARD"
+    )
     L.append("═══════════════════════════════════════════")
     L.append(f"  标的: {topic}")
     L.append(f"  博弈深度: {n_rounds} 轮 ｜ 唯一来源: {rd['n_unique_sources']} 个")
@@ -1360,11 +1491,60 @@ def _render_decision_brief(view):
         heading="### 已执行探索与负知识",
         include_control_history=True,
     )
+    temporal = view.get("temporal_contract", {})
+    temporal_lines = [
+        "## 时间语义合同",
+        f"- 状态 `{temporal.get('status', 'MISSING')}`；证据截止 "
+        f"`{temporal.get('evidence_as_of_date') or 'UNKNOWN'}`；预测目标 "
+        f"`{temporal.get('forecast_target_date') or 'RELATIVE_HORIZON'}`；"
+        f"视野 `{temporal.get('decision_horizon') or 'UNKNOWN'}`。",
+        f"- {temporal.get('message') or '时间合同缺失。'}",
+    ]
+    allocation_lines = [
+        "## 研究资源与风险收益匹配",
+        "- 这里只比较信息价值、非对称形状、信号速度和验证成本；"
+        "不是投资排序、概率、预期收益或仓位。",
+    ]
+    for item in view.get("research_allocation", [])[:5]:
+        asymmetry = item.get("asymmetry_case", {})
+        budget = item.get("validation_budget", {})
+        allocation_lines.append(
+            f"- **#{item.get('rank')} {item.get('hypothesis_id')}** "
+            f"`{item.get('attention_band')}`："
+            f"upside={asymmetry.get('upside_shape', 'UNKNOWN')}/"
+            f"{asymmetry.get('convexity', 'UNKNOWN')}，"
+            f"downside={asymmetry.get('downside_shape', 'UNKNOWN')}，"
+            f"signal={asymmetry.get('time_to_signal', 'UNKNOWN')}；"
+            f"最小测试 {_clean(item.get('minimum_test'))}；"
+            f"预算 queries≤{budget.get('max_bounded_queries', '—')} / "
+            f"docs≤{budget.get('max_documents_read', '—')}。"
+        )
+    if len(allocation_lines) == 2:
+        gap = view.get("exploration_gap", {})
+        allocation_lines.append(
+            f"- **探索方法缺口** `{gap.get('status', 'MISSING')}`："
+            f"{gap.get('message') or '没有可审计探索产物。'}"
+        )
+    evidence_lines = [
+        "## 证据矩阵（按对象绑定）",
+        f"- 共 {view.get('evidence_matrix', {}).get('row_count', 0)} 条；"
+        f"{view.get('evidence_matrix', {}).get('boundary', '')}",
+    ]
+    for item in view.get("evidence_matrix", {}).get("rows", [])[:12]:
+        evidence_lines.append(
+            f"- `{item.get('track')}` / `{item.get('binding_id') or '—'}` / "
+            f"`{item.get('direction')}`：{_clean(item.get('claim'))} — "
+            f"{_clean(item.get('source'))}，{item.get('date') or '日期未知'}，"
+            f"{_clean(item.get('url'))}"
+        )
     return "\n".join([
         f"# Decision Brief — {view['topic']}",
         f"> 决策问题: {view['decision_question']} ｜ 视野: {view['horizon']} ｜ "
         f"题型: {view['question_type']} ｜ 证据截止: "
-        f"{view.get('as_of_date') or 'UNKNOWN'}",
+        f"{view.get('as_of_date') or 'UNKNOWN'} ｜ 预测目标: "
+        f"{view.get('forecast_target_date') or 'RELATIVE_HORIZON'}",
+        "",
+        *temporal_lines,
         "",
         "## 一句话结论",
         f"- Edge: **{verdict['edge_state']}** ｜ 证据方向: **{verdict['evidence_direction']}** ｜ "
@@ -1428,7 +1608,11 @@ def _render_decision_brief(view):
         f"`{exploration_action.get('execution_receipt')}`。",
         *exploration_history_lines,
         "",
+        *allocation_lines,
+        "",
         *scenario_lines,
+        "",
+        *evidence_lines,
         "",
         "## 什么会改变结论",
         f"- 焦点 crux: `{view['change_trigger']['focus_crux'] or '—'}`；"
@@ -1537,6 +1721,18 @@ def _render_insight_cards(view):
         priority = item.get("exploration_priority", {})
         context = item.get("context", {})
         trails = item.get("proxy_trails", [])
+        observation_status = item.get(
+            "observation_status", "UNVERIFIED_CLUE"
+        )
+        observation_text = _clean(item.get("observation"))
+        if (
+            observation_status == "CITED_PROXY_TRAIL"
+            and observation_text == "—"
+        ):
+            observation_text = (
+                f"见下方 {item.get('proxy_evidence_count', 0)} 条"
+                " ProxyTrail 引用"
+            )
         threshold = item.get("break_even_threshold", {})
         threshold_text = (
             f"p*={threshold.get('p_star_percent')}%（仅由明示 payoff 机械推导）"
@@ -1548,8 +1744,8 @@ def _render_insight_cards(view):
             f"`{item.get('state', 'HYPOTHESIS_ONLY')}`",
             f"- **猜想**: {_clean(item.get('hypothesis'))}",
             f"- **观察 / 推断边界**: "
-            f"`{item.get('observation_status', 'UNVERIFIED_CLUE')}` "
-            f"{_clean(item.get('observation'))} / "
+            f"`{observation_status}` "
+            f"{observation_text} / "
             f"{_clean(item.get('inference') or item.get('value_transfer'))}",
             f"- **如果为真，意外在哪里**: "
             f"{_clean(item.get('surprise_if_true') or item.get('why_nonconsensus'))}",

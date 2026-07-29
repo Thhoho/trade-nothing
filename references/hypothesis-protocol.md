@@ -314,6 +314,9 @@ also non-evidentiary, closes no route, and never auto-retries.
 
 - `summary`;
 - the current `exploration_action`; and
+- `research_allocation`, a ranked research-attention comparison that preserves qualitative
+  upside/downside shape, signal timing, cheapest test, bounded validation cost, and stop condition;
+  it has no investment-ranking or sizing semantics; and
 - priority-ranked hypotheses with ID, state, hypothesis, context, causal chain,
   non-consensus rationale, value transfer, falsifier, catalyst, payoff,
   break-even threshold, priority, and compact ProxyTrail summaries.

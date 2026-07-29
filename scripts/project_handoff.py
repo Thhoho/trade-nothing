@@ -17,6 +17,7 @@ import tempfile
 from typing import Any
 
 import candidate_gap_engine
+import temporal_contract
 
 
 HANDOFF_SCHEMA = "trade-nothing.deepthink2.project-handoff.v4"
@@ -173,6 +174,14 @@ def preflight_handoff(state: Any) -> dict[str, Any]:
     for field in ("topic", "decision_question"):
         if not str(state.get(field) or "").strip():
             block("REQUIRED_FIELD_MISSING", f"state.{field}", f"{field} is required")
+
+    temporal = temporal_contract.from_state(state)
+    if temporal.get("requires_human_resolution"):
+        block(
+            "TEMPORAL_CONTRACT_INVALID",
+            "state.frame_contract",
+            str(temporal.get("message") or "temporal contract is invalid"),
+        )
 
     for gap_blocker in candidate_gap_engine.validate_histories(state):
         block(

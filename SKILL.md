@@ -19,7 +19,7 @@ description: >
   or any agent framework supporting sub-agent delegation.
 ---
 
-# Trade Nothing v0.10.0 — The Sovereign Alpha Hunter
+# Trade Nothing v0.11.0 — The Sovereign Alpha Hunter
 
 > **"Propose boldly where consensus may be wrong; follow faint proxy trails before the answer is
 > obvious; promote nothing until evidence survives adversarial checks. Seek upside actively without
@@ -39,6 +39,9 @@ Framer is deliberately different: it must execute **inline in the parent context
 or sub-agent dispatch. It declares `research_intent` and creates hypotheses and research structure,
 not evidence. `OPPORTUNITY_DISCOVERY` and `HYBRID` start with a 5–7 path entity-agnostic hypothesis
 garden even when the named task is one company or asset; `THESIS_CHALLENGE` may omit it.
+The frame also separates `as_of_date` (the evidence cutoff), `horizon` (relative decision window),
+and optional `forecast_target_date` (an exact future target). A question that names a later date
+without the explicit target field is invalid rather than silently treated as future evidence.
 The skill itself cannot guarantee physical isolation; the host must record how agents were
 dispatched. Single-model role switching is allowed only as an explicitly labelled `degraded` run.
 
@@ -614,7 +617,7 @@ copied with the skill.
 
 ---
 
-*Trade Nothing v0.10.0 — Hunt Alpha, Not Consensus.*
+*Trade Nothing v0.11.0 — Hunt Alpha, Not Consensus.*
 *Adversarial multi-agent architecture with full lifecycle negative feedback loops.*
 
 

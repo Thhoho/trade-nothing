@@ -5,10 +5,10 @@ import argparse
 import hashlib
 import json
 import re
-from datetime import date
 from pathlib import Path
 from typing import Any
 
+import temporal_contract
 
 SCHEMA_VERSION = "trade-nothing.research-start-packet.v1"
 INTEGRITY_SCHEMA = "trade-nothing.research-start-integrity.v1"
@@ -68,9 +68,9 @@ def validate_packet(raw: Any) -> dict[str, Any]:
     if question.get("question_type") not in QUESTION_TYPES:
         raise PacketValidationError("question.question_type is invalid")
     try:
-        date.fromisoformat(str(question.get("as_of_date") or ""))
-    except ValueError:
-        raise PacketValidationError("question.as_of_date must use YYYY-MM-DD")
+        temporal_contract.validate_question(question)
+    except temporal_contract.TemporalContractError as exc:
+        raise PacketValidationError(str(exc)) from exc
 
     lessons = raw.get("lesson_context")
     if not isinstance(lessons, list) or not 0 <= len(lessons) <= 10:

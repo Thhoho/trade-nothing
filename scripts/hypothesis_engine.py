@@ -3671,6 +3671,17 @@ def report_view(state, limit=5):
             for citation in item.get("observation_evidence", [])
             if isinstance(citation, dict) and valid_citation(citation)
         ]
+        proxy_views = [
+            _proxy_report_view(proxy)
+            for proxy in item.get("proxy_trails", [])
+            if isinstance(proxy, dict)
+        ]
+        proxy_evidence_count = sum(
+            1
+            for proxy in proxy_views
+            for citation in proxy.get("evidence", [])
+            if isinstance(citation, dict) and valid_citation(citation)
+        )
         hypotheses.append({
             "hypothesis_id": hypothesis_id,
             "id": hypothesis_id,
@@ -3681,9 +3692,12 @@ def report_view(state, limit=5):
             "observation_status": (
                 "CITED_OBSERVATION"
                 if observation_evidence
+                else "CITED_PROXY_TRAIL"
+                if proxy_evidence_count
                 else "UNVERIFIED_CLUE"
             ),
             "observation_evidence": deepcopy(observation_evidence),
+            "proxy_evidence_count": proxy_evidence_count,
             "inference": item.get("value_transfer"),
             "context": deepcopy(item.get("context", {})),
             "causal_chain": deepcopy(item.get("causal_chain", [])),
@@ -3723,15 +3737,58 @@ def report_view(state, limit=5):
                 if item.get(f"{field}_contested")
             ),
             "field_variants": deepcopy(item.get("field_variants", {})),
-            "proxy_trails": [
-                _proxy_report_view(proxy)
-                for proxy in item.get("proxy_trails", [])
-                if isinstance(proxy, dict)
-            ],
+            "proxy_trails": proxy_views,
+        })
+    current_action = exploration_action(state)
+    research_allocation = []
+    for rank, item in enumerate(hypotheses, 1):
+        asymmetry = (
+            item.get("asymmetry_case")
+            if isinstance(item.get("asymmetry_case"), dict)
+            else {}
+        )
+        priority = (
+            item.get("exploration_priority")
+            if isinstance(item.get("exploration_priority"), dict)
+            else {}
+        )
+        components = (
+            priority.get("components")
+            if isinstance(priority.get("components"), dict)
+            else {}
+        )
+        selected = (
+            current_action.get("hypothesis_id") == item.get("hypothesis_id")
+        )
+        research_allocation.append({
+            "rank": rank,
+            "hypothesis_id": item.get("hypothesis_id"),
+            "hypothesis": item.get("hypothesis"),
+            "attention_band": priority.get("band", "PARK"),
+            "information_gap": components.get("information_gap"),
+            "testability": components.get("testability"),
+            "asymmetry_case": deepcopy(asymmetry),
+            "minimum_test": item.get("cheap_discriminating_test"),
+            "selected_next_action": selected,
+            "validation_budget": (
+                deepcopy(current_action.get("budget_boundary", {}))
+                if selected
+                else {}
+            ),
+            "stop_condition": (
+                current_action.get("stop_condition")
+                if selected
+                else item.get("falsifier")
+            ),
+            "semantics": (
+                "Research attention and validation-cost comparison only; "
+                "not probability, expected return, trade ranking, or sizing."
+            ),
         })
     return {
         "summary": summary(state),
-        "exploration_action": exploration_action(state),
+        "exploration_action": current_action,
+        "research_allocation": research_allocation,
         "authorized_action_history": deepcopy(
             [
                 item
