@@ -253,35 +253,74 @@ def load_json_safe(filepath: str, default=None):
         return default
 
 
-def save_json(filepath: str, data, ensure_dir: bool = True):
-    """Atomically save JSON with an inter-process lock.
+def _save_json_unlocked(filepath: str, data):
+    """Publish one JSON generation while the caller owns the file lock."""
+    parent = os.path.dirname(os.path.abspath(filepath))
+    tmp_path = ""
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=parent,
+            prefix=f".{os.path.basename(filepath)}.", suffix=".tmp", delete=False
+        ) as f:
+            tmp_path = f.name
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, filepath)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
-    The temporary file is created beside the destination so ``os.replace`` stays
-    atomic on the same filesystem. A crash can leave the previous complete state,
-    never a half-written JSON document.
+
+def save_json(filepath: str, data, ensure_dir: bool = True):
+    """Atomically save JSON with an inter-process lock."""
+    if ensure_dir:
+        os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
+    lock = CrossPlatformFileLock(filepath)
+    with lock:
+        _save_json_unlocked(filepath, data)
+
+
+def save_json_revision_cas(
+    filepath: str,
+    data,
+    expected_revision,
+    ensure_dir: bool = True,
+):
+    """Publish only when the persisted ``runtime.state_revision`` matches.
+
+    This turns a read-modify-write into optimistic compare-and-swap, so a stale
+    command fails instead of erasing a concurrent formal or exploration write.
+    The supplied object receives the incremented revision after success.
     """
     if ensure_dir:
         os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
     lock = CrossPlatformFileLock(filepath)
     with lock:
-        parent = os.path.dirname(os.path.abspath(filepath))
-        tmp_path = ""
+        current = load_json_safe(filepath, default=None)
+        current_revision = (
+            current.get("runtime", {}).get("state_revision", 0)
+            if isinstance(current, dict)
+            else 0
+        )
         try:
-            with tempfile.NamedTemporaryFile(
-                mode="w", encoding="utf-8", dir=parent,
-                prefix=f".{os.path.basename(filepath)}.", suffix=".tmp", delete=False
-            ) as f:
-                tmp_path = f.name
-                json.dump(data, f, ensure_ascii=False, indent=2)
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(tmp_path, filepath)
-        finally:
-            if tmp_path and os.path.exists(tmp_path):
-                try:
-                    os.remove(tmp_path)
-                except OSError:
-                    pass
+            current_revision = int(current_revision)
+        except (TypeError, ValueError):
+            raise ValueError("persisted_state_revision_invalid")
+        if expected_revision is not None:
+            try:
+                expected = int(expected_revision)
+            except (TypeError, ValueError):
+                raise ValueError("expected_state_revision_invalid")
+            if current_revision != expected:
+                raise ValueError("state_revision_conflict")
+        runtime = data.setdefault("runtime", {})
+        runtime["state_revision"] = current_revision + 1
+        _save_json_unlocked(filepath, data)
+        return runtime["state_revision"]
 
 
 from collections import Counter

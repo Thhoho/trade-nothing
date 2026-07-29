@@ -291,6 +291,65 @@ class LandscapeDispatchTests(unittest.TestCase):
 
 
 class LandscapeGateAndReportTests(unittest.TestCase):
+    def test_hybrid_non_universe_requires_post_coverage_harvest_dry_window(self):
+        state = mapped_state()
+        state["question_type"] = "CONJUNCTIVE"
+        state["frame_contract"]["research_intent"] = "HYBRID"
+        for path in state["landscape_map"]["paths"]:
+            path["probes"] = {
+                "detective": {"round": 3, "state": "UNKNOWN"},
+                "inquisitor": {"round": 3, "state": "UNKNOWN"},
+            }
+            path["state"] = "UNKNOWN"
+        for crux_id, crux in state["cruxes"].items():
+            crux.update({
+                "status": "RESOLVED_BULL",
+                "retired": True,
+                "first_contested": 1,
+                "contested_history": [0.6, 0.6, 0.6],
+                "p_history": [0.5, 0.6, 0.6],
+                "citations": [
+                    citation(f"{crux_id}-a"),
+                    citation(f"{crux_id}-b"),
+                ],
+            })
+        stable = {
+            "weakest": "C1",
+            "p_weakest": 0.6,
+            "p_mean": 0.6,
+            "decision": "RESEARCH_READY",
+            "research_verdict": {
+                "edge_state": "INSUFFICIENT_EVIDENCE",
+                "evidence_direction": "BULL",
+                "actionability": "MONITOR",
+            },
+        }
+        state["decision_trace"] = [
+            {"round": 2, **stable},
+            {"round": 3, **stable},
+        ]
+        state["rounds"] = [{
+            "round": 3,
+            "opportunity_harvest": {
+                "accepted_new": 0,
+                "merged_existing": 0,
+            },
+        }]
+        first = crux_engine.convergence(state, 3)
+        self.assertEqual(first["decision"], "continue")
+        self.assertIn("连续静默 1 轮", first["reason"])
+
+        state["decision_trace"].append({"round": 4, **stable})
+        state["rounds"].append({
+            "round": 4,
+            "opportunity_harvest": {
+                "accepted_new": 0,
+                "merged_existing": 0,
+            },
+        })
+        second = crux_engine.convergence(state, 4)
+        self.assertEqual(second["decision"], "converge")
+
     def _coverage_complete_universe(self):
         state = mapped_state()
         for path in state["landscape_map"]["paths"]:

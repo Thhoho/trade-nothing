@@ -2,7 +2,8 @@
 name: trade-nothing
 description: >
   Adversarial investment-research skill with a crux evidence ledger, citation-gated
-  Judge signals, deterministic convergence, evidence-backed opportunity harvesting
+  Judge signals, deterministic convergence, a non-promotable hypothesis-and-proxy
+  exploration ledger, evidence-backed opportunity harvesting
   from both surviving and failed cruxes, and two-sided CandidateScreen investability
   pre-checks plus snapshot-bound claim verification. Host-enforced agent isolation is used
   where the runtime supports it. Debate-support scores, OpportunitySeeds, screening states,
@@ -11,16 +12,19 @@ description: >
   
   Modes: -deepthink2 (recommended crux-based research), -deepthink (legacy LFI pipeline),
   -scan (experimental macro radar, not a full-universe scanner),
-  -calibrate (historical assertion audit), -premortem (distributed failure path simulation),
+  -calibrate (historical assertion audit), -premortem (distributed symmetric scenario stress test),
   and standard Q&A.
   
   Runtime-agnostic: Works with Antigravity, Claude Code, Gemini CLI, Hermes, 
   or any agent framework supporting sub-agent delegation.
 ---
 
-# Trade Nothing v0.9.9 — The Sovereign Alpha Hunter
+# Trade Nothing v0.10.0 — The Sovereign Alpha Hunter
 
-> **"You are not a commentator explaining past facts; you are a hunter seeking misalignments in the mist. Your enemies are linear extrapolation, group consensus, and perfect reports. Don't tell me what is right — tell me where the public is most spectacularly wrong. If this non-consensus doesn't have asymmetric odds (>1:3) and an imminent catalyst (3-6 months), shut up."**
+> **"Propose boldly where consensus may be wrong; follow faint proxy trails before the answer is
+> obvious; promote nothing until evidence survives adversarial checks. Seek upside actively without
+> hiding failure paths, invalidation, or the price already paid. Excess caution is not edge, and
+> imaginative prose is not evidence."**
 
 **Skill Root:** `./` (relative to this file)  
 **Scripts:** `./scripts/`  
@@ -32,24 +36,27 @@ description: >
 
 Trade Nothing requires **host-enforced isolated contexts** for the Detective and Inquisitor.
 Framer is deliberately different: it must execute **inline in the parent context**, without search
-or sub-agent dispatch. It creates hypotheses and research structure, not evidence.
+or sub-agent dispatch. It declares `research_intent` and creates hypotheses and research structure,
+not evidence. `OPPORTUNITY_DISCOVERY` and `HYBRID` start with a 5–7 path entity-agnostic hypothesis
+garden even when the named task is one company or asset; `THESIS_CHALLENGE` may omit it.
 The skill itself cannot guarantee physical isolation; the host must record how agents were
 dispatched. Single-model role switching is allowed only as an explicitly labelled `degraded` run.
 
 ```mermaid
 graph TD
     A[Deterministic Orchestrator] -->|1. Inject negative priors| B(Extract Evolution.md history)
-    A -->|2. Spawn sub-agents| C[Detective 侦探]
-    A -->|2. Spawn sub-agents| D[Inquisitor 审问者]
+    A -->|2. Frame research intent| K[Hypothesis Garden: HYPOTHESIS_ONLY]
+    K -->|3. Spawn isolated roles| C[Detective 侦探]
+    K -->|3. Spawn isolated roles| D[Inquisitor 审问者]
     C -->|Parallel data gathering| E[Web / Scripts / Supply Chain]
     D -->|Parallel logic audit| F[Cycles / Reflexivity / Black Swans]
-    E -->|Debate round output| A
-    F -->|Attack vectors output| A
-    A -->|3. Citation gate + crux support update| G{Research-ready?}
+    E -->|Evidence + hypothesis sparks| A
+    F -->|Attacks + proxy trails| A
+    A -->|4. Citation gate + crux support update| G{Research-ready?}
     G -->|No| A
-    G -->|Yes| H[Output evidence report]
-    H -->|4. Harvest tasks| I[Local Issue Tracker]
-    H -->|4. System reminders| J[OS Notifications optional]
+    G -->|Yes| H[Formal status + labelled exploration report]
+    H -->|5. Harvest formal tasks| I[Local Issue Tracker]
+    H -->|5. Optional exploration actions| J[Human-authorized bounded tests]
 ```
 
 ### Agent Runtime Compatibility (多平台适配)
@@ -81,8 +88,12 @@ that JSON to `--init`. See `references/runtime-protocol.md` for bounded waits an
   blocks unconverged or source-unverified promotion.
 - **Judge**: Evidence scorer, not a researcher or final decision-maker. It may score only claims
   present in the isolated agent JSON and must attach concrete citations.
-- **Detective** (`agents/detective.md`): Seeks non-consensus bull scripts, hidden assets, proxy data triangulation, insider flow analysis. Optimistic bias, data-driven.
-- **Inquisitor** (`agents/inquisitor.md`): Ruthlessly deconstructs the Detective's hypothesis via cycle filters, pain trade analysis, marginal pricing audit, reflexivity detection, and black swan path construction. Extreme skepticism.
+- **Detective** (`agents/detective.md`): Generates non-consensus mechanisms, follows faint proxy
+  trails, and verifies physical constraints, value transfer, and pricing. Optimistic exploration
+  bias; explicit evidence boundary.
+- **Inquisitor** (`agents/inquisitor.md`): Applies full-strength red-team attacks while constructing
+  symmetric bull-surprise, base, and bear-failure paths. It can preserve counter-mechanism sparks
+  without forcing an arbitrary crash or bottom price.
 - **Claim Verifier** (`agents/claim_verifier.md`): Independently checks claim-to-snapshot alignment
   using short exact source spans. It does not assess publisher truth or investment merit.
 
@@ -169,16 +180,20 @@ or position sizing from radar output.
 3. On `❌wrong`: Force halt and demand root cause analysis + methodology correction, which feeds back as negative constraints in the next `-deepthink`.
 
 ### Mode E: `-premortem` — Distributed Pre-mortem
-Spawn 3 independent Inquisitor instances. Premise: "This stock has crashed 50% in 6 months." Each independently constructs a different **death path** and generates kill-switch monitoring triggers.
+Spawn 3 independent Inquisitor instances. Each constructs a different symmetric
+`BULL_SURPRISE / BASE / BEAR_FAILURE` map over the declared horizon, with observable triggers,
+transmission chains, falsifiers, and kill-switch monitors. Do not preset a crash percentage,
+bottom price, target price, or path probability.
 
 ---
 
 ### Mode F: `-deepthink2` — Crux-Based Adversarial Pipeline (v0.10, recommended)
 
 > Replaces the single-posterior + LFI layer (which railroaded every run to 0%/100% and always
-> burned 12 rounds) with a **per-crux ledger**: bounded debate-support score per load-bearing
-> claim, decision-readiness convergence, crux-scoping (only debate OPEN cruxes), captured
-> and de-duplicated citations, OpportunitySeed harvesting, and a two-layer report. The score is a workflow heuristic, not
+> burned 12 rounds) with two separate ledgers: a non-promotable **exploration ledger** for wild
+> hypotheses, sparks, proxy trails, alternative explanations, and cheap tests; and a
+> **per-crux evidence ledger** for bounded debate-support, decision-readiness convergence,
+> de-duplicated citations, OpportunitySeed admission, and formal reporting. The score is a workflow heuristic, not
 > a probability, return forecast, target price, trade signal, or sizing input.
 
 **Model tiering** (`scripts/model_tiers.py`): Detective / Inquisitor / Candidate Analyst /
@@ -212,16 +227,19 @@ remain a runtime-agnostic fallback; once a run has an id, do not mix topic-based
 addressing.
 
 ```bash
-# 1. Framing gate (DEEP, runs once) — question type + connected logic graph + 2-5 cruxes
+# 1. Framing gate (DEEP, runs once) — question type + research intent + logic graph + 2-5 cruxes
 python3 scripts/deepthink_orchestrator_v2.py --frame --topic "TARGET"
 # When tradenothing-next exported a human-gated ACTIVE Lesson packet, read
 # references/research-start-packet-protocol.md and add:
 #   --start-packet /path/to/RSP-....json
 #    → execute agents/framer.md INLINE IN THE PARENT. Never define/invoke a Framer sub-agent and
 #      never browse during framing. If no_edge_precheck.is_researchable=false → emit
-#      No-Edge statement and STOP (spawn nothing).
+#      No-Edge statement and STOP (spawn nothing). Lack of an obvious variant perception is not
+#      sufficient; false means the question is not bounded or falsifiable.
 #    → Framer must return inline JSON only. It must not create Markdown, Google Drive/cloud files,
 #      or choose an output path. Persistence requires explicit user opt-in and an approved output root.
+#    → OPPORTUNITY_DISCOVERY/HYBRID must include 5-7 entity-agnostic wild hypotheses in
+#      hypothesis_garden, all HYPOTHESIS_ONLY. THESIS_CHALLENGE may omit the garden.
 
 # 2. Init from frame → Round-1 dispatch prompts (Detective+Inquisitor scoped to all cruxes)
 python3 scripts/deepthink_orchestrator_v2.py --init --topic "TARGET" --frame-json '<framer_output>'
@@ -237,7 +255,9 @@ python3 scripts/deepthink_orchestrator_v2.py --runtime-failure --topic "TARGET" 
 
 # 3. Each round: spawn isolated Detective (detective.md) + Inquisitor (inquisitor.md) on the
 #    OPEN cruxes only (+ Inquisitor's free-roam slot to re-open a resolved crux). Both may emit
-#    max 3 OpportunitySeeds backed by their own same-round/same-crux evidence. Then score with
+#    max 3 HYPOTHESIS_ONLY sparks and 3 proxy trails for the separate exploration ledger, plus
+#    max 3 OpportunitySeeds backed by their own same-round/same-crux evidence. Judge must ignore
+#    every exploration object. Then score only formal evidence with
 #    the DEEP Judge (agents/judge.md) and submit:
 python3 scripts/deepthink_orchestrator_v2.py --submit --topic "TARGET" \
     --det '<detective_json>' --inq '<inquisitor_json>' --judge '<judge_json>'
@@ -259,7 +279,8 @@ python3 scripts/deepthink_orchestrator_v2.py --close-gap-task --topic "TARGET" \
 #    unscreened READY_FOR_SCREENING seed default to the bounded CandidateScreen continuation below;
 #    report rendering is deferred until that batch completes. Use --challenge-only only when the
 #    user explicitly requests thesis critique without opportunity screening. The default report is
-#    compact, deterministic, and never embeds raw agent payloads.
+#    compact, deterministic, and never embeds raw agent payloads. It separates the singular
+#    deterministic formal_action from an optional, human-authorized exploration_action.
 python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET"
 # Low-context decision view (does not include synthesis input unless explicitly requested):
 python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET" --report-view brief
@@ -273,6 +294,39 @@ python3 scripts/deepthink_orchestrator_v2.py --resolution-memo --topic "TARGET"
 
 # 4b. Resume only after explicit user authorization because this consumes more research budget.
 python3 scripts/deepthink_orchestrator_v2.py --resume-blocked --topic "TARGET" --extra-rounds 3
+
+# 4c. Optional exploration loop. Design and planning are safe and non-executing.
+# If exploration_action.authorization_state=NEEDS_ACTION_DESIGN, record exactly
+# the typed design requested by its action_code. The design must bind both the
+# emitted design_target_id and design_state_revision.
+python3 scripts/deepthink_orchestrator_v2.py --record-exploration-design \
+    --topic "TARGET" --exploration-design \
+    '{"design_reviewed":true,"design_scope":"ONE_EXPLORATION_LEDGER_DESIGN","design_note":"reviewed the cheapest two-sided test","design_target_id":"DT-...","expected_state_revision":12,"hypothesis_id":"WH-...","action_code":"DESIGN_PROXY_TRAIL","proxy_plan":[{"direction":"SUPPORTS","proxy":"dated customer acceptance milestone","causal_link":"acceptance distinguishes qualified scarcity from announced capacity","publisher_class":"CUSTOMER_OR_COUNTERPARTY","bounded_query":"site:customer.example dated acceptance supplier","stop_condition":"stop after one query or three documents","origin_crux":"C1"},{"direction":"CONTRADICTS","proxy":"dated qualification lead-time compression","causal_link":"compression contradicts persistent qualified scarcity","publisher_class":"REGULATOR_OR_OFFICIAL_DATASET","bounded_query":"official qualification lead time series","stop_condition":"stop after one query or three documents","origin_crux":"C1"}]}'
+
+# Planning freezes one attempt. Repeating this command is idempotent while that
+# exact attempt remains open. An unapproved plan may be explicitly cancelled;
+# cancellation performs no search and allows a new attempt ID.
+python3 scripts/deepthink_orchestrator_v2.py --plan-exploration --topic "TARGET"
+python3 scripts/deepthink_orchestrator_v2.py --cancel-exploration-action \
+    --topic "TARGET" --action-id "EA-..." --reason "superseded by a better diagnostic route"
+
+# Never call --authorize-exploration unless the user explicitly authorizes the
+# exact action_id. This receipt is caller-attested procedural evidence; it is
+# not cryptographic proof of a host UI approval event.
+python3 scripts/deepthink_orchestrator_v2.py --authorize-exploration --topic "TARGET" \
+    --action-id "EA-..." --authorization-receipt \
+    '{"action_id":"EA-...","explicit_user_authorization":true,"authorization_scope":"ONE_BOUNDED_EXPLORATION_ACTION","authorization_note":"user explicitly approved this one bounded test"}'
+# Run only the emitted dispatch contract, then close it with the exact bounded receipt.
+python3 scripts/deepthink_orchestrator_v2.py --submit-exploration-result --topic "TARGET" \
+    --action-id "EA-..." --exploration-result '<authorized exploration result JSON>'
+# This endpoint may write one ProxyTrail only. It cannot mutate cruxes, OpportunitySeeds,
+# CandidateScreens, claims, decisions, trades, or schedule a follow-on.
+# Every document needs a concrete URL and YYYY-MM-DD date on or before the frozen
+# as_of_date. Proxy evidence must bind an exact document_id (or the full canonical
+# citation tuple), planned route_id, planned proxy, origin crux, query, source class,
+# causal link, and stop condition. If formal or exploration state changed after
+# authorization, the result is not ingested: the host stores only a SHA-256 stale
+# receipt, closes the old attempt, and forbids automatic retry.
 
 # 5. CandidateScreen: for opportunity questions this is the default post-convergence continuation.
 #    The deterministic engine selects at most 3 de-duplicated READY_FOR_SCREENING seeds using
@@ -305,6 +359,9 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > decision stable + adversary dry) is decided by the script, not the LLM. The Judge's signal is
 > bounded `[-1,1]`; no valid concrete citation means zero signal, strong signals require a sourced
 > number, and duplicate evidence cannot move the same crux twice. `fuse_break` blocks formal reporting.
+> The Judge must treat `wild_hypotheses`, `hypothesis_sparks`, `proxy_trails`, and every
+> `HYPOTHESIS_ONLY` object as absent when scoring. Exploration novelty cannot move support, source
+> counts, convergence, evidence maturity, or promotion.
 > A fuse-break must still emit the deterministic non-formal Resolution Memo and compact continuation
 > packet. Never auto-resume it. Late cruxes missing a falsifier/catalyst or introduced after the
 > dry-round cutoff are deferred to a future topic instead of blocking the current run.
@@ -315,7 +372,10 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > **Cost integrity:** each round deterministically dispatches at most two OPEN cruxes, prioritizing
 > untested, least-recently-scored, and decision-uncertain cruxes without retiring deferred work. Each
 > research agent gets at most 2 searches per dispatched crux. Stop after 2 searches without new
-> primary evidence and return `UNKNOWN`. When untested cruxes exist, disable free-roam and do not
+> primary evidence and return `UNKNOWN` for the formal finding. A role may preserve a useful anomaly
+> as a `HYPOTHESIS_ONLY` spark or non-promotable proxy trail, but doing so grants no additional
+> search and no evidence credit. A later exploration action requires a separately explicit human authorization
+> and its own bounded query/document/stop contract. When untested cruxes exist, disable free-roam and do not
 > redispatch resolved cruxes. Parent/orchestrator contexts
 > consume artifact envelopes, compact packets, and final artifact paths only—never raw transcripts,
 > search logs, full external-agent payloads, or a report body duplicated from disk.
@@ -333,6 +393,12 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > Landscape coverage, and the post-coverage dry window. Read
 > `references/framing-feasibility-protocol.md` before changing the Framer schema or scheduler.
 > Every researchable frame must also declare one question type and a connected logic graph.
+> It must independently declare `research_intent=THESIS_CHALLENGE|OPPORTUNITY_DISCOVERY|HYBRID`;
+> question type cannot be used as a proxy for user intent. `OPPORTUNITY_DISCOVERY` and `HYBRID`
+> require 5–7 entity-agnostic `HYPOTHESIS_ONLY` wild hypotheses with symmetric scenario paths,
+> alternative explanations, proxy plans, and cheap tests—even for a named single company or asset.
+> `THESIS_CHALLENGE` may omit the garden. Absence of an obvious variant perception is not a valid
+> No-Edge pre-check failure when the question remains bounded and falsifiable.
 > `UNIVERSE_SEARCH` requires both an `OPPORTUNITY_PATH` and a `PRICING` crux. Read
 > `references/research-question-types.md` before framing broad, comparative, or multi-path questions.
 
@@ -343,7 +409,21 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > convergence, and a structured catalyst inside the root horizon. Report and default dispatch group
 > exact duplicate entities without combining evidence across paths. Read
 > `references/opportunity-protocol.md` for the exact schema and admission rules.
-> Opportunity-oriented frames must also use the entity-agnostic 5–7 path Landscape Map in
+> The exploration ledger is deliberately earlier than OpportunitySeed admission:
+> `HYPOTHESIS_ONLY -> TRACED -> EVIDENCE_BACKED`.
+> These are descriptive research-maturity labels, not promotion states. A spark can inspire a new
+> separately validated seed; it can never be mutated into one or counted as a candidate. Such a
+> seed may carry `origin_hypothesis_id` only as lineage: the ID must exist and its origin crux must
+> match, while the seed still passes same-agent + same-round + same-crux evidence admission.
+> When comparable non-negative upside/downside magnitudes are explicitly supplied, the exploration
+> ledger may compute `downside / (upside + downside)` as a break-even success threshold. It does not
+> estimate success probability, expected return, target price, direction, or position size; missing
+> inputs remain `UNKNOWN`.
+> Expiry and falsifier remain explicit audit fields in v0.10; the runtime does not silently invent a
+> terminal state, delete a hypothesis, or promote it on their basis.
+> Read `references/hypothesis-protocol.md` before changing the exploration ledger, role payloads,
+> maturity transitions, proxy evidence, priority heuristic, or report projection.
+> `OPPORTUNITY_DISCOVERY` and `HYBRID` frames must use the entity-agnostic 5–7 path Landscape Map in
 > `references/landscape-map-protocol.md`. Both research roles must probe every path; any `UNPROBED`
 > path blocks convergence and `EDGE_FOUND`. Every mapped OpportunitySeed must bind the matching
 > `landscape_path_id` and `origin_crux`.
@@ -359,6 +439,14 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > Thesis creation; report validity, root actionability, or human rationale cannot bypass this gate.
 > Read `references/pricing-gap-protocol.md` before emitting candidate pricing anchors; narrative
 > claims such as “the market underestimates this” do not satisfy the structured as-of anchor gate.
+
+> **Report integrity:** every report separates a deterministic singular `formal_action` from one
+> optional `exploration_action` or null. The formal action alone may advance workflow state.
+> Exploration actions are bounded information-gain tests with a hypothesis ID, source class,
+> query/document cap, success condition, stop condition, and explicit authorization requirement.
+> Insight cards must label observation, inference, alternative explanation, falsifier, trace, and
+> evidence boundary. They never embed raw role output and never soften a STOP, WAIT, fuse break,
+> CandidateScreen blocker, or promotion gate. Read `references/report-contract.md`.
 
 > **CandidateScreen integrity:** screen only after root-thesis convergence. Run
 > `agents/candidate_analyst.md` and `agents/candidate_skeptic.md` in isolated contexts on the
@@ -405,9 +493,15 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 
 For method evaluation, read `references/benchmark-protocol.md`, run
 `scripts/benchmark_current.py --check`, and use only the suites resolved from
-`benchmarks/current.json`. Never infer the current arm from a filename or the latest Git commit.
+`benchmarks/current.json`. If it returns `UNBENCHMARKED_METHOD_CHANGE`, the
+resolved suites are controls for `last_calibrated_method_identity`, not
+effectiveness evidence for the operational method. Never infer the current arm
+from a filename or the latest Git commit.
 Never expose blind assessments, expected paths, or post-as-of outcomes to a research role, and never
-let a research result score itself.
+let a research result score itself. Insight validity, causal-path validity, and exploration-trace
+completeness may be benchmarked alongside hypothesis-laundering and formal/exploration-action
+confusion. These are reasoning, lineage, and report-usability metrics—not alpha, expected return,
+full-universe discovery recall, or permission to lower a promotion gate.
 
 When handing a state to `tradenothing-next`, read `references/project-handoff-protocol.md` and use
 `scripts/project_handoff.py --check` before export. Never hand the product a Markdown conclusion,
@@ -520,7 +614,7 @@ copied with the skill.
 
 ---
 
-*Trade Nothing v0.9.9 — Hunt Alpha, Not Consensus.*
+*Trade Nothing v0.10.0 — Hunt Alpha, Not Consensus.*
 *Adversarial multi-agent architecture with full lifecycle negative feedback loops.*
 
 
@@ -541,3 +635,7 @@ copied with the skill.
 > 11. **Framer 必须由父上下文内联执行，禁止派生子代理和搜索；任何阶段超时必须输出非正式 runtime failure memo，禁止无界等待、伪造输出或自动重试。**
 > 12. **题型、逻辑图和 crux 角色决定总命题聚合方式；`NO_EDGE`、证据方向与可行动性必须分开，禁止恢复 `NO_EDGE / AVOID`。**
 > 13. **报告合法、根问题 `READY_FOR_SCREENING` 与候选可升级是三件事；只有候选级 `VERIFIED_FOR_HUMAN` 可以进入人工 DRAFT Thesis。**
+> 14. **`wild_hypotheses`、`hypothesis_sparks`、`proxy_trails` 与 `HYPOTHESIS_ONLY` 永远不得进入 Judge 评分、来源计数、收敛或晋级；但不得因证据尚弱而从探索账本静默删除。**
+> 15. **`research_intent` 必须独立于题型声明；`OPPORTUNITY_DISCOVERY` / `HYBRID` 必须先生成 5–7 个实体无关假说，`THESIS_CHALLENGE` 才可省略。**
+> 16. **报告必须物理区分唯一正式动作与可选探索动作；探索动作只用于经人明确授权的有界求证，不能绕过 fuse、CandidateScreen、快照核验或人工闸门。**
+> 17. **Inquisitor 必须同时构造 bull surprise、base、bear failure 路径；不得预设固定暴跌幅度、底价、目标价或伪概率来制造红队强度。**

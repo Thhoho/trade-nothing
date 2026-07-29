@@ -11,7 +11,9 @@ import discovery_benchmark_harness
 from method_identity import build_method_identity
 
 
-POINTER_SCHEMA = "trade-nothing.benchmark-current.v1"
+POINTER_SCHEMA = "trade-nothing.benchmark-current.v2"
+CALIBRATED = "CALIBRATED_CURRENT_METHOD"
+UNBENCHMARKED = "UNBENCHMARKED_METHOD_CHANGE"
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_POINTER = ROOT / "benchmarks" / "current.json"
 
@@ -43,8 +45,25 @@ def check_current(pointer_path=DEFAULT_POINTER, source_repo=None):
     if pointer.get("schema_version") != POINTER_SCHEMA:
         raise ValueError(f"benchmark pointer schema must be {POINTER_SCHEMA}")
     actual_identity = build_method_identity(ROOT)
-    if pointer.get("method_identity") != actual_identity:
+    if pointer.get("operational_method_identity") != actual_identity:
         raise ValueError("benchmark_current_drift: pointer does not match operational method")
+    calibration_status = pointer.get("calibration_status")
+    if calibration_status not in {CALIBRATED, UNBENCHMARKED}:
+        raise ValueError("benchmark pointer calibration_status is invalid")
+    calibrated_identity = pointer.get("last_calibrated_method_identity")
+    if not isinstance(calibrated_identity, dict):
+        raise ValueError(
+            "benchmark pointer last_calibrated_method_identity is required"
+        )
+    if calibration_status == CALIBRATED:
+        if calibrated_identity != actual_identity:
+            raise ValueError(
+                "benchmark calibrated pointer must bind the operational method"
+            )
+    elif calibrated_identity == actual_identity:
+        raise ValueError(
+            "unbenchmarked method change must differ from last calibration"
+        )
 
     summaries = {}
     configurations = (
@@ -72,7 +91,15 @@ def check_current(pointer_path=DEFAULT_POINTER, source_repo=None):
         contract = suite["variant_manifest"].get(variant)
         if not isinstance(contract, dict):
             raise ValueError(f"benchmark pointer {label} current variant is missing")
-        if contract.get("method_contract_sha256") != actual_identity["contract_sha256"]:
+        expected_suite_identity = (
+            actual_identity
+            if calibration_status == CALIBRATED
+            else calibrated_identity
+        )
+        if (
+            contract.get("method_contract_sha256")
+            != expected_suite_identity.get("contract_sha256")
+        ):
             raise ValueError(f"benchmark pointer {label} method identity mismatch")
         answer_key = _load_json(answer_key_path)
         if answer_key.get("suite_id") != suite["suite_id"]:
@@ -88,8 +115,17 @@ def check_current(pointer_path=DEFAULT_POINTER, source_repo=None):
             "engine_version": contract["engine_version"],
         }
     return {
-        "status": "VERIFIED",
-        "method_identity": actual_identity,
+        "status": calibration_status,
+        "operational_method_identity": actual_identity,
+        "last_calibrated_method_identity": calibrated_identity,
+        "current_method_calibrated": calibration_status == CALIBRATED,
+        "benchmark_semantics": (
+            "Historical suites remain valid controls for the last calibrated "
+            "method; they are not effectiveness evidence for the current "
+            "operational method."
+            if calibration_status == UNBENCHMARKED
+            else "The resolved suites bind the current operational method."
+        ),
         **summaries,
     }
 

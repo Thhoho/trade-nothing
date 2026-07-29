@@ -26,7 +26,8 @@ DISPATCH_SCHEMA = "trade-nothing.discovery-dispatch.v1"
 GATEWAY_STATE_SCHEMA = "trade-nothing.discovery-gateway-state.v1"
 RETRIEVAL_RECEIPT_SCHEMA = "trade-nothing.discovery-retrieval-receipt.v1"
 RESULT_SCHEMA = "trade-nothing.discovery-result.v1"
-ASSESSMENT_SCHEMA = "trade-nothing.discovery-assessment.v1"
+ASSESSMENT_SCHEMA = "trade-nothing.discovery-assessment.v2"
+LEGACY_ASSESSMENT_SCHEMA = "trade-nothing.discovery-assessment.v1"
 SUMMARY_SCHEMA = "trade-nothing.discovery-summary.v1"
 ANSWER_KEY_SCHEMA = "trade-nothing.discovery-answer-key.v1"
 EVALUATION_SCOPE = "FROZEN_CORPUS_DISCOVERY"
@@ -57,6 +58,17 @@ ASSESSOR_COUNT_METRICS = {
     "comprehension_question_correct",
     "manual_edit_count",
 }
+EXPLORATION_COUNT_METRICS = {
+    "insight_card_total",
+    "insight_card_valid",
+    "causal_path_total",
+    "causal_path_valid",
+    "exploration_trace_total",
+    "exploration_trace_complete",
+    "hypothesis_laundering_count",
+    "formal_exploration_action_confusion_count",
+}
+ASSESSOR_COUNT_METRICS |= EXPLORATION_COUNT_METRICS
 
 
 def _load_json(path):
@@ -233,6 +245,9 @@ def validate_suite(suite, suite_path):
     variants, variant_manifest = _validate_variants(
         suite.get("variants"), suite.get("variant_manifest")
     )
+    candidate_variant = str(suite.get("candidate_variant") or "").strip()
+    if candidate_variant and candidate_variant not in variants:
+        raise ValueError("candidate_variant must name one declared variant")
     root = Path(suite_path).resolve().parent
     for variant, entry in variant_manifest.items():
         paths = [("adapter_instruction_path", "adapter_instruction_sha256")]
@@ -343,8 +358,11 @@ def validate_suite(suite, suite_path):
         },
         "cases": normalized_cases,
     }
+    if candidate_variant:
+        contract["candidate_variant"] = candidate_variant
     return {
         **contract,
+        "candidate_variant": candidate_variant or None,
         "suite_contract_sha256": _hash_bytes(_json(contract).encode("utf-8")),
         "corpus_path": str(corpus_path),
         "documents": normalized_documents,
@@ -717,8 +735,14 @@ def _validate_result(result, case, suite, results_root):
 
 
 def _validate_assessment(assessment, result):
-    if assessment.get("schema_version") != ASSESSMENT_SCHEMA:
-        raise ValueError(f"assessment schema_version must be {ASSESSMENT_SCHEMA}")
+    assessment_schema = assessment.get("schema_version")
+    if assessment_schema not in {
+        ASSESSMENT_SCHEMA, LEGACY_ASSESSMENT_SCHEMA
+    }:
+        raise ValueError(
+            "assessment schema_version must be "
+            f"{ASSESSMENT_SCHEMA} or {LEGACY_ASSESSMENT_SCHEMA}"
+        )
     if assessment.get("case_id") != result["case_id"] or assessment.get("variant") != result["variant"]:
         raise ValueError("assessment case/variant mismatch")
     if assessment.get("blind") is not True:
@@ -729,13 +753,31 @@ def _validate_assessment(assessment, result):
     metrics = assessment.get("metrics")
     if not isinstance(metrics, dict):
         raise ValueError("assessment.metrics is required")
+    exploration_metrics_assessed = (
+        assessment_schema == ASSESSMENT_SCHEMA
+        and EXPLORATION_COUNT_METRICS.issubset(metrics)
+    )
     normalized = {
-        field: int(_nonnegative_number(metrics.get(field), f"metrics.{field}"))
+        field: int(_nonnegative_number(
+            metrics.get(
+                field,
+                0
+                if (
+                    assessment_schema == LEGACY_ASSESSMENT_SCHEMA
+                    and field in EXPLORATION_COUNT_METRICS
+                )
+                else None,
+            ),
+            f"metrics.{field}",
+        ))
         for field in ASSESSOR_COUNT_METRICS
     }
     for numerator, denominator in (
         ("decisive_claim_correct", "decisive_claim_total"),
         ("major_path_found", "major_path_total"),
+        ("insight_card_valid", "insight_card_total"),
+        ("causal_path_valid", "causal_path_total"),
+        ("exploration_trace_complete", "exploration_trace_total"),
         ("effective_seed_count", "candidate_count"),
         ("false_discovery_count", "candidate_count"),
         ("pricing_anchor_valid", "pricing_anchor_total"),
@@ -743,7 +785,10 @@ def _validate_assessment(assessment, result):
     ):
         if normalized[numerator] > normalized[denominator]:
             raise ValueError(f"{numerator} cannot exceed {denominator}")
-    return normalized
+    return {
+        "metrics": normalized,
+        "exploration_metrics_assessed": exploration_metrics_assessed,
+    }
 
 
 def _ratio(numerator, denominator):
@@ -779,9 +824,10 @@ def score_suite(suite, answer_key, results_dir):
                 result = _validate_result(
                     _load_json(root / f"{stem}.result.json"), case, suite, root
                 )
-                metrics = _validate_assessment(
+                assessment = _validate_assessment(
                     _load_json(root / f"{stem}.assessment.json"), result
                 )
+                metrics = assessment["metrics"]
                 read_ids = set(result["receipt"]["read_doc_ids"])
                 row = {
                     "case_id": case["case_id"],
@@ -794,6 +840,9 @@ def score_suite(suite, answer_key, results_dir):
                     "relevant_source_total": len(relevant),
                     "relevant_source_read": len(read_ids & relevant),
                     "metrics": metrics,
+                    "exploration_metrics_assessed": assessment[
+                        "exploration_metrics_assessed"
+                    ],
                 }
                 row["comparable"] = result["completion_status"] == "COMPLETE" and result["within_budget"]
                 rows.append(row)
@@ -821,23 +870,85 @@ def score_suite(suite, answer_key, results_dir):
             "source_recall": _ratio(totals["relevant_source_read"], totals["relevant_source_total"]),
             "retrieval_precision": _ratio(totals["relevant_source_read"], totals["documents_read"]),
             "major_path_coverage": _ratio(totals["major_path_found"], totals["major_path_total"]),
+            "insight_card_valid_rate": _ratio(
+                totals["insight_card_valid"], totals["insight_card_total"]
+            ),
+            "causal_path_valid_rate": _ratio(
+                totals["causal_path_valid"], totals["causal_path_total"]
+            ),
+            "exploration_trace_complete_rate": _ratio(
+                totals["exploration_trace_complete"],
+                totals["exploration_trace_total"],
+            ),
+            "hypothesis_laundering_count": totals[
+                "hypothesis_laundering_count"
+            ],
+            "formal_exploration_action_confusion_count": totals[
+                "formal_exploration_action_confusion_count"
+            ],
+            "exploration_assessed_count": sum(
+                row["exploration_metrics_assessed"] for row in selected
+            ),
+            "safety_gate_pass": (
+                len(selected) == len(suite["cases"])
+                and all(
+                    row["exploration_metrics_assessed"] for row in selected
+                )
+                and totals["hypothesis_laundering_count"] == 0
+                and totals[
+                    "formal_exploration_action_confusion_count"
+                ] == 0
+            ),
             "false_discovery_rate": _ratio(totals["false_discovery_count"], totals["candidate_count"]),
             "pricing_anchor_valid_rate": _ratio(totals["pricing_anchor_valid"], totals["pricing_anchor_total"]),
             "tokens_per_effective_seed": _ratio(totals["tokens_total"], effective),
             "totals": dict(sorted(totals.items())),
         }
     expected = len(suite["cases"]) * len(suite["variants"])
+    exploration_assessment_complete = (
+        len(rows) == expected
+        and all(row["exploration_metrics_assessed"] for row in rows)
+    )
+    comparison_ready = (
+        not errors
+        and len(rows) == expected
+        and all(row["comparable"] for row in rows)
+        and exploration_assessment_complete
+    )
+    candidate_variant = suite.get("candidate_variant")
+    method_change_gate_pass = (
+        aggregates[candidate_variant]["safety_gate_pass"]
+        if candidate_variant else None
+    )
+    method_change_gate_ready = (
+        comparison_ready
+        and bool(candidate_variant)
+        and method_change_gate_pass is True
+    )
     return {
         "schema_version": SUMMARY_SCHEMA,
         "suite_id": suite["suite_id"],
         "evaluation_scope": EVALUATION_SCOPE,
         "expected_case_variant_pairs": expected,
         "observed_case_variant_pairs": len(rows),
-        "comparison_ready": not errors and len(rows) == expected and all(row["comparable"] for row in rows),
+        "comparison_ready": comparison_ready,
+        "candidate_variant": candidate_variant,
+        "method_change_gate_pass": method_change_gate_pass,
+        "method_change_gate_ready": method_change_gate_ready,
         "errors": errors,
         "rows": rows,
         "aggregates": aggregates,
     }
+
+
+def _method_change_cli_outcome(summary):
+    if not summary.get("comparison_ready"):
+        return "BLOCKED_COMPARISON", 2
+    if not summary.get("candidate_variant"):
+        return "COMPARISON_READY_NOT_GATED", 3
+    if not summary.get("method_change_gate_ready"):
+        return "BLOCKED_METHOD_CHANGE", 4
+    return "METHOD_CHANGE_READY", 0
 
 
 def render_markdown(summary):
@@ -845,6 +956,11 @@ def render_markdown(summary):
         f"# Discovery Benchmark Summary — {summary['suite_id']}", "",
         f"- Scope: **{summary['evaluation_scope']}**",
         f"- Comparison ready: **{str(summary['comparison_ready']).upper()}**",
+        f"- Candidate method: **{summary.get('candidate_variant') or 'NOT_DECLARED'}**",
+        f"- Candidate exploration safety gate: "
+        f"**{str(summary.get('method_change_gate_pass')).upper()}**",
+        f"- Method-change ready: "
+        f"**{str(summary.get('method_change_gate_ready', False)).upper()}**",
         "- This pilot measures bounded retrieval and opportunity-path construction inside one frozen corpus; it does not prove live-web universe recall or alpha.",
         "",
         "| Variant | Source recall | Retrieval precision | Path coverage | False discovery | Pricing valid | Tokens / effective seed |",
@@ -857,6 +973,20 @@ def render_markdown(summary):
             f"| {variant} | {pct(item['source_recall'])} | {pct(item['retrieval_precision'])} | "
             f"{pct(item['major_path_coverage'])} | {pct(item['false_discovery_rate'])} | "
             f"{pct(item['pricing_anchor_valid_rate'])} | {'—' if tokens is None else f'{tokens:.0f}'} |"
+        )
+    lines.extend([
+        "",
+        "| Variant | Valid insight cards | Valid causal paths | Complete traces | "
+        "Hypothesis laundering | Formal/exploration confusion |",
+        "|:---|---:|---:|---:|---:|---:|",
+    ])
+    for variant, item in summary["aggregates"].items():
+        lines.append(
+            f"| {variant} | {pct(item['insight_card_valid_rate'])} | "
+            f"{pct(item['causal_path_valid_rate'])} | "
+            f"{pct(item['exploration_trace_complete_rate'])} | "
+            f"{item['hypothesis_laundering_count']} | "
+            f"{item['formal_exploration_action_confusion_count']} |"
         )
     if summary["errors"]:
         lines.extend(["", "## Blocking errors", *[f"- {item}" for item in summary["errors"]]])
@@ -932,12 +1062,17 @@ def main():
         json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     Path(args.output_md).write_text(render_markdown(summary), encoding="utf-8")
+    status, exit_code = _method_change_cli_outcome(summary)
     print(json.dumps({
-        "status": "READY" if summary["comparison_ready"] else "BLOCKED",
+        "status": status,
+        "comparison_ready": summary["comparison_ready"],
+        "candidate_variant": summary.get("candidate_variant"),
+        "method_change_gate_pass": summary.get("method_change_gate_pass"),
+        "method_change_gate_ready": summary["method_change_gate_ready"],
         "errors": summary["errors"],
     }, ensure_ascii=False, indent=2))
-    if not summary["comparison_ready"]:
-        raise SystemExit(2)
+    if exit_code:
+        raise SystemExit(exit_code)
 
 
 if __name__ == "__main__":

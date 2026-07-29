@@ -437,6 +437,38 @@ class OrchestratorTests(unittest.TestCase):
         self.assertEqual(second["dispatch_cruxes"][0], "C3")
         self.assertEqual(len(second["dispatch_cruxes"]), 2)
 
+    def test_probe_audit_rejects_role_claims_outside_host_dispatch(self):
+        st = crux_engine.new_state(
+            "scope",
+            "scope",
+            "3-6M",
+            [
+                {"id": "C1", "label": "one"},
+                {"id": "C2", "label": "two"},
+                {"id": "C3", "label": "deferred"},
+            ],
+        )
+        detective = {
+            "crux_evidence": [
+                {"crux_id": cid, "evidence": []}
+                for cid in ("C1", "C2", "C3")
+            ]
+        }
+        inquisitor = {
+            "crux_attacks": [
+                {"crux_id": cid, "attacks": []}
+                for cid in ("C1", "C2", "C3")
+            ]
+        }
+        audit = orchestrator._crux_probe_audit(
+            st,
+            detective,
+            inquisitor,
+            dispatch_cruxes=["C1", "C2"],
+        )
+        self.assertEqual(set(audit), {"C1", "C2"})
+        self.assertNotIn("C3", audit)
+
     def test_evolution_path_falls_back_to_nonempty_configured_vault(self):
         with tempfile.TemporaryDirectory() as root:
             skill_dir = os.path.join(root, "skill")
@@ -522,6 +554,112 @@ class OrchestratorTests(unittest.TestCase):
         self.assertIn("new_crux_introduced_after_cutoff",
                       result["deferred_new_cruxes"][0]["reason_codes"])
 
+    def test_new_crux_requires_same_round_scoped_attack_and_exact_citation(self):
+        topic = "admissible-new-crux"
+        frame = self.frame()
+        frame["suggested_max_rounds"] = 6
+        orchestrator.cmd_init(topic, frame)
+        evidence = {
+            **citation(
+                "new-crux-attack",
+                claim="A same-round attack reveals a distinct causal hinge.",
+            ),
+            "attack": "The original C1 omits a distinct causal hinge.",
+        }
+        new_crux = {
+            "id": "C3",
+            "label": "distinct hinge",
+            "logic_role": "THESIS_HINGE",
+            "definition": "A distinct hinge exposed by the C1 attack",
+            "monitor_anchor": "one observable C3 event",
+            "falsifier": "the C3 event does not occur",
+            "catalyst_window": {
+                "event": "C3 review checkpoint",
+                "expected_by": "2026-11-30",
+                "date_status": "REVIEW_CHECKPOINT",
+                "basis_claim_id": "P1",
+            },
+            "source_attack_crux_id": "C1",
+            "supporting_citation": evidence,
+        }
+        result = orchestrator.cmd_submit(
+            topic,
+            {"crux_evidence": []},
+            {
+                "crux_attacks": [{
+                    "crux_id": "C1",
+                    "attacks": [evidence],
+                }]
+            },
+            {"crux_signals": {}, "new_cruxes": [new_crux]},
+        )
+        self.assertEqual(result["admitted_new_cruxes"], ["C3"])
+        stored = orchestrator._load(topic)
+        self.assertIn("C3", stored["cruxes"])
+        self.assertEqual(
+            stored["cruxes"]["C3"]["admission_receipt"][
+                "source_attack_crux_id"
+            ],
+            "C1",
+        )
+        self.assertEqual(len(stored["cruxes"]["C3"]["citations"]), 1)
+
+    def test_hypothesis_only_or_out_of_scope_new_crux_is_deferred(self):
+        topic = "inadmissible-new-crux"
+        frame = self.frame()
+        frame["suggested_max_rounds"] = 6
+        orchestrator.cmd_init(topic, frame)
+        bare = {
+            "id": "C3",
+            "label": "unsupported idea",
+            "logic_role": "THESIS_HINGE",
+            "definition": "A merely hypothesized hinge",
+            "monitor_anchor": "one future event",
+            "falsifier": "the event does not occur",
+            "catalyst_window": {
+                "event": "review unsupported idea",
+                "expected_by": "2026-11-30",
+                "date_status": "REVIEW_CHECKPOINT",
+                "basis_claim_id": "P1",
+            },
+        }
+        result = orchestrator.cmd_submit(
+            topic,
+            {"crux_evidence": []},
+            {"crux_attacks": []},
+            {"crux_signals": {}, "new_cruxes": [bare]},
+        )
+        reasons = result["deferred_new_cruxes"][0]["reason_codes"]
+        self.assertIn("new_crux_missing_source_attack_crux_id", reasons)
+        self.assertIn("new_crux_missing_supporting_citation", reasons)
+
+        evidence = {
+            **citation(
+                "outside-scope-attack",
+                claim="An attack was submitted outside host dispatch.",
+            ),
+            "attack": "outside scope",
+        }
+        outside = {
+            **bare,
+            "id": "C4",
+            "source_attack_crux_id": "C9",
+            "supporting_citation": evidence,
+        }
+        result = orchestrator.cmd_submit(
+            topic,
+            {"crux_evidence": []},
+            {
+                "crux_attacks": [{
+                    "crux_id": "C9",
+                    "attacks": [evidence],
+                }]
+            },
+            {"crux_signals": {}, "new_cruxes": [outside]},
+        )
+        reasons = result["deferred_new_cruxes"][0]["reason_codes"]
+        self.assertIn("new_crux_source_attack_outside_round_scope", reasons)
+
     def test_pending_crux_disables_free_roam_reopen_signal(self):
         topic = "scope-priority"
         orchestrator.cmd_init(topic, self.frame())
@@ -584,6 +722,7 @@ class ReportSafetyTests(unittest.TestCase):
     def test_full_report_leads_with_decision_brief_and_defers_audit(self):
         md = report_v2.render(converged_state())
         self.assertTrue(md.startswith("# Decision Brief"))
+        self.assertLess(md.index("# Insight Cards"), md.index("# Candidate Cards"))
         self.assertLess(md.index("# Candidate Cards"), md.index("# Audit Appendix"))
         self.assertLess(md.index("# Audit Appendix"), md.index("## A · 证明账本"))
         self.assertIn("<details><summary>展开完整证据、状态、来源与运行审计</summary>", md)
@@ -597,10 +736,15 @@ class ReportSafetyTests(unittest.TestCase):
         }]
         model = report_v2.build_report_view_model(st)
         encoded = json.dumps(model, ensure_ascii=False)
-        self.assertEqual(model["schema_version"], "trade-nothing.report-view-model.v1")
+        self.assertEqual(model["schema_version"], "trade-nothing.report-view-model.v2")
         self.assertNotIn("do not expose", encoded)
         self.assertNotIn("detective_raw", encoded)
         self.assertEqual(model["next_action"]["code"], "STOP_NO_PROMOTABLE_CANDIDATE")
+        self.assertEqual(model["formal_action"]["code"], "STOP_NO_PROMOTABLE_CANDIDATE")
+        self.assertEqual(
+            model["exploration_action"]["authority"],
+            "RESEARCH_ONLY_NO_PROMOTION",
+        )
 
     def test_each_report_view_uses_same_three_axis_verdict(self):
         st = converged_state()
@@ -794,7 +938,7 @@ class ReportSafetyTests(unittest.TestCase):
         self.assertNotIn("synthesis_packet", out)
         self.assertEqual(
             out["report_view_model"]["schema_version"],
-            "trade-nothing.report-view-model.v1",
+            "trade-nothing.report-view-model.v2",
         )
 
     def test_synthesis_packet_requires_explicit_opt_in(self):

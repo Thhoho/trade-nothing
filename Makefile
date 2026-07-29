@@ -20,7 +20,7 @@ help:
 	@echo "make server        : Start the Autonomous REST Daemon Server (Port 8000)"
 	@echo "make portfolio     : Print current multi-currency transaction ledger"
 	@echo "make verify-version: Check version consistency across documentation"
-	@echo "make test          : Run deterministic v2 safety and regression gates"
+	@echo "make test          : Run current deterministic safety and regression gates"
 	@echo "make test-legacy   : Run legacy LFI/Kelly compatibility tests"
 	@echo "make test-live     : Run non-gating live provider diagnostics"
 	@echo "make clean         : Clean Python cache files and temp state files"
@@ -29,12 +29,13 @@ help:
 install:
 	@echo "🚀 Syncing controlled source files to Gemini and Codex..."
 	@for dst in $(SKILL_DIRS); do \
-		mkdir -p $$dst/scripts $$dst/agents $$dst/references $$dst/docs $$dst/benchmarks; \
+		mkdir -p $$dst/scripts $$dst/agents $$dst/references $$dst/docs $$dst/benchmarks $$dst/assets; \
 		rsync -a --include='*.py' --exclude='*' $(DEV_DIR)/scripts/ $$dst/scripts/; \
 		rsync -a $(DEV_DIR)/agents/ $$dst/agents/; \
 		rsync -a $(DEV_DIR)/references/ $$dst/references/; \
 		rsync -a --include='*.md' --exclude='*' $(DEV_DIR)/docs/ $$dst/docs/; \
 		rsync -a --delete $(DEV_DIR)/benchmarks/ $$dst/benchmarks/; \
+		rsync -a --delete --exclude='.DS_Store' $(DEV_DIR)/assets/ $$dst/assets/; \
 		for f in $(ROOT_FILES); do cp $(DEV_DIR)/$$f $$dst/$$f; done; \
 	done
 	@python3 $(DEV_DIR)/scripts/check_source_sync.py --source $(DEV_DIR) --targets $(SKILL_DIRS)
@@ -52,21 +53,26 @@ verify-version:
 	python3 $(DEV_DIR)/scripts/version.py
 
 test:
-	@echo "🧪 Running deterministic v2 safety and regression gates..."
+	@echo "🧪 Running current deterministic safety and regression gates..."
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_v2_engine.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_landscape_engine.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_framing_feasibility.py
+	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_hypothesis_engine.py
+	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_hypothesis_integration.py
+	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_evidence_exhaustion_convergence.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_opportunity_engine.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_candidate_gap_engine.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_research_output.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_candidate_screen_engine.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_claim_verification_engine.py
+	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_benchmark_current.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_benchmark_harness.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_discovery_benchmark_harness.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_project_handoff.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_research_start_packet.py
-	python3 -c "import ast,pathlib; [ast.parse(pathlib.Path(p).read_text(encoding='utf-8')) for p in ['$(ROOT_DIR)/scripts/crux_engine.py','$(ROOT_DIR)/scripts/landscape_engine.py','$(ROOT_DIR)/scripts/framing_feasibility.py','$(ROOT_DIR)/scripts/opportunity_engine.py','$(ROOT_DIR)/scripts/candidate_gap_engine.py','$(ROOT_DIR)/scripts/candidate_screen_engine.py','$(ROOT_DIR)/scripts/codex_candidate_screen_receipt.py','$(ROOT_DIR)/scripts/evidence_snapshot.py','$(ROOT_DIR)/scripts/claim_verification_engine.py','$(ROOT_DIR)/scripts/research_output.py','$(ROOT_DIR)/scripts/deepthink_orchestrator_v2.py','$(ROOT_DIR)/scripts/report_v2.py','$(ROOT_DIR)/scripts/validate_report_v2.py','$(ROOT_DIR)/scripts/benchmark_harness.py','$(ROOT_DIR)/scripts/discovery_benchmark_harness.py','$(ROOT_DIR)/scripts/project_handoff.py','$(ROOT_DIR)/scripts/research_start_packet.py']]"
-	@echo "🎉 Deterministic v2 gates passed."
+	python3 -c "import ast,pathlib; [ast.parse(pathlib.Path(p).read_text(encoding='utf-8')) for p in ['$(ROOT_DIR)/scripts/crux_engine.py','$(ROOT_DIR)/scripts/hypothesis_engine.py','$(ROOT_DIR)/scripts/landscape_engine.py','$(ROOT_DIR)/scripts/framing_feasibility.py','$(ROOT_DIR)/scripts/opportunity_engine.py','$(ROOT_DIR)/scripts/candidate_gap_engine.py','$(ROOT_DIR)/scripts/candidate_screen_engine.py','$(ROOT_DIR)/scripts/codex_candidate_screen_receipt.py','$(ROOT_DIR)/scripts/evidence_snapshot.py','$(ROOT_DIR)/scripts/claim_verification_engine.py','$(ROOT_DIR)/scripts/research_output.py','$(ROOT_DIR)/scripts/deepthink_orchestrator_v2.py','$(ROOT_DIR)/scripts/report_v2.py','$(ROOT_DIR)/scripts/validate_report_v2.py','$(ROOT_DIR)/scripts/benchmark_harness.py','$(ROOT_DIR)/scripts/discovery_benchmark_harness.py','$(ROOT_DIR)/scripts/project_handoff.py','$(ROOT_DIR)/scripts/research_start_packet.py']]"
+	TRADE_NOTHING_SCRATCH_DIR=$${TMPDIR:-/tmp}/trade-nothing-v2-selftest PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/deepthink_orchestrator_v2.py --selftest
+	@echo "🎉 Current deterministic gates passed."
 
 test-legacy:
 	@echo "🧪 Running legacy compatibility suites (not v2 calibration evidence)..."

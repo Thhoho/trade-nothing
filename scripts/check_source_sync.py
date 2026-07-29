@@ -18,6 +18,13 @@ def controlled_files(root: Path):
     files.extend(sorted((root / "docs").glob("*.md")))
     files.extend(sorted((root / "scripts").glob("*.py")))
     files.extend(sorted((root / "benchmarks").glob("**/*")))
+    files.extend(
+        sorted(
+            path
+            for path in (root / "assets").glob("**/*")
+            if path.name != ".DS_Store"
+        )
+    )
     return [path for path in files if path.is_file()]
 
 

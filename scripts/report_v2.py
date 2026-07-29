@@ -19,6 +19,7 @@ expected return, trade signal, or position-sizing input.
 import os, sys, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import crux_engine
+import hypothesis_engine
 import landscape_engine
 import opportunity_engine
 import candidate_gap_engine
@@ -76,6 +77,111 @@ def _citation_quality(state):
 
 def _clean(value):
     return " ".join(str(value or "").split()) or "—"
+
+
+def _exploration_history_lines(
+    exploration, heading="### 已执行探索与负知识",
+    include_control_history=False,
+):
+    history = [
+        item
+        for item in exploration.get("authorized_action_history", [])
+        if isinstance(item, dict)
+    ]
+    lines = [heading]
+    if not history:
+        lines.append("- 尚无经显式授权并完成的探索动作。")
+    for item in history[-5:]:
+        receipt = item.get("execution_receipt") or {}
+        documents = [
+            document
+            for document in receipt.get("document_receipts", [])
+            if isinstance(document, dict)
+        ]
+        document_text = "；".join(
+            f"`{document.get('document_id', '—')}` "
+            f"{_clean(document.get('source'))} "
+            f"{document.get('date', '—')} "
+            f"{document.get('url', '—')}"
+            for document in documents
+        ) or "无文档回执"
+        lines.extend([
+            f"- `{item.get('action_id', '—')}` / "
+            f"`{item.get('execution_status', 'UNKNOWN')}` / "
+            f"假说 `{item.get('hypothesis_id', '—')}`："
+            f"route `{item.get('route_id') or receipt.get('route_id') or '—'}`；"
+            f"proxy `{item.get('proxy_id') or receipt.get('proxy_id') or '—'}`；"
+            f"来源类 {_clean(item.get('source_class'))}；"
+            f"查询 {_clean(item.get('bounded_query'))}；"
+            f"停止 {_clean(receipt.get('stop_reason'))}；"
+            f"assurance="
+            f"`{item.get('authorization_assurance') or '—'}`。",
+            f"  - 回执: {document_text}；result_sha256="
+            f"`{receipt.get('result_sha256', '—')}`；"
+            f"negative_knowledge="
+            f"{_clean(item.get('negative_knowledge'))}；"
+            f"planned={_clean(item.get('planned_proxy') or receipt.get('planned_proxy'))}；"
+            f"observed={_clean(item.get('observation') or receipt.get('observation'))}。",
+        ])
+    if include_control_history:
+        terminal = [
+            item
+            for item in exploration.get("terminal_action_history", [])
+            if isinstance(item, dict)
+        ]
+        lines.append("#### Host 探索动作终态")
+        if not terminal:
+            lines.append("- 尚无已关闭的 host 探索动作。")
+        for item in terminal:
+            lines.append(
+                f"- `{item.get('action_id', '—')}` / "
+                f"`{item.get('status', 'UNKNOWN')}` / "
+                f"route `{item.get('route_id') or '—'}`："
+                f"action_as_of={item.get('as_of_date') or '—'}；"
+                f"source_class={_clean(item.get('source_class'))}；"
+                f"query={_clean(item.get('bounded_query'))}；"
+                f"reason={_clean(item.get('reason'))}；"
+                f"assurance="
+                f"`{item.get('authorization_assurance') or '—'}`；"
+                f"result_sha256=`{item.get('result_sha256') or '—'}`；"
+                f"result_ingested={item.get('result_ingested', False)}；"
+                f"proxy_ingested={item.get('proxy_ingested', False)}；"
+                f"automatic_retry={item.get('automatic_retry', False)}。"
+            )
+        designs = [
+            item
+            for item in exploration.get("design_history", [])
+            if isinstance(item, dict)
+        ]
+        lines.append("#### Typed design 历史")
+        if not designs:
+            lines.append("- 尚无 typed design 写入。")
+        for item in designs:
+            lines.append(
+                f"- `{item.get('design_id', '—')}` / "
+                f"假说 `{item.get('hypothesis_id', '—')}` / "
+                f"`{item.get('action_code', 'UNKNOWN')}`："
+                f"{_clean(item.get('design_note'))}；"
+                f"state `{item.get('state_before', '—')}` → "
+                f"`{item.get('state_after', '—')}`。"
+            )
+        closed_routes = [
+            item
+            for item in exploration.get("closed_routes", [])
+            if isinstance(item, dict)
+        ]
+        lines.append("#### 已关闭诊断路线")
+        if not closed_routes:
+            lines.append("- 尚无已关闭诊断路线。")
+        for item in closed_routes:
+            lines.append(
+                f"- `{item.get('route_id', '—')}` / action "
+                f"`{item.get('action_id', '—')}` / "
+                f"`{item.get('execution_status', 'UNKNOWN')}`："
+                f"query={_clean(item.get('bounded_query'))}；"
+                f"stop={_clean(item.get('stop_reason'))}。"
+            )
+    return lines
 
 
 RELATION_LABELS = {
@@ -312,6 +418,7 @@ def _candidate_cards(state):
             "relation_type": _clean(seed.get("relation_type")),
             "relation_label": _relation_label(seed.get("relation_type")),
             "origin_crux": _clean(seed.get("origin_crux")),
+            "origin_hypothesis_id": _clean(seed.get("origin_hypothesis_id")),
             "landscape_path_id": _clean(seed.get("landscape_path_id")),
             "candidate_state": candidate_state,
             "promotion_eligibility": promotion["promotion_eligibility"],
@@ -365,6 +472,8 @@ def build_report_view_model(state):
     verdict = rd.get("research_verdict", {})
     cards = _candidate_cards(state)
     landscape = landscape_engine.summary(state)
+    exploration = hypothesis_engine.report_view(state, limit=7)
+    scenario_paths = hypothesis_engine.scenario_view(state)
     survived = [
         item for item in rd["cruxes"] if item.get("status") == "RESOLVED_BULL"
     ]
@@ -412,11 +521,20 @@ def build_report_view_model(state):
             card["candidate_state"] == opportunity_engine.REJECTED for card in cards
         ),
     }
+    formal_action = {
+        "code": next_action_code,
+        "candidate": next_action_candidate,
+        "instruction": next_action,
+    }
     return {
-        "schema_version": "trade-nothing.report-view-model.v1",
+        "schema_version": "trade-nothing.report-view-model.v2",
         "topic": _clean(state.get("topic")),
         "decision_question": _clean(state.get("decision_question")),
         "horizon": _clean(state.get("horizon")),
+        "as_of_date": _clean(
+            state.get("frame_contract", {}).get("as_of_date")
+            or state.get("as_of_date")
+        ),
         "question_type": verdict.get("question_type", rd.get("question_type", "CONJUNCTIVE")),
         "verdict": {
             "edge_state": verdict.get("edge_state", "INSUFFICIENT_EVIDENCE"),
@@ -433,11 +551,13 @@ def build_report_view_model(state):
         "candidate_counts": counts,
         "candidate_cards": cards,
         "landscape_map": landscape,
-        "next_action": {
-            "code": next_action_code,
-            "candidate": next_action_candidate,
-            "instruction": next_action,
-        },
+        "hypothesis_exploration": exploration,
+        "formal_action": formal_action,
+        "exploration_action": exploration["exploration_action"],
+        "scenario_paths": scenario_paths,
+        # Backwards-compatible alias. Formal action remains the only candidate
+        # promotion action; exploration_action has research-only authority.
+        "next_action": formal_action,
         "change_trigger": {
             "focus_crux": focus_id or "",
             "event": _clean(trigger),
@@ -466,6 +586,7 @@ def _render_audit(state, include_title=True):
     refs, ref_no = [], {}
     crux_refs = {}
     opportunity_refs = {}
+    hypothesis_refs = {}
     screen_dimension_refs = {}
     latest_screens = candidate_screen_engine.latest_by_seed(state)
     seed_by_id = {
@@ -483,6 +604,12 @@ def _render_audit(state, include_title=True):
             latest_screen_by_entity[identity] = screen
     latest_claims = claim_verification_engine.latest_verifications(state)
     quality = _citation_quality(state)
+    exploration_count = hypothesis_engine.summary(state).get(
+        "hypothesis_count", 0
+    )
+    exploration = hypothesis_engine.report_view(
+        state, limit=exploration_count
+    )
     for c in rd["cruxes"]:
         nums = []
         for cit in c.get("valid_citations", c["citations"]):
@@ -542,6 +669,33 @@ def _render_audit(state, include_title=True):
                         dimension_nums.append(ref_no[k])
                 screen_dimension_refs[(screen.get("screen_id"), dimension)] = sorted(set(dimension_nums))
         opportunities.append(item)
+    for hypothesis in exploration.get("hypotheses", []):
+        hypothesis_id = hypothesis.get("hypothesis_id", "?")
+        observation_nums = []
+        for cit in hypothesis.get("observation_evidence", []):
+            if not crux_engine.valid_citation(cit):
+                continue
+            key = _cite_key(cit)
+            if key not in ref_no:
+                ref_no[key] = len(refs) + 1
+                refs.append(cit)
+            observation_nums.append(ref_no[key])
+        hypothesis_refs[(hypothesis_id, "OBSERVATION")] = sorted(
+            set(observation_nums)
+        )
+        for proxy in hypothesis.get("proxy_trails", []):
+            nums = []
+            for cit in proxy.get("evidence", []):
+                if not crux_engine.valid_citation(cit):
+                    continue
+                key = _cite_key(cit)
+                if key not in ref_no:
+                    ref_no[key] = len(refs) + 1
+                    refs.append(cit)
+                nums.append(ref_no[key])
+            hypothesis_refs[
+                (hypothesis_id, proxy.get("proxy_id", "?"))
+            ] = sorted(set(nums))
     entity_views = {
         item["representative_seed_id"]: item
         for item in opportunity_engine.entity_views(state)
@@ -622,6 +776,15 @@ def _render_audit(state, include_title=True):
             f"SUPPORTED {landscape['supported_count']} ｜ REJECTED {landscape['rejected_count']} ｜ "
             f"UNKNOWN {landscape['unknown_count']} ｜ UNPROBED {landscape['unprobed_count']}"
         )
+    exploration_summary = exploration.get("summary", {})
+    L.append(
+        f"- 探索轨: 假说 {exploration_summary.get('hypothesis_count', 0)} ｜ "
+        f"HYPOTHESIS_ONLY "
+        f"{exploration_summary.get('state_counts', {}).get('HYPOTHESIS_ONLY', 0)} ｜ "
+        f"TRACED {exploration_summary.get('state_counts', {}).get('TRACED', 0)} ｜ "
+        f"EVIDENCE_BACKED "
+        f"{exploration_summary.get('state_counts', {}).get('EVIDENCE_BACKED', 0)}"
+    )
     screen_counts = candidate_screen_engine.summary(state)
     L.append(f"- 候选预筛: {screen_counts['screened_candidate_count']} 条已完成 ｜ "
              f"THESIS_CANDIDATE {screen_counts['thesis_candidate_count']} ｜ "
@@ -681,11 +844,150 @@ def _render_audit(state, include_title=True):
             )
         L.append("")
 
+    L.append("## 0.2B · 大胆假说与草蛇灰线")
+    L.append(
+        "- 探索轨允许大胆猜想先存在，再沿 ProxyTrail 小心求证。它不改变 root verdict、"
+        "CandidateScreen 或任何交易状态。"
+    )
+    action = exploration.get("exploration_action", {})
+    L.append(
+        f"- 当前探索动作: `{action.get('action_code', 'NO_EXPLORATION_TRACK')}` ｜ "
+        f"假说 `{action.get('hypothesis_id') or '—'}` ｜ "
+        f"{_clean(action.get('instruction') or action.get('reason'))}"
+    )
+    L.append(
+        f"- 授权状态: `{action.get('authorization_state', 'NOT_REQUIRED')}` ｜ "
+        f"执行就绪: `{action.get('executable_after_authorization', False)}` ｜ "
+        f"问题: {_clean(action.get('question'))} ｜ "
+        f"来源类: {_clean(action.get('source_class'))}。"
+    )
+    L.append(
+        f"- Host action: `{action.get('action_id') or '—'}` ｜ "
+        f"host_status=`{action.get('host_action_status') or '—'}` ｜ "
+        f"assurance=`{action.get('authorization_assurance') or '—'}` ｜ "
+        f"proposal_drifted="
+        f"`{action.get('proposal_drifted', False)}`。"
+    )
+    if action.get("authorization_state") == "NEEDS_ACTION_DESIGN":
+        L.append(
+            f"- 设计回执目标: `{action.get('design_target_id') or '—'}` ｜ "
+            f"expected_state_revision="
+            f"`{action.get('design_state_revision', '—')}`；"
+            "这两个值只授权写入设计，不授权搜索。"
+        )
+    L.append(
+        f"- 有界查询: {_clean(action.get('bounded_query'))} ｜ "
+        f"成功: {_clean(action.get('success_condition'))} ｜ "
+        f"停止: {_clean(action.get('stop_condition'))}。"
+    )
+    action_budget = action.get("budget_boundary", {})
+    L.append(
+        f"- 预算: queries≤{action_budget.get('max_bounded_queries', 0)}，"
+        f"documents≤{action_budget.get('max_documents_read', 0)}，"
+        f"new trails≤{action_budget.get('max_new_proxy_trails', 0)}；"
+        f"execution_receipt=`{action.get('execution_receipt')}`。"
+    )
+    L.extend(_exploration_history_lines(
+        exploration,
+        heading="### 0.2B.1 · 已执行探索与负知识",
+        include_control_history=True,
+    ))
+    hypotheses = exploration.get("hypotheses", [])
+    if not hypotheses:
+        L.append("- 本次没有初始化探索账本；纯命题质证可保持该状态。")
+    else:
+        L.append("")
+        L.append("| 假说 | 状态 / 探索优先级 | 非共识机制与价值传导 | ProxyTrail / 引用 | 明确赔率门槛 | 反证 / 催化 |")
+        L.append("|:---|:---|:---|:---|:---|:---|")
+        for hypothesis in hypotheses:
+            hypothesis_id = hypothesis.get("hypothesis_id", "?")
+            priority = hypothesis.get("exploration_priority", {})
+            proxies = []
+            for proxy in hypothesis.get("proxy_trails", [])[:3]:
+                nums = hypothesis_refs.get(
+                    (hypothesis_id, proxy.get("proxy_id", "?")), []
+                )
+                refs_text = " ".join(f"[{number}]" for number in nums) or "无正式引用"
+                proxies.append(
+                    f"{_cell(proxy.get('direction'))}"
+                    f"{'（争议: ' + _cell(proxy.get('direction_variants')) + '）' if proxy.get('direction_contested') else ''}: "
+                    f"{_cell(proxy.get('proxy'))}；"
+                    f"替代解释: {_cell(proxy.get('alternative_explanation'))} "
+                    f"{refs_text}"
+                )
+            threshold = hypothesis.get("break_even_threshold", {})
+            threshold_text = (
+                f"p*={threshold.get('p_star_percent')}%（仅由明示 payoff 推导）"
+                if threshold.get("status") == "KNOWN"
+                else "UNKNOWN（未明示可比 payoff）"
+            )
+            mechanism = (
+                f"{_cell(hypothesis.get('why_nonconsensus'))}<br>"
+                f"{_cell(' -> '.join(hypothesis.get('causal_chain', [])))}<br>"
+                f"{_cell(hypothesis.get('value_transfer'))}<br>"
+                f"观察: {_cell(hypothesis.get('observation'))}<br>"
+                f"最低成本判别: "
+                f"{_cell(hypothesis.get('cheap_discriminating_test'))}"
+            )
+            asymmetry = hypothesis.get("asymmetry_case", {})
+            if asymmetry.get("basis"):
+                mechanism += (
+                    "<br>定性非对称: "
+                    f"{_cell(asymmetry.get('upside_shape'))}/"
+                    f"{_cell(asymmetry.get('convexity'))} vs "
+                    f"{_cell(asymmetry.get('downside_shape'))}；"
+                    f"signal={_cell(asymmetry.get('time_to_signal'))}；"
+                    f"basis={_cell(asymmetry.get('basis'))}"
+                )
+            observation_refs = " ".join(
+                f"[{number}]"
+                for number in hypothesis_refs.get(
+                    (hypothesis_id, "OBSERVATION"), []
+                )
+            )
+            observation_boundary = (
+                f"{_cell(hypothesis.get('observation_status'))}"
+                f"{(' ' + observation_refs) if observation_refs else ''}"
+            )
+            L.append(
+                f"| **{_cell(hypothesis_id)}** {_cell(hypothesis.get('hypothesis'))} | "
+                f"`{_cell(hypothesis.get('state'))}` / "
+                f"`{_cell(priority.get('band'))}` "
+                f"score={priority.get('score', 0)}<br>"
+                f"components={_cell(priority.get('components'))}<br>"
+                f"reasons={_cell(priority.get('reasons'))} | {mechanism}<br>"
+                f"观察边界: {observation_boundary} | "
+                f"{'<br>'.join(proxies) or '尚无 ProxyTrail'} | {_cell(threshold_text)} | "
+                f"{_cell(hypothesis.get('falsifier'))} / "
+                f"{_cell(hypothesis.get('catalyst'))} / "
+                f"expiry={_cell(hypothesis.get('expiry_date'))} |"
+            )
+            contested = hypothesis.get("contested_fields", [])
+            if contested:
+                L.append(
+                    f"| ↳ **争议字段** | 需人工调和 | "
+                    f"{_cell(', '.join(contested))} | — | — | "
+                    f"{_cell(hypothesis.get('field_variants'))} |"
+                )
+    L.append(
+        "- `EVIDENCE_BACKED` 在本节只表示探索线索已有独立可复核代理证据；"
+        "它仍不是 OpportunitySeed、概率、收益预测或仓位依据。"
+    )
+    L.append("")
+
     # Evidence quality gate
     invalid = quality["invalid"]
-    gate_status = "PASS" if not invalid and refs else "FAIL"
+    formal_reference_count = sum(len(numbers) for numbers in crux_refs.values())
+    gate_status = (
+        "PASS" if not invalid and formal_reference_count > 0 else "FAIL"
+    )
     L.append("## 0.3 · 证据质量闸")
-    L.append(f"- 状态: **{gate_status}** ｜ 可复核引用: {len(refs)} 条 ｜ 被剔除引用: {len(invalid)} 条")
+    L.append(
+        f"- 状态: **{gate_status}** ｜ 正式 crux 引用: "
+        f"{formal_reference_count} 条 ｜ 全报告可复核引用: {len(refs)} 条 ｜ "
+        f"被剔除正式引用: {len(invalid)} 条"
+    )
+    L.append("- 探索 ProxyTrail 引用单独展示，不计入正式 crux 证据质量闸。")
     L.append("- 规则: 引用必须含 claim/source/date，且 URL 不能只是主页或裸域名。")
     if invalid:
         for bad in invalid[:10]:
@@ -704,18 +1006,38 @@ def _render_audit(state, include_title=True):
         L.append("|:---|:---:|:---|:---|:---|:---|:---|:---|")
     for c in rd["cruxes"]:
         rno = " ".join(f"[{n}]" for n in crux_refs[c["id"]]) or "—"
+        zero_signal_receipts = sum(
+            citation.get("support_effect")
+            == "NONE_ZERO_SIGNAL_WASH"
+            for citation in c.get("valid_citations", [])
+            if isinstance(citation, dict)
+        )
+        status_detail = _STATUS.get(c["status"], c["status"])
+        if c.get("transition_reason"):
+            status_detail += (
+                f"<br>reason={_cell(c.get('transition_reason'))}"
+            )
+        if c.get("monitorable_semantics"):
+            status_detail += (
+                f"<br>{_cell(c.get('monitorable_semantics'))}"
+            )
+        if zero_signal_receipts:
+            status_detail += (
+                f"<br>zero-signal receipts={zero_signal_receipts}"
+                "（不移动支持度）"
+            )
         catalyst = c.get("catalyst_window", {})
         catalyst_text = (f"{catalyst.get('event', '—')} @ {catalyst.get('expected_by', '—')} "
                          f"[{catalyst.get('date_status', 'UNVERIFIED')}; "
                          f"basis={catalyst.get('basis_claim_id', '—')}]"
                          if isinstance(catalyst, dict) else _clean(catalyst))
         if is_universe:
-            L.append(f"| **{c['id']} {c['label']}** | {_STATUS.get(c['status'], c['status'])} "
+            L.append(f"| **{c['id']} {c['label']}** | {status_detail} "
                      f"| {c.get('best_bull') or '—'} | {c.get('best_bear') or '—'} "
                      f"| {c.get('monitor_anchor','')} | {_cell(c.get('falsifier'))} / {_cell(catalyst_text)} | {rno} |")
         else:
             L.append(f"| **{c['id']} {c['label']}** | {int(c['support_score']*100)}/100 | "
-                     f"{_STATUS.get(c['status'], c['status'])} "
+                     f"{status_detail} "
                      f"| {c.get('best_bull') or '—'} | {c.get('best_bear') or '—'} "
                      f"| {c.get('monitor_anchor','')} | {_cell(c.get('falsifier'))} / {_cell(catalyst_text)} | {rno} |")
     L.append("")
@@ -733,7 +1055,16 @@ def _render_audit(state, include_title=True):
             ph = cx["p_history"]
             pts = " → ".join(f"{int(p*100)}" for p in ph)
             status_icon = _STATUS.get(cx["status"], cx["status"])
-            L.append(f"- **{cid} {cx['label']}**: {pts} → {status_icon}")
+            transition = (
+                f"；transition={cx.get('transition_reason')}；"
+                f"{cx.get('monitorable_semantics')}"
+                if cx.get("transition_reason")
+                else ""
+            )
+            L.append(
+                f"- **{cid} {cx['label']}**: {pts} → "
+                f"{status_icon}{transition}"
+            )
     L.append("")
 
     # 证据仪表盘
@@ -752,6 +1083,10 @@ def _render_audit(state, include_title=True):
                  f"({int(support_w*100)}/100)")
         L.append(f"  命题均值支持度: {int(support_m*100)}/100")
     L.append(f"  决策演化: {trace_str}")
+    L.append(
+        "  零信号引用: NONE_ZERO_SIGNAL_WASH 仅记录新事实，"
+        "不移动辩论支持度"
+    )
     L.append("  交易输出: 禁止自动给出目标价、预期收益或仓位")
     L.append("═══════════════════════════════════════════")
     L.append("```")
@@ -789,6 +1124,11 @@ def _render_audit(state, include_title=True):
         if seed.get("landscape_path_id"):
             L.append(f"- **Landscape 绑定**: {_clean(seed.get('landscape_path_id'))} → "
                      f"{_clean(seed.get('origin_crux'))}")
+        if seed.get("origin_hypothesis_id"):
+            L.append(
+                f"- **探索谱系**: {_clean(seed.get('origin_hypothesis_id'))} → "
+                f"{_clean(seed.get('origin_crux'))}；谱系不降低 Seed 证据门。"
+            )
         L.append(f"- **价值传导**: {_clean(seed.get('causal_path'))}")
         L.append(f"- **经济暴露**: {_clean(seed.get('economic_exposure'))}")
         L.append(f"- **市场可能漏看**: {_clean(seed.get('why_market_may_miss'))}")
@@ -968,9 +1308,15 @@ def _render_decision_brief(view):
     monitoring = "；".join(
         f"{item['id']} {item['label']}" for item in root["monitorable"][:3]
     ) or "无"
-    next_action = view["next_action"]
+    formal_action = view["formal_action"]
+    exploration = view.get("hypothesis_exploration", {})
+    exploration_action = view.get("exploration_action", {})
     landscape = view.get("landscape_map", {})
-    target = f"（{next_action['candidate']}）" if next_action["candidate"] else ""
+    scenario = view.get("scenario_paths", {})
+    exploration_budget = exploration_action.get("budget_boundary", {})
+    target = (
+        f"（{formal_action['candidate']}）" if formal_action["candidate"] else ""
+    )
     universe = view["question_type"] == "UNIVERSE_SEARCH"
     challenge_heading = "## 研究轴证据状态" if universe else "## 原想法经质证后发生了什么"
     challenge_lines = (
@@ -986,10 +1332,39 @@ def _render_decision_brief(view):
             f"- **仍需监控**: {monitoring}。",
         ]
     )
+    threshold = scenario.get("break_even_threshold", {})
+    threshold_text = (
+        f"p*={threshold.get('p_star_percent')}%（只由明示同单位情景幅度推导）"
+        if threshold.get("status") == "KNOWN"
+        else f"UNKNOWN（{threshold.get('reason', '未明示可比情景幅度')}）"
+    )
+    scenario_lines = [
+        "## 对称场景与非对称边界",
+        f"- 路径审计: `{scenario.get('status', 'MISSING')}`；"
+        f"赔率门槛: {threshold_text}；这不是概率、预期收益或仓位。",
+    ]
+    for path in scenario.get("paths", []):
+        scenario_lines.append(
+            f"- **{path.get('path_type')}**: {_clean(path.get('summary'))}；"
+            f"触发 {_clean(path.get('trigger_event'))}；"
+            f"传导 {_clean(path.get('transmission_chain'))}；"
+            f"监控 {_clean(path.get('monitor_anchor'))}；"
+            f"反证 {_clean(path.get('falsifier'))}。"
+        )
+    if scenario.get("issues"):
+        scenario_lines.append(
+            f"- 路径缺口: `{', '.join(scenario.get('issues', []))}`。"
+        )
+    exploration_history_lines = _exploration_history_lines(
+        exploration,
+        heading="### 已执行探索与负知识",
+        include_control_history=True,
+    )
     return "\n".join([
         f"# Decision Brief — {view['topic']}",
         f"> 决策问题: {view['decision_question']} ｜ 视野: {view['horizon']} ｜ "
-        f"题型: {view['question_type']}",
+        f"题型: {view['question_type']} ｜ 证据截止: "
+        f"{view.get('as_of_date') or 'UNKNOWN'}",
         "",
         "## 一句话结论",
         f"- Edge: **{verdict['edge_state']}** ｜ 证据方向: **{verdict['evidence_direction']}** ｜ "
@@ -1011,8 +1386,49 @@ def _render_decision_brief(view):
         f"可供人工建 Thesis {counts['verified_for_human_count']}。",
         "- 根命题成立不等于候选可用；只有 `VERIFIED_FOR_HUMAN` 才能交给人工建立全新 Thesis。",
         "",
-        "## 当前唯一合法动作",
-        f"- `{next_action['code']}`{target}: {next_action['instruction']}",
+        "## 正式晋级动作",
+        f"- `{formal_action['code']}`{target}: {formal_action['instruction']}",
+        "- 该动作由证据与候选成熟度决定；探索轨不能覆盖或绕过它。",
+        "",
+        "## 探索动作（无晋级与交易权限）",
+        f"- `{exploration_action.get('action_code', 'NO_EXPLORATION_TRACK')}`"
+        f"（{exploration_action.get('hypothesis_id') or '—'}）: "
+        f"{exploration_action.get('instruction') or exploration_action.get('reason') or '无'}",
+        f"- 假说 {exploration.get('summary', {}).get('hypothesis_count', 0)} 条；"
+        f"ProxyTrail {exploration.get('summary', {}).get('proxy_trail_count', 0)} 条。"
+        "探索排序只分配研究注意力，不是概率、预期收益或仓位。",
+        f"- 授权状态 `{exploration_action.get('authorization_state', 'NOT_REQUIRED')}`；"
+        f"执行就绪 `{exploration_action.get('executable_after_authorization', False)}`；"
+        f"来源类 {_clean(exploration_action.get('source_class'))}；"
+        f"有界查询 {_clean(exploration_action.get('bounded_query'))}。",
+        f"- Host action `{exploration_action.get('action_id') or '—'}`；"
+        f"host_status="
+        f"`{exploration_action.get('host_action_status') or '—'}`；"
+        f"assurance="
+        f"`{exploration_action.get('authorization_assurance') or '—'}`；"
+        f"proposal_drifted="
+        f"`{exploration_action.get('proposal_drifted', False)}`。",
+        (
+            f"- 设计回执目标 `{exploration_action.get('design_target_id') or '—'}`；"
+            f"expected_state_revision="
+            f"`{exploration_action.get('design_state_revision', '—')}`；"
+            "仅允许写入设计，不允许搜索。"
+            if exploration_action.get("authorization_state")
+            == "NEEDS_ACTION_DESIGN"
+            else ""
+        ),
+        f"- 问题: {_clean(exploration_action.get('question'))}；"
+        f"成功: {_clean(exploration_action.get('success_condition'))}；"
+        f"停止: {_clean(exploration_action.get('stop_condition'))}；"
+        "没有独立授权与执行回执不得执行。",
+        f"- 预算: queries≤{exploration_budget.get('max_bounded_queries', 0)}，"
+        f"documents≤{exploration_budget.get('max_documents_read', 0)}，"
+        f"new trails≤{exploration_budget.get('max_new_proxy_trails', 0)}；"
+        f"execution_receipt="
+        f"`{exploration_action.get('execution_receipt')}`。",
+        *exploration_history_lines,
+        "",
+        *scenario_lines,
         "",
         "## 什么会改变结论",
         f"- 焦点 crux: `{view['change_trigger']['focus_crux'] or '—'}`；"
@@ -1044,6 +1460,7 @@ def _render_candidate_cards(view):
         ticker = f" · {card['ticker']}" if card["ticker"] else ""
         lines.extend([
             f"## {index}. {card['candidate']}{ticker}",
+            f"- **Seed ID**: `{card['seed_id']}`。",
             f"- **候选状态**: `{card['candidate_state']}` ｜ 升级资格: "
             f"`{card['promotion_eligibility']}` ｜ P1 `{card['screen_status']}` ｜ "
             f"P2 `{card['claim_verification_status']}`。",
@@ -1058,6 +1475,11 @@ def _render_candidate_cards(view):
             f"- **证据边界**: 隔离 `{card['isolation_status']}`；独立价值路径 "
             f"{card['path_count']} 条，路径之间不得拼接证据晋级。",
         ])
+        if card.get("origin_hypothesis_id") not in {"", "—", None}:
+            lines.append(
+                f"- **探索谱系**: `{card['origin_hypothesis_id']}`；"
+                "该绑定只解释发现来源，不降低 Seed 证据门。"
+            )
         gap_summary = card.get("screen_gap_summary", {})
         if gap_summary.get("primary"):
             lines.append(
@@ -1097,6 +1519,140 @@ def _render_candidate_cards(view):
     return "\n".join(lines).rstrip()
 
 
+def _render_insight_cards(view):
+    exploration = view.get("hypothesis_exploration", {})
+    hypotheses = exploration.get("hypotheses", [])
+    lines = [
+        "# Insight Cards — 可能被漏掉的东西",
+        "> 先允许猜想存在，再沿草蛇灰线求证。这里的状态没有候选晋级或交易权限。",
+        "",
+    ]
+    if not hypotheses:
+        lines.extend([
+            "## 0 条探索假说",
+            "- 本次没有初始化探索轨；这不改变正式证据结论。",
+        ])
+        return "\n".join(lines)
+    for index, item in enumerate(hypotheses, 1):
+        priority = item.get("exploration_priority", {})
+        context = item.get("context", {})
+        trails = item.get("proxy_trails", [])
+        threshold = item.get("break_even_threshold", {})
+        threshold_text = (
+            f"p*={threshold.get('p_star_percent')}%（仅由明示 payoff 机械推导）"
+            if threshold.get("status") == "KNOWN"
+            else "UNKNOWN（未明示可比 upside/downside）"
+        )
+        lines.extend([
+            f"## {index}. {item.get('hypothesis_id', '—')} — "
+            f"`{item.get('state', 'HYPOTHESIS_ONLY')}`",
+            f"- **猜想**: {_clean(item.get('hypothesis'))}",
+            f"- **观察 / 推断边界**: "
+            f"`{item.get('observation_status', 'UNVERIFIED_CLUE')}` "
+            f"{_clean(item.get('observation'))} / "
+            f"{_clean(item.get('inference') or item.get('value_transfer'))}",
+            f"- **如果为真，意外在哪里**: "
+            f"{_clean(item.get('surprise_if_true') or item.get('why_nonconsensus'))}",
+            f"- **因果链**: {_clean(' -> '.join(item.get('causal_chain', [])))}",
+            f"- **最强替代解释**: {_clean(item.get('strongest_alternative_explanation'))}",
+            f"- **最低成本判别测试**: "
+            f"{_clean(item.get('cheap_discriminating_test'))}",
+            f"- **反证 / 催化**: {_clean(item.get('falsifier'))} / "
+            f"{_clean(item.get('catalyst'))}",
+            f"- **到期边界**: {_clean(item.get('expiry_date'))}；"
+            "到期只触发人工 park/supersede 复核，不自动删改状态。",
+            f"- **探索排序**: `{priority.get('band', 'PARK')}`；"
+            f"score={priority.get('score', 0)}；"
+            f"components={_clean(priority.get('components'))}；"
+            f"reasons={_clean(priority.get('reasons'))}。"
+            "只分配研究注意力，不是概率或预期收益。",
+            f"- **明示赔率边界**: {threshold_text}；不估计实际成功率。",
+            f"- **定性非对称声明**: "
+            f"{_clean(item.get('asymmetry_case', {}).get('upside_shape'))}/"
+            f"{_clean(item.get('asymmetry_case', {}).get('convexity'))} vs "
+            f"{_clean(item.get('asymmetry_case', {}).get('downside_shape'))}；"
+            f"signal={_clean(item.get('asymmetry_case', {}).get('time_to_signal'))}；"
+            f"basis={_clean(item.get('asymmetry_case', {}).get('basis'))}。"
+            "它只参与研究队列；无证据、概率、预期收益或仓位权限。",
+            f"- **谱系**: crux `{context.get('origin_crux') or '—'}`；"
+            f"crux 集合 `{', '.join(context.get('origin_cruxes', [])) or '—'}`；"
+            f"Landscape 集合 "
+            f"`{', '.join(context.get('landscape_path_ids', [])) or '—'}`。",
+        ])
+        scenario_paths = item.get("scenario_paths", {})
+        if scenario_paths:
+            lines.append("- **假说场景**:")
+            for path_type in ("bull", "base", "bear"):
+                lines.append(
+                    f"  - `{path_type.upper()}`: "
+                    f"{_clean(scenario_paths.get(path_type))}"
+                )
+        contested = item.get("contested_fields", [])
+        if contested:
+            lines.append(
+                f"- **未调和争议字段**: `{', '.join(contested)}`；"
+                f"变体 {_clean(item.get('field_variants'))}。"
+            )
+        if trails:
+            lines.append("- **ProxyTrail**:")
+            for proxy in trails[:3]:
+                bindings = proxy.get("authorized_route_bindings", [])
+                binding_text = ", ".join(
+                    f"{item.get('action_id', '—')}@"
+                    f"{item.get('route_id', '—')}"
+                    for item in bindings
+                    if isinstance(item, dict)
+                ) or "—"
+                evidence_links = " ".join(
+                    f"[{_clean(citation.get('source'))}]"
+                    f"({citation.get('url')})"
+                    for citation in proxy.get("evidence", [])[:2]
+                    if citation.get("url")
+                ) or "无有效引用"
+                direction_bindings = "；".join(
+                    f"{binding.get('direction', 'AMBIGUOUS')}@"
+                    f"R{binding.get('round', '—')}/"
+                    f"{binding.get('source_agent') or '—'}/"
+                    f"{binding.get('origin_crux') or '—'}/"
+                    f"{','.join(binding.get('evidence_ids', [])) or 'no-evidence'}/"
+                    f"{binding.get('authorized_action_id') or 'no-action'}"
+                    for binding in proxy.get("direction_bindings", [])[:6]
+                    if isinstance(binding, dict)
+                ) or "—"
+                lines.append(
+                    f"  - `{proxy.get('proxy_id') or '—'}` / "
+                    f"action-route `{binding_text}` / "
+                    f"`{proxy.get('direction', 'AMBIGUOUS')}` "
+                    f"variants={_clean(proxy.get('direction_variants'))} "
+                    f"contested={proxy.get('direction_contested', False)} "
+                    f"bindings={_clean(direction_bindings)}；"
+                    f"crux `{proxy.get('origin_crux') or '—'}`；"
+                    f"计划 {_clean(proxy.get('planned_proxy'))} → "
+                    f"实际观察 {_clean(proxy.get('proxy'))}；诊断链: "
+                    f"{_clean(proxy.get('causal_link'))}；"
+                    f"替代解释: "
+                    f"{_clean(proxy.get('alternative_explanation'))}；"
+                    f"查询: {_clean(proxy.get('bounded_query'))}；"
+                    f"停止: {_clean(proxy.get('stop_condition'))}；"
+                    f"路线争议: "
+                    f"{_clean(proxy.get('route_contested_fields'))} "
+                    f"{_clean(proxy.get('route_field_variants'))}；"
+                    f"证据 {len(proxy.get('evidence', []))} 条 {evidence_links}。"
+                )
+        else:
+            lines.append("- **ProxyTrail**: 尚无；先设计一条支持线索和一条反证线索。")
+        lines.append("")
+    lines.extend(_exploration_history_lines(
+        exploration, heading="## 已执行探索与负知识"
+    ))
+    lines.append("")
+    lines.append(
+        "`EVIDENCE_BACKED` 在 Insight Cards 中仍不是 OpportunitySeed；"
+        "正式晋级必须重新满足 Seed admission、CandidateScreen 与 Claim Verification。"
+    )
+    return "\n".join(lines).rstrip()
+
+
 def render_audit(state):
     """Render the complete evidence ledger for explicit audit use."""
     return _render_audit(state, include_title=True)
@@ -1115,6 +1671,7 @@ def render(state, view="full"):
         raise ValueError("unknown report view: expected brief, cards, audit, or full")
     return "\n\n".join([
         _render_decision_brief(model),
+        _render_insight_cards(model),
         _render_candidate_cards(model),
         "# Audit Appendix\n"
         "<details><summary>展开完整证据、状态、来源与运行审计</summary>\n\n"

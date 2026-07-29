@@ -34,11 +34,16 @@ L_MAX        = math.log(4.0)    # clamp -> single-crux prob bounded to [0.20, 0.
 MIN_ROUNDS   = 3
 MAX_ROUNDS   = 12               # hard fuse (should rarely be hit now)
 EPS_STABLE   = 0.03             # |Δp| below this over a touch = "settled"
-OPEN_PATIENCE = 3               # rounds a crux may stay contested before forced MONITORABLE
+OPEN_PATIENCE = 3               # legacy compatibility; no longer forces MONITORABLE
 MIN_CONTESTED = 3               # min contested rounds before a crux is eligible for retirement
 DRY_ROUNDS   = 3                # no NEW crux introduced for this many rounds = adversary went dry
 MIN_VALID_CITATIONS = 2         # a crux needs real source anchors before it may retire
+EVIDENCE_EXHAUSTION_DRY_ROUNDS = 2
+                                # consecutive bilateral probes with no NEW valid evidence
 UNIVERSE_HARVEST_DRY_ROUNDS = 2 # two dry harvests; coverage round counts only when itself dry
+
+MONITORABLE_EXHAUSTION_REASON = "EVIDENCE_EXHAUSTED_AFTER_BILATERAL_PROBES"
+MONITORABLE_SEMANTICS = "RESEARCH_EXHAUSTION_ONLY_NOT_TRUTH_OR_PROBABILITY"
 
 QUESTION_TYPES = {
     "CONJUNCTIVE", "DISJUNCTIVE", "CAUSAL_CHAIN", "COMPARATIVE", "UNIVERSE_SEARCH",
@@ -166,6 +171,203 @@ def _valid_citation_count(cx):
     return len({citation_source_identity(c) for c in cx.get("citations", []) if valid_citation(c)})
 
 
+def _append_new_citations(cx, citations, round_num, support_effect):
+    """Persist normalized citations even when their net Judge signal is zero."""
+    seen = set(cx.get("seen_evidence_keys", []))
+    appended = 0
+    for citation in citations if isinstance(citations, list) else []:
+        key = citation_identity(citation)
+        if not key or key in seen:
+            continue
+        stored = {**citation, "round": int(round_num)}
+        if support_effect:
+            stored["support_effect"] = support_effect
+        cx.setdefault("citations", []).append(stored)
+        cx.setdefault("seen_evidence_keys", []).append(key)
+        seen.add(key)
+        appended += 1
+    return appended
+
+
+def _probe_audit_item(round_context, crux_id):
+    """Normalize caller-computed role probes; never infer them from Judge prose."""
+    if not isinstance(round_context, dict):
+        return None
+    raw_map = round_context.get("crux_probe_audit")
+    if not isinstance(raw_map, dict) or crux_id not in raw_map:
+        return None
+    raw = raw_map.get(crux_id)
+    if not isinstance(raw, dict):
+        return {
+            "detective_probed": False,
+            "inquisitor_probed": False,
+            "new_valid_evidence_count": None,
+            "valid": False,
+        }
+    count = raw.get("new_valid_evidence_count")
+    valid_count = type(count) is int and count >= 0
+    if not valid_count:
+        count = None
+    return {
+        "detective_probed": raw.get("detective_probed") is True,
+        "inquisitor_probed": raw.get("inquisitor_probed") is True,
+        "new_valid_evidence_count": count,
+        "valid": valid_count,
+    }
+
+
+def _configured_exhaustion_dry_rounds(state):
+    raw = state.get("config", {}).get(
+        "EVIDENCE_EXHAUSTION_DRY_ROUNDS",
+        EVIDENCE_EXHAUSTION_DRY_ROUNDS,
+    )
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = EVIDENCE_EXHAUSTION_DRY_ROUNDS
+    # "Consecutive" must mean more than one independently dispatched probe.
+    return int(_clamp(value, 2, MAX_ROUNDS))
+
+
+def _apply_evidence_exhaustion(state, round_num, round_context, accepted_citations):
+    """Retire evidence-exhausted OPEN cruxes without changing support semantics.
+
+    ``round_context["crux_probe_audit"]`` is computed by the orchestration layer
+    from the isolated Detective/Inquisitor payloads:
+
+        {
+          "C1": {
+            "detective_probed": true,
+            "inquisitor_probed": true,
+            "new_valid_evidence_count": 0
+          }
+        }
+
+    A missing crux entry means "not dispatched" and leaves its per-crux streak
+    unchanged.  An explicit partial/malformed probe resets the streak fail-closed.
+    Judge rationale and self-reported role labels are never used to establish
+    bilateral coverage.
+    """
+    required_dry = _configured_exhaustion_dry_rounds(state)
+    try:
+        max_introduced_round = int(state.get("max_introduced_round", 0) or 0)
+    except (TypeError, ValueError):
+        max_introduced_round = int(round_num)
+    global_adversary_dry = int(round_num) - max_introduced_round >= DRY_ROUNDS
+    audits = {}
+    for cid, cx in state.get("cruxes", {}).items():
+        if cx.get("retired") or cx.get("status") not in {"PENDING", "OPEN"}:
+            continue
+        probe = _probe_audit_item(round_context, cid)
+        try:
+            before = int(cx.get("evidence_exhaustion_dry_streak", 0) or 0)
+        except (TypeError, ValueError):
+            before = 0
+        accepted_count = int(accepted_citations.get(cid, 0) or 0)
+
+        # A crux absent from the caller audit was not dispatched. It neither
+        # advances nor breaks a consecutive sequence of *its own* probe attempts.
+        if probe is None:
+            audit = {
+                "round": int(round_num),
+                "probe_audit_present": False,
+                "dry_streak_before": before,
+                "dry_streak_after": before,
+                "transitioned": False,
+                "transition_reason": None,
+                "semantics": MONITORABLE_SEMANTICS,
+                "blocking_reasons": ["PROBE_AUDIT_MISSING_OR_CRUX_NOT_DISPATCHED"],
+            }
+            audits[cid] = audit
+            cx["evidence_exhaustion"] = dict(audit)
+            continue
+
+        both_probed = (
+            probe["detective_probed"] and probe["inquisitor_probed"] and probe["valid"]
+        )
+        declared_new = probe["new_valid_evidence_count"]
+        # Newly accepted normalized citations are a fail-closed override. This
+        # prevents a malformed caller count from treating wash evidence as dry.
+        effective_new = max(int(declared_new or 0), accepted_count)
+        if both_probed:
+            if cx.get("first_bilateral_probe_round") is None:
+                cx["first_bilateral_probe_round"] = int(round_num)
+            after = before + 1 if effective_new == 0 else 0
+        else:
+            after = 0
+        cx["evidence_exhaustion_dry_streak"] = after
+
+        # A zero-signal evidence wash is still an examined OPEN question once
+        # both isolated roles have probed it and valid evidence exists.
+        if (
+            cx.get("status") == "PENDING"
+            and both_probed
+            and _valid_citation_count(cx) > 0
+        ):
+            cx["status"] = "OPEN"
+
+        try:
+            introduced_round = int(cx.get("introduced", 0) or 0)
+        except (TypeError, ValueError):
+            introduced_round = int(round_num)
+        crux_old_enough = int(round_num) - introduced_round >= DRY_ROUNDS
+        valid_count = _valid_citation_count(cx)
+        blockers = []
+        if cx.get("status") != "OPEN":
+            blockers.append("STATUS_NOT_OPEN")
+        if int(round_num) < MIN_ROUNDS:
+            blockers.append("MINIMUM_ROUNDS_NOT_MET")
+        if not both_probed or cx.get("first_bilateral_probe_round") is None:
+            blockers.append("BILATERAL_PROBE_NOT_ESTABLISHED")
+        if valid_count < MIN_VALID_CITATIONS:
+            blockers.append("MINIMUM_VALID_CITATIONS_NOT_MET")
+        if after < required_dry:
+            blockers.append("CONSECUTIVE_DRY_PROBES_NOT_MET")
+        if not global_adversary_dry:
+            blockers.append("ADVERSARY_NOT_DRY")
+        if not crux_old_enough:
+            blockers.append("CRUX_RECENTLY_INTRODUCED")
+        if not probe["valid"]:
+            blockers.append("PROBE_AUDIT_INVALID")
+
+        transitioned = not blockers
+        transition_reason = None
+        if transitioned:
+            transition_reason = MONITORABLE_EXHAUSTION_REASON
+            cx["status"] = "MONITORABLE"
+            cx["retired"] = True
+            cx["monitorable_reason"] = transition_reason
+            cx["monitorable_round"] = int(round_num)
+            cx["monitorable_semantics"] = MONITORABLE_SEMANTICS
+            cx["transition_reason"] = transition_reason
+
+        audit = {
+            "round": int(round_num),
+            "probe_audit_present": True,
+            "detective_probed": probe["detective_probed"],
+            "inquisitor_probed": probe["inquisitor_probed"],
+            "both_roles_probed": both_probed,
+            "declared_new_valid_evidence_count": declared_new,
+            "accepted_new_citation_count": accepted_count,
+            "effective_new_valid_evidence_count": effective_new,
+            "valid_citation_count": valid_count,
+            "minimum_valid_citations": MIN_VALID_CITATIONS,
+            "dry_streak_before": before,
+            "dry_streak_after": after,
+            "required_dry_streak": required_dry,
+            "adversary_dry": global_adversary_dry,
+            "crux_old_enough": crux_old_enough,
+            "support_score_unchanged_by_transition": True,
+            "transitioned": transitioned,
+            "transition_reason": transition_reason,
+            "semantics": MONITORABLE_SEMANTICS,
+            "blocking_reasons": blockers,
+        }
+        audits[cid] = audit
+        cx["evidence_exhaustion"] = dict(audit)
+    return audits
+
+
 def _normalize_signal(js, seen_evidence_keys=None):
     """Make the evidence gate physical: unsupported/repeated signals cannot move scores."""
     if not isinstance(js, dict):
@@ -223,7 +425,13 @@ def new_state(topic, decision_question, horizon, cruxes,
         "logic_graph": logic_graph or {},
         "horizon": horizon,
         "score_semantics": "debate_support_score_not_calibrated_probability",
-        "config": {"K": K, "DECAY": DECAY, "L_MAX_ODDS": 4.0, "MAX_ROUNDS": MAX_ROUNDS},
+        "config": {
+            "K": K,
+            "DECAY": DECAY,
+            "L_MAX_ODDS": 4.0,
+            "MAX_ROUNDS": MAX_ROUNDS,
+            "EVIDENCE_EXHAUSTION_DRY_ROUNDS": EVIDENCE_EXHAUSTION_DRY_ROUNDS,
+        },
         "cruxes": {c["id"]: {
             "label": c["label"],
             "definition": c.get("definition", ""),
@@ -237,6 +445,8 @@ def new_state(topic, decision_question, horizon, cruxes,
             "introduced": 0,
             "best_bull": None, "best_bear": None, "citations": [],
             "seen_evidence_keys": [],
+            "first_bilateral_probe_round": None,
+            "evidence_exhaustion_dry_streak": 0,
         } for c in cruxes},
         "max_introduced_round": 0,
         "rounds": [],
@@ -266,6 +476,8 @@ def add_crux(state, crux, round_num):
         "introduced": round_num,
         "best_bull": None, "best_bear": None, "citations": [],
         "seen_evidence_keys": [],
+        "first_bilateral_probe_round": None,
+        "evidence_exhaustion_dry_streak": 0,
     }
     state["max_introduced_round"] = max(state["max_introduced_round"], round_num)
 
@@ -281,13 +493,10 @@ def _update_status(cx, r):
         return "OPEN"                              # stable rhetoric is not evidentiary convergence
     p = ch[-1]
     settled = abs(ch[-1] - ch[-2]) < EPS_STABLE    # stable across last 2 *contested* rounds
-    contested_for = r - cx["first_contested"]
     if settled:
         if p >= 0.55:  return "RESOLVED_BULL"
         if p <= 0.45:  return "RESOLVED_BEAR"
-        return "MONITORABLE"                       # stuck near coin-flip after real evidence
-    if contested_for >= OPEN_PATIENCE and cx["last_signal"] < 0:
-        return "MONITORABLE"                       # unresolved late attack -> kill-switch watch
+        return "OPEN"                              # neutral support is not a truth verdict
     return "OPEN"
 
 
@@ -300,11 +509,31 @@ def submit_round(state, round_num, judge_signals, round_context=None):
         "best_bull": str|None, "best_bear": str|None,
     } }
     Signals for RETIRED cruxes are ignored (crux-scoping: we didn't fire agents on them).
+
+    ``round_context`` may include an orchestration-computed probe audit:
+      {"crux_probe_audit": {
+          "C1": {"detective_probed": bool, "inquisitor_probed": bool,
+                 "new_valid_evidence_count": int}
+      }}
+    The engine never infers bilateral probing from Judge text.
     """
     fired = []
     normalized_signals = {}
+    accepted_citations = {}
     for cid, cx in state["cruxes"].items():
         js = _normalize_signal(judge_signals.get(cid, {}), cx.get("seen_evidence_keys", []))
+        probe = _probe_audit_item(round_context, cid)
+        wash_is_role_traceable = bool(
+            probe
+            and probe.get("detective_probed")
+            and probe.get("inquisitor_probed")
+        )
+        if float(js.get("signal", 0.0)) == 0.0 and js.get("citations") and not wash_is_role_traceable:
+            dropped = len(js["citations"])
+            js["citations"] = []
+            flags = list(js.get("quality_flags", []))
+            flags.append(f"dropped_zero_signal_citations_without_bilateral_probe_audit:{dropped}")
+            js["quality_flags"] = sorted(set(flags))
         normalized_signals[cid] = js
         s = float(js.get("signal", 0.0))
         # a strong NEW attack re-opens a previously settled/retired crux (forced-novelty)
@@ -318,14 +547,15 @@ def submit_round(state, round_num, judge_signals, round_context=None):
             cx["L"] = _clamp(DECAY * cx["L"] + K * s, -L_MAX, L_MAX)
         cx["p_history"].append(_sig(cx["L"]))
         cx["last_signal"] = s
+        support_effect = "NONE_ZERO_SIGNAL_WASH" if s == 0.0 else "DEBATE_SUPPORT_UPDATE"
+        accepted_citations[cid] = _append_new_citations(
+            cx, js.get("citations", []), round_num, support_effect
+        )
         if s != 0.0:                                # contested this round
             fired.append(cid)
             if cx["first_contested"] is None:
                 cx["first_contested"] = round_num
             cx["contested_history"].append(_sig(cx["L"]))
-            for c in js.get("citations", []):
-                cx["citations"].append({**c, "round": round_num})
-                cx.setdefault("seen_evidence_keys", []).append(citation_identity(c))
             if js.get("best_bull"): cx["best_bull"] = js["best_bull"]
             if js.get("best_bear"): cx["best_bear"] = js["best_bear"]
             cx["status"] = _update_status(cx, round_num)   # re-evaluate only on contest
@@ -342,7 +572,12 @@ def submit_round(state, round_num, judge_signals, round_context=None):
                         else "LOGIC_GRAPH_MULTI_PATH")
     round_record = {"round": round_num, "fired_cruxes": fired, "signals": normalized_signals}
     if isinstance(round_context, dict):
-        for key in ("landscape_audit", "opportunity_harvest"):
+        for key in (
+            "landscape_audit",
+            "opportunity_harvest",
+            "crux_probe_audit",
+            "hypothesis_audit",
+        ):
             if isinstance(round_context.get(key), dict):
                 round_record[key] = round_context[key]
     state["rounds"].append(round_record)
@@ -353,6 +588,9 @@ def submit_round(state, round_num, judge_signals, round_context=None):
         "decision": decision, "research_verdict": verdict,
         "focus_crux": weakest, "aggregation_rule": aggregation_rule,
     })
+    round_record["evidence_exhaustion"] = _apply_evidence_exhaustion(
+        state, round_num, round_context, accepted_citations
+    )
     conv = convergence(state, round_num)
     if conv.get("decision") == "converge" and verdict.get("edge_state") == "EDGE_FOUND":
         verdict["actionability"] = "READY_FOR_SCREENING"
@@ -525,23 +763,55 @@ def _universe_harvest_dry_rounds(state, coverage_round):
     return dry
 
 
-def _universe_convergence_issue(state, round_num):
-    """Return the deterministic reason a broad search is not coverage-complete yet."""
+def _discovery_required(state):
+    """Whether opportunity discovery gates apply independently of logic type."""
+    frame_contract = (
+        state.get("frame_contract")
+        if isinstance(state.get("frame_contract"), dict)
+        else {}
+    )
+    intent = str(
+        frame_contract.get("research_intent")
+        or state.get("research_intent")
+        or ""
+    ).strip().upper()
+    if intent in {"OPPORTUNITY_DISCOVERY", "HYBRID"}:
+        return True
+    if str(state.get("question_type") or "").upper() in {
+        "UNIVERSE_SEARCH",
+        "COMPARATIVE",
+    }:
+        return True
+    return any(
+        isinstance(crux, dict)
+        and str(crux.get("logic_role") or "").upper() == "OPPORTUNITY_PATH"
+        for crux in state.get("cruxes", {}).values()
+    )
+
+
+def _discovery_convergence_issue(state):
+    """Require bilateral Landscape coverage plus a post-coverage dry window."""
     paths = [
-        item for item in state.get("landscape_map", {}).get("paths", [])
+        item
+        for item in state.get("landscape_map", {}).get("paths", [])
         if isinstance(item, dict)
     ]
     if not paths:
-        return "UNIVERSE_SEARCH 缺少 Landscape Map，不能声明搜索完成。"
+        return "机会发现意图缺少 Landscape Map，不能声明搜索完成。"
     unprobed = [
-        item.get("path_id") for item in paths
+        item.get("path_id")
+        for item in paths
         if item.get("state", "UNPROBED") == "UNPROBED"
     ]
     if unprobed:
         return f"Landscape Map 仍有未质证路径: {unprobed}；机会型研究不得收敛。"
     missing_roles = []
     for item in paths:
-        probes = item.get("probes", {}) if isinstance(item.get("probes"), dict) else {}
+        probes = (
+            item.get("probes", {})
+            if isinstance(item.get("probes"), dict)
+            else {}
+        )
         for role in ("detective", "inquisitor"):
             if role not in probes:
                 missing_roles.append(f"{item.get('path_id')}:{role}")
@@ -550,6 +820,21 @@ def _universe_convergence_issue(state, round_num):
     coverage_round = _universe_coverage_round(state)
     if coverage_round is None:
         return "Landscape Map 双边探测缺少有效轮次，不能建立覆盖完成时间。"
+    dry_rounds = _universe_harvest_dry_rounds(state, coverage_round)
+    if dry_rounds < UNIVERSE_HARVEST_DRY_ROUNDS:
+        return (
+            f"Landscape 于 R{coverage_round} 完成后，候选收割仅连续静默 "
+            f"{dry_rounds} 轮；需 {UNIVERSE_HARVEST_DRY_ROUNDS} 轮无新 seed "
+            "或既有 seed 证据增长。"
+        )
+    return None
+
+
+def _universe_convergence_issue(state, round_num):
+    """Return the deterministic reason a broad search is not coverage-complete yet."""
+    discovery_issue = _discovery_convergence_issue(state)
+    if discovery_issue:
+        return discovery_issue
 
     unexamined = [
         cid for cid, cx in state.get("cruxes", {}).items()
@@ -567,12 +852,6 @@ def _universe_convergence_issue(state, round_num):
         return (
             f"R{state.get('max_introduced_round', 0)} 才引入新 crux，"
             f"需再质证 {DRY_ROUNDS} 轮确认无新攻击面。"
-        )
-    dry_rounds = _universe_harvest_dry_rounds(state, coverage_round)
-    if dry_rounds < UNIVERSE_HARVEST_DRY_ROUNDS:
-        return (
-            f"Landscape 于 R{coverage_round} 完成后，候选收割仅连续静默 {dry_rounds} 轮；"
-            f"需 {UNIVERSE_HARVEST_DRY_ROUNDS} 轮无新 seed 或既有 seed 证据增长。"
         )
     if len(state.get("decision_trace", [])) < 2:
         return "覆盖完成后仍需一轮确认根层 edge/actionability 状态稳定。"
@@ -594,6 +873,8 @@ def _settle_universe_cruxes(state, round_num):
             cx["retired"] = True
             cx["monitorable_reason"] = "UNIVERSE_COVERAGE_COMPLETE_DIRECTION_NOT_AGGREGATED"
             cx["monitorable_round"] = int(round_num)
+            cx["monitorable_semantics"] = MONITORABLE_SEMANTICS
+            cx["transition_reason"] = "UNIVERSE_COVERAGE_AND_HARVEST_DRY"
 
 
 def convergence(state, round_num):
@@ -639,15 +920,22 @@ def convergence(state, round_num):
     if unsettled:
         return not_ready(f"仍有未检验/活跃 crux: {unsettled}（继续，且仅对这些派子智能体）。",
                          unsettled)
-    unprobed_paths = [
-        item.get("path_id")
-        for item in state.get("landscape_map", {}).get("paths", [])
-        if isinstance(item, dict) and item.get("state", "UNPROBED") == "UNPROBED"
-    ]
-    if unprobed_paths:
-        return not_ready(
-            f"Landscape Map 仍有未质证路径: {unprobed_paths}；机会型研究不得收敛或声明 EDGE。"
-        )
+    if _discovery_required(state):
+        discovery_issue = _discovery_convergence_issue(state)
+        if discovery_issue:
+            return not_ready(discovery_issue)
+    else:
+        unprobed_paths = [
+            item.get("path_id")
+            for item in state.get("landscape_map", {}).get("paths", [])
+            if isinstance(item, dict)
+            and item.get("state", "UNPROBED") == "UNPROBED"
+        ]
+        if unprobed_paths:
+            return not_ready(
+                f"Landscape Map 仍有未质证路径: {unprobed_paths}；"
+                "机会型研究不得收敛或声明 EDGE。"
+            )
     # completeness guard: adversary must have gone "dry" (no new crux for DRY_ROUNDS)
     if round_num - state["max_introduced_round"] < DRY_ROUNDS:
         return not_ready(f"R{state['max_introduced_round']} 才引入新 crux，需再质证 {DRY_ROUNDS} 轮确认审问者已无新攻击面。")
@@ -687,6 +975,9 @@ def report_data(state):
             "catalyst_window": cx.get("catalyst_window", {}), "citations": cx["citations"],
             "valid_citations": valid,
             "unique_source_urls": unique_sources,
+            "evidence_exhaustion": cx.get("evidence_exhaustion"),
+            "transition_reason": cx.get("transition_reason"),
+            "monitorable_semantics": cx.get("monitorable_semantics"),
         })
     cruxes.sort(key=lambda c: c["p"])              # weakest (binding) first
     last = state["decision_trace"][-1] if state["decision_trace"] else {}

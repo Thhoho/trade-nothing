@@ -6,9 +6,11 @@ This directory is the reproducible input contract for the initial 6 x 3
 Two immutable manifests share the same frozen cases and evidence:
 
 - `suite.json` is the historical `single_agent / v0_12 / v0_14` contract.
-- `benchmarks/current.json` resolves the current suite, current variant, evaluator key, method
-  identity, and suite contract. Use `scripts/benchmark_current.py --check`; do not guess from a
-  filename.
+- `benchmarks/current.json` resolves the suite, calibrated variant, evaluator
+  key, operational identity, last calibrated identity, and suite contract. Use
+  `scripts/benchmark_current.py --check`; when it returns
+  `UNBENCHMARKED_METHOD_CHANGE`, do not present the resolved arm as the current
+  method.
 
 Do not report results from the historical `v0_14` arm as current-skill effectiveness.
 
@@ -34,8 +36,8 @@ python3 scripts/benchmark_harness.py validate-suite \
   --suite benchmarks/v014-six-case/suite.json
 ```
 
-For the current skill, resolve the exact suite from `benchmarks/current.json` before validate,
-verify-variants, materialize-case, and score commands.
+Resolve the exact suite and calibration status from `benchmarks/current.json`
+before validate, verify-variants, materialize-case, and score commands.
 
 Verify that pinned skill commits and file hashes exist in the canonical Git object database:
 

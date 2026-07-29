@@ -17,8 +17,11 @@ CURRENT_SUITE_PATH = SUITE_PATH.parent / "suite-48e0366.json"
 CURRENT_ANSWER_KEY_PATH = SUITE_PATH.parent / "assessor" / "answer-key-48e0366.json"
 
 
-def load_suite():
-    return harness.validate_suite(harness._load_json(SUITE_PATH), SUITE_PATH)
+def load_suite(candidate_variant=None):
+    data = harness._load_json(SUITE_PATH)
+    if candidate_variant:
+        data["candidate_variant"] = candidate_variant
+    return harness.validate_suite(data, SUITE_PATH)
 
 
 def engine_receipt(contract, invocation_id):
@@ -28,6 +31,101 @@ def engine_receipt(contract, invocation_id):
     }
     receipt.update(harness._variant_receipt_expected(contract))
     return receipt
+
+
+def write_complete_results(suite, answer_key, root):
+    for case in suite["cases"]:
+        relevant = answer_key["cases"][case["case_id"]]["relevant_doc_ids"]
+        for variant in suite["variants"]:
+            stem = f"{case['case_id']}__{variant}"
+            artifact_path = root / f"{stem}.report.md"
+            artifact_path.write_text(
+                f"frozen report for {stem}\n", encoding="utf-8"
+            )
+            artifact_hash = harness._hash_file(artifact_path)
+            log_path = root / f"{stem}.retrieval.jsonl"
+            log_path.write_text(
+                harness._json(
+                    {"seq": 1, "event": "READ_SET", "doc_ids": relevant}
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            receipt = {
+                "schema_version": harness.RETRIEVAL_RECEIPT_SCHEMA,
+                "session_id": f"DISC-{case['case_id']}-{variant}",
+                "suite_contract_sha256": suite["suite_contract_sha256"],
+                "corpus_sha256": suite["corpus_manifest"]["sha256"],
+                "case_id": case["case_id"],
+                "variant": variant,
+                "as_of": case["as_of"],
+                "query_count": 3,
+                "event_count": 1,
+                "read_doc_ids": relevant,
+                "distinct_documents_read": len(relevant),
+                "retrieval_log_sha256": harness._hash_file(log_path),
+                "within_gateway_budget": True,
+            }
+            receipt_path = root / f"{stem}.retrieval-receipt.json"
+            receipt_path.write_text(json.dumps(receipt) + "\n", encoding="utf-8")
+            contract = suite["variant_manifest"][variant]
+            result = {
+                "schema_version": harness.RESULT_SCHEMA,
+                "case_id": case["case_id"],
+                "variant": variant,
+                "suite_contract_sha256": suite["suite_contract_sha256"],
+                "variant_contract_sha256": contract["variant_contract_sha256"],
+                "engine_version": contract["engine_version"],
+                "engine_receipt": engine_receipt(contract, f"HOST-{stem}"),
+                "completion_status": "COMPLETE",
+                "artifact_path": artifact_path.name,
+                "artifact_sha256": artifact_hash,
+                "retrieval_receipt_path": receipt_path.name,
+                "retrieval_receipt_sha256": harness._hash_file(receipt_path),
+                "retrieval_log_path": log_path.name,
+                "usage": {"tokens_total": 6000, "wall_seconds": 90},
+            }
+            assessment = {
+                "schema_version": harness.ASSESSMENT_SCHEMA,
+                "case_id": case["case_id"],
+                "variant": variant,
+                "artifact_sha256": artifact_hash,
+                "assessor_id": "blind-reviewer",
+                "blind": True,
+                "metrics": {
+                    "decisive_claim_total": 4,
+                    "decisive_claim_correct": 3,
+                    "false_source_count": 0,
+                    "major_path_total": len(
+                        answer_key["cases"][case["case_id"]]["major_paths"]
+                    ),
+                    "major_path_found": 3,
+                    "insight_card_total": 4,
+                    "insight_card_valid": 3,
+                    "causal_path_total": 3,
+                    "causal_path_valid": 2,
+                    "exploration_trace_total": 2,
+                    "exploration_trace_complete": 1,
+                    "hypothesis_laundering_count": 0,
+                    "formal_exploration_action_confusion_count": 0,
+                    "candidate_count": 2,
+                    "effective_seed_count": 1,
+                    "false_discovery_count": 0,
+                    "novel_valid_path_count": 0,
+                    "pricing_anchor_total": 2,
+                    "pricing_anchor_valid": 1,
+                    "maturity_misread_count": 0,
+                    "comprehension_question_total": 3,
+                    "comprehension_question_correct": 3,
+                    "manual_edit_count": 0,
+                },
+            }
+            (root / f"{stem}.result.json").write_text(
+                json.dumps(result) + "\n", encoding="utf-8"
+            )
+            (root / f"{stem}.assessment.json").write_text(
+                json.dumps(assessment) + "\n", encoding="utf-8"
+            )
 
 
 class DiscoveryBenchmarkHarnessTests(unittest.TestCase):
@@ -158,85 +256,72 @@ class DiscoveryBenchmarkHarnessTests(unittest.TestCase):
         answer_key = harness._load_json(ANSWER_KEY_PATH)
         with tempfile.TemporaryDirectory() as parent:
             root = Path(parent)
-            for case in suite["cases"]:
-                relevant = answer_key["cases"][case["case_id"]]["relevant_doc_ids"]
-                for variant in suite["variants"]:
-                    stem = f"{case['case_id']}__{variant}"
-                    artifact_path = root / f"{stem}.report.md"
-                    artifact_path.write_text(f"frozen report for {stem}\n", encoding="utf-8")
-                    artifact_hash = harness._hash_file(artifact_path)
-                    log_path = root / f"{stem}.retrieval.jsonl"
-                    log_path.write_text(
-                        harness._json({"seq": 1, "event": "READ_SET", "doc_ids": relevant}) + "\n",
-                        encoding="utf-8",
-                    )
-                    receipt = {
-                        "schema_version": harness.RETRIEVAL_RECEIPT_SCHEMA,
-                        "session_id": f"DISC-{case['case_id']}-{variant}",
-                        "suite_contract_sha256": suite["suite_contract_sha256"],
-                        "corpus_sha256": suite["corpus_manifest"]["sha256"],
-                        "case_id": case["case_id"],
-                        "variant": variant,
-                        "as_of": case["as_of"],
-                        "query_count": 3,
-                        "event_count": 1,
-                        "read_doc_ids": relevant,
-                        "distinct_documents_read": len(relevant),
-                        "retrieval_log_sha256": harness._hash_file(log_path),
-                        "within_gateway_budget": True,
-                    }
-                    receipt_path = root / f"{stem}.retrieval-receipt.json"
-                    receipt_path.write_text(json.dumps(receipt) + "\n", encoding="utf-8")
-                    contract = suite["variant_manifest"][variant]
-                    result = {
-                        "schema_version": harness.RESULT_SCHEMA,
-                        "case_id": case["case_id"],
-                        "variant": variant,
-                        "suite_contract_sha256": suite["suite_contract_sha256"],
-                        "variant_contract_sha256": contract["variant_contract_sha256"],
-                        "engine_version": contract["engine_version"],
-                        "engine_receipt": engine_receipt(contract, f"HOST-{stem}"),
-                        "completion_status": "COMPLETE",
-                        "artifact_path": artifact_path.name,
-                        "artifact_sha256": artifact_hash,
-                        "retrieval_receipt_path": receipt_path.name,
-                        "retrieval_receipt_sha256": harness._hash_file(receipt_path),
-                        "retrieval_log_path": log_path.name,
-                        "usage": {"tokens_total": 6000, "wall_seconds": 90},
-                    }
-                    assessment = {
-                        "schema_version": harness.ASSESSMENT_SCHEMA,
-                        "case_id": case["case_id"],
-                        "variant": variant,
-                        "artifact_sha256": artifact_hash,
-                        "assessor_id": "blind-reviewer",
-                        "blind": True,
-                        "metrics": {
-                            "decisive_claim_total": 4,
-                            "decisive_claim_correct": 3,
-                            "false_source_count": 0,
-                            "major_path_total": len(answer_key["cases"][case["case_id"]]["major_paths"]),
-                            "major_path_found": 3,
-                            "candidate_count": 2,
-                            "effective_seed_count": 1,
-                            "false_discovery_count": 0,
-                            "novel_valid_path_count": 0,
-                            "pricing_anchor_total": 2,
-                            "pricing_anchor_valid": 1,
-                            "maturity_misread_count": 0,
-                            "comprehension_question_total": 3,
-                            "comprehension_question_correct": 3,
-                            "manual_edit_count": 0,
-                        },
-                    }
-                    (root / f"{stem}.result.json").write_text(json.dumps(result) + "\n")
-                    (root / f"{stem}.assessment.json").write_text(json.dumps(assessment) + "\n")
+            write_complete_results(suite, answer_key, root)
             summary = harness.score_suite(suite, answer_key, root)
         self.assertTrue(summary["comparison_ready"])
+        self.assertIsNone(summary["candidate_variant"])
+        self.assertIsNone(summary["method_change_gate_pass"])
+        self.assertFalse(summary["method_change_gate_ready"])
+        self.assertEqual(
+            harness._method_change_cli_outcome(summary),
+            ("COMPARISON_READY_NOT_GATED", 3),
+        )
         self.assertEqual(summary["observed_case_variant_pairs"], 9)
         self.assertEqual(summary["aggregates"]["v0_14"]["source_recall"], 1.0)
         self.assertEqual(summary["aggregates"]["v0_14"]["retrieval_precision"], 1.0)
         self.assertEqual(summary["aggregates"]["v0_14"]["tokens_per_effective_seed"], 6000.0)
+        self.assertEqual(
+            summary["aggregates"]["v0_14"]["insight_card_valid_rate"],
+            0.75,
+        )
+        self.assertIn(
+            "Hypothesis laundering", harness.render_markdown(summary)
+        )
+        self.assertIn(
+            "Method-change ready: **FALSE**", harness.render_markdown(summary)
+        )
+
+    def test_method_change_gate_requires_declared_candidate_and_clean_safety(self):
+        suite = load_suite(candidate_variant="v0_14")
+        answer_key = harness._load_json(ANSWER_KEY_PATH)
+        with tempfile.TemporaryDirectory() as parent:
+            root = Path(parent)
+            write_complete_results(suite, answer_key, root)
+            ready = harness.score_suite(suite, answer_key, root)
+            self.assertTrue(ready["comparison_ready"])
+            self.assertTrue(ready["method_change_gate_pass"])
+            self.assertTrue(ready["method_change_gate_ready"])
+            self.assertEqual(
+                harness._method_change_cli_outcome(ready),
+                ("METHOD_CHANGE_READY", 0),
+            )
+
+            unsafe_path = (
+                root
+                / f"{suite['cases'][0]['case_id']}__v0_14.assessment.json"
+            )
+            unsafe = harness._load_json(unsafe_path)
+            unsafe["metrics"]["formal_exploration_action_confusion_count"] = 1
+            unsafe_path.write_text(json.dumps(unsafe) + "\n", encoding="utf-8")
+            blocked = harness.score_suite(suite, answer_key, root)
+
+        self.assertTrue(blocked["comparison_ready"])
+        self.assertFalse(blocked["method_change_gate_pass"])
+        self.assertFalse(blocked["method_change_gate_ready"])
+        self.assertEqual(
+            harness._method_change_cli_outcome(blocked),
+            ("BLOCKED_METHOD_CHANGE", 4),
+        )
+
+    def test_incomplete_comparison_blocks_before_method_gate(self):
+        self.assertEqual(
+            harness._method_change_cli_outcome({
+                "comparison_ready": False,
+                "candidate_variant": "v0_14",
+                "method_change_gate_ready": False,
+            }),
+            ("BLOCKED_COMPARISON", 2),
+        )
 
 
 if __name__ == "__main__":

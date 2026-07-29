@@ -7,6 +7,7 @@ Raw agent payloads stay in state for audit and never enter these user views.
 import json
 
 import crux_engine
+import hypothesis_engine
 import landscape_engine
 import opportunity_engine
 
@@ -22,6 +23,366 @@ FORBIDDEN_PACKET_KEYS = {
 
 def _text(value):
     return " ".join(str(value or "").split())
+
+
+def _cell(value):
+    return _text(value).replace("|", "\\|")
+
+
+def _proxy_direction_lineage(proxy):
+    variants = proxy.get("direction_variants", [])
+    variant_text = (
+        f"[{','.join(str(value) for value in variants)}]"
+        if proxy.get("direction_contested")
+        else ""
+    )
+    bindings = []
+    for binding in proxy.get("direction_bindings", [])[:6]:
+        if not isinstance(binding, dict):
+            continue
+        evidence_ids = ",".join(
+            str(value) for value in binding.get("evidence_ids", [])
+        ) or "no-evidence"
+        bindings.append(
+            f"{binding.get('direction', 'AMBIGUOUS')}@"
+            f"R{binding.get('round', '—')}/"
+            f"{binding.get('source_agent') or '—'}/"
+            f"{binding.get('origin_crux') or '—'}/"
+            f"{evidence_ids}/"
+            f"{binding.get('authorized_action_id') or 'no-action'}"
+        )
+    binding_text = "；".join(bindings) or "—"
+    return (
+        f"{proxy.get('direction', 'AMBIGUOUS')}{variant_text}: "
+        f"{proxy.get('proxy') or '—'}；bindings={binding_text}"
+    )
+
+
+def _bounded_text(value, receipt, limit=280):
+    text = _text(value)
+    if len(text) <= limit:
+        return text
+    receipt["truncated_fields"] += 1
+    return text[: max(0, limit - 1)] + "…"
+
+
+def _compact_exploration(
+    state, limit=5, total_byte_budget=12000
+):
+    view = hypothesis_engine.report_view(state, limit=limit)
+    truncation = {
+        "truncated_fields": 0,
+        "field_character_limit": 280,
+        "evidence_per_proxy_limit": 2,
+        "proxy_trails_per_hypothesis_limit": 3,
+    }
+    action = view.get("exploration_action", {})
+    compact_action = {
+        key: action.get(key)
+        for key in (
+            "action_id",
+            "action_code",
+            "action_type",
+            "hypothesis_id",
+            "hypothesis_state",
+            "host_action_status",
+            "proposal_drifted",
+            "recomputed_action",
+            "requires_human_authorization",
+            "authorization_state",
+            "authorization_ready",
+            "executable_after_authorization",
+            "authorization_assurance",
+            "execution_receipt",
+            "budget_boundary",
+            "as_of_date",
+            "route_spec",
+            "excluded_existing_domains",
+            "design_target_id",
+            "design_state_revision",
+            "authority",
+        )
+    }
+    for key in (
+        "reason",
+        "instruction",
+        "question",
+        "source_class",
+        "bounded_query",
+        "success_condition",
+        "stop_condition",
+    ):
+        compact_action[key] = _bounded_text(action.get(key), truncation)
+    result = {
+        "summary": view.get("summary", {}),
+        "exploration_action": compact_action,
+        "authorized_action_history": [
+            {
+                "action_id": item.get("action_id"),
+                "hypothesis_id": item.get("hypothesis_id"),
+                "action_code": item.get("action_code"),
+                "execution_status": item.get("execution_status"),
+                "authorization_assurance": item.get(
+                    "authorization_assurance"
+                ),
+                "source_class": _bounded_text(
+                    item.get("source_class"), truncation
+                ),
+                "bounded_query": _bounded_text(
+                    item.get("bounded_query"), truncation
+                ),
+                "negative_knowledge": _bounded_text(
+                    item.get("negative_knowledge"), truncation
+                ),
+                "execution_receipt": item.get("execution_receipt"),
+            }
+            for item in view.get("authorized_action_history", [])[-5:]
+            if isinstance(item, dict)
+        ],
+        "design_history": [
+            {
+                "design_id": item.get("design_id"),
+                "hypothesis_id": item.get("hypothesis_id"),
+                "action_code": item.get("action_code"),
+                "design_note": _bounded_text(
+                    item.get("design_note"), truncation
+                ),
+                "state_before": item.get("state_before"),
+                "state_after": item.get("state_after"),
+                "authority": item.get("authority"),
+            }
+            for item in view.get("design_history", [])[-5:]
+            if isinstance(item, dict)
+        ],
+        "closed_routes": [
+            {
+                "route_id": item.get("route_id"),
+                "action_id": item.get("action_id"),
+                "hypothesis_id": item.get("hypothesis_id"),
+                "execution_status": item.get("execution_status"),
+                "source_class": _bounded_text(
+                    item.get("source_class"), truncation
+                ),
+                "bounded_query": _bounded_text(
+                    item.get("bounded_query"), truncation
+                ),
+                "stop_reason": _bounded_text(
+                    item.get("stop_reason"), truncation
+                ),
+            }
+            for item in view.get("closed_routes", [])[-5:]
+            if isinstance(item, dict)
+        ],
+        "terminal_action_history": [
+            {
+                "action_id": item.get("action_id"),
+                "status": item.get("status"),
+                "hypothesis_id": item.get("hypothesis_id"),
+                "action_code": item.get("action_code"),
+                "as_of_date": item.get("as_of_date"),
+                "route_id": item.get("route_id"),
+                "authorization_assurance": item.get(
+                    "authorization_assurance"
+                ),
+                "authorization_occurred": item.get(
+                    "authorization_occurred"
+                ),
+                "execution_occurred": item.get("execution_occurred"),
+                "execution_status": item.get("execution_status"),
+                "reason": _bounded_text(
+                    item.get("reason"), truncation
+                ),
+                "result_sha256": item.get("result_sha256"),
+                "result_ingested": item.get("result_ingested"),
+                "proxy_ingested": item.get("proxy_ingested"),
+                "automatic_retry": item.get("automatic_retry"),
+            }
+            for item in view.get("terminal_action_history", [])[-5:]
+            if isinstance(item, dict)
+        ],
+        "hypotheses": [
+            {
+                "hypothesis_id": item.get("hypothesis_id"),
+                "state": item.get("state"),
+                "hypothesis": _bounded_text(
+                    item.get("hypothesis"), truncation
+                ),
+                "observation": _bounded_text(
+                    item.get("observation"), truncation
+                ),
+                "observation_status": item.get(
+                    "observation_status", "UNVERIFIED_CLUE"
+                ),
+                "why_nonconsensus": _bounded_text(
+                    item.get("why_nonconsensus"), truncation
+                ),
+                "surprise_if_true": _bounded_text(
+                    item.get("surprise_if_true"), truncation
+                ),
+                "strongest_alternative_explanation": _bounded_text(
+                    item.get("strongest_alternative_explanation"), truncation
+                ),
+                "causal_chain": [
+                    _bounded_text(value, truncation)
+                    for value in item.get("causal_chain", [])[:6]
+                ],
+                "value_transfer": _bounded_text(
+                    item.get("value_transfer"), truncation
+                ),
+                "cheap_discriminating_test": _bounded_text(
+                    item.get("cheap_discriminating_test"), truncation
+                ),
+                "falsifier": _bounded_text(
+                    item.get("falsifier"), truncation
+                ),
+                "catalyst": _bounded_text(
+                    item.get("catalyst"), truncation
+                ),
+                "expiry_date": _bounded_text(
+                    item.get("expiry_date"), truncation
+                ),
+                "exploration_priority": item.get("exploration_priority", {}),
+                "asymmetry_case": item.get("asymmetry_case", {}),
+                "break_even_threshold": item.get("break_even_threshold", {}),
+                "contested_fields": item.get("contested_fields", []),
+                "field_variants": item.get("field_variants", {}),
+                "proxy_trails": [
+                    {
+                        "proxy_id": proxy.get("proxy_id"),
+                        "route_id": proxy.get("route_id"),
+                        "planned_proxy": _bounded_text(
+                            proxy.get("planned_proxy"), truncation
+                        ),
+                        "planned_direction": proxy.get("planned_direction"),
+                        "authorized_action_id": proxy.get(
+                            "authorized_action_id"
+                        ),
+                        "authorized_action_ids": proxy.get(
+                            "authorized_action_ids", []
+                        )[:5],
+                        "authorized_route_bindings": proxy.get(
+                            "authorized_route_bindings", []
+                        )[:5],
+                        "trail_ids": proxy.get("trail_ids", [])[:5],
+                        "origin_crux": proxy.get("origin_crux"),
+                        "proxy": _bounded_text(
+                            proxy.get("proxy"), truncation
+                        ),
+                        "causal_link": _bounded_text(
+                            proxy.get("causal_link"), truncation
+                        ),
+                        "alternative_explanation": _bounded_text(
+                            proxy.get("alternative_explanation"), truncation
+                        ),
+                        "direction": proxy.get("direction"),
+                        "direction_variants": proxy.get(
+                            "direction_variants", []
+                        ),
+                        "direction_contested": proxy.get(
+                            "direction_contested", False
+                        ),
+                        "direction_bindings": proxy.get(
+                            "direction_bindings", []
+                        )[:6],
+                        "evidence_count": len(proxy.get("evidence", [])),
+                        "checkpoint": _bounded_text(
+                            proxy.get("checkpoint"), truncation
+                        ),
+                        "next_source_class": _bounded_text(
+                            proxy.get("next_source_class")
+                            or proxy.get("publisher_class"),
+                            truncation,
+                        ),
+                        "bounded_query": _bounded_text(
+                            proxy.get("bounded_query"), truncation
+                        ),
+                        "stop_condition": _bounded_text(
+                            proxy.get("stop_condition"), truncation
+                        ),
+                        "route_contested_fields": proxy.get(
+                            "route_contested_fields", []
+                        ),
+                        "route_field_variants": proxy.get(
+                            "route_field_variants", {}
+                        ),
+                        "evidence": [
+                            {
+                                "claim": _bounded_text(
+                                    citation.get("claim"), truncation
+                                ),
+                                "source": _bounded_text(
+                                    citation.get("source"), truncation
+                                ),
+                                "url": _bounded_text(
+                                    citation.get("url"), truncation, limit=500
+                                ),
+                                "date": _bounded_text(
+                                    citation.get("date"), truncation, limit=32
+                                ),
+                            }
+                            for citation in proxy.get("evidence", [])[:2]
+                            if isinstance(citation, dict)
+                        ],
+                    }
+                    for proxy in item.get("proxy_trails", [])[:3]
+                ],
+            }
+            for item in view.get("hypotheses", [])[:limit]
+        ],
+        "truncation_receipt": truncation,
+    }
+    truncation.update({
+        "total_byte_budget": total_byte_budget,
+        "omitted_evidence_items": 0,
+        "omitted_proxy_trails": 0,
+        "omitted_hypotheses": 0,
+        "degraded_to_summary": False,
+    })
+
+    def byte_size():
+        return len(
+            json.dumps(
+                result, ensure_ascii=False, sort_keys=True
+            ).encode("utf-8")
+        )
+
+    # The continuation packet must remain deliverable even when a role submits
+    # pathologically long but structurally valid prose. Preserve the ranked
+    # hypothesis summary and action first, then shed lower-value detail with an
+    # explicit receipt.
+    for hypothesis in reversed(result["hypotheses"]):
+        for proxy in reversed(hypothesis.get("proxy_trails", [])):
+            if byte_size() <= truncation["total_byte_budget"]:
+                break
+            omitted = len(proxy.get("evidence", []))
+            if omitted:
+                proxy["evidence"] = []
+                truncation["omitted_evidence_items"] += omitted
+        if byte_size() <= truncation["total_byte_budget"]:
+            break
+    while byte_size() > truncation["total_byte_budget"]:
+        removable = next(
+            (
+                hypothesis
+                for hypothesis in reversed(result["hypotheses"])
+                if hypothesis.get("proxy_trails")
+            ),
+            None,
+        )
+        if removable is None:
+            break
+        removable["proxy_trails"].pop()
+        truncation["omitted_proxy_trails"] += 1
+    while (
+        byte_size() > truncation["total_byte_budget"]
+        and len(result["hypotheses"]) > 1
+    ):
+        result["hypotheses"].pop()
+        truncation["omitted_hypotheses"] += 1
+    if byte_size() > truncation["total_byte_budget"]:
+        result["hypotheses"] = []
+        truncation["degraded_to_summary"] = True
+    return result
 
 
 def render_runtime_failure_memo(topic, stage, reason, state_initialized=False):
@@ -115,6 +476,13 @@ def _crux_view(cid, cx):
         "falsifier": cx.get("falsifier", ""),
         "evidence_plan": cx.get("evidence_plan", []),
         "catalyst_window": catalyst,
+        "transition_reason": cx.get("transition_reason"),
+        "monitorable_semantics": cx.get("monitorable_semantics"),
+        "zero_signal_receipt_count": sum(
+            item.get("support_effect") == "NONE_ZERO_SIGNAL_WASH"
+            for item in cx.get("citations", [])
+            if isinstance(item, dict)
+        ),
         "seen_source_urls": sources[:5],
     }
 
@@ -198,6 +566,7 @@ def build_continuation_packet(state):
             item for item in landscape["paths"] if item.get("state") == "UNPROBED"
         ],
         "deferred_opportunities": opportunities[:10],
+        "hypothesis_exploration": _compact_exploration(state, limit=5),
         "deferred_new_cruxes": state.get("deferred_cruxes", [])[-10:],
         "resume": {
             "requires_explicit_authorization": True,
@@ -242,6 +611,11 @@ def build_resolution_view(state):
         "topic": state.get("topic", ""),
         "decision_question": state.get("decision_question", ""),
         "horizon": state.get("horizon", ""),
+        "as_of_date": (
+            state.get("frame_contract", {}).get("as_of_date")
+            or state.get("as_of_date")
+            or ""
+        ),
         "research_status": _research_status(state),
         "evidence_stance": _evidence_stance(state),
         "engine_decision": crux_engine.safe_decision_label(
@@ -259,6 +633,10 @@ def build_resolution_view(state):
         "blocking_cruxes": open_cruxes,
         "opportunity_entities": entities,
         "opportunity_summary": opportunity_engine.summary(state),
+        "hypothesis_exploration": _compact_exploration(
+            state, limit=7, total_byte_budget=24000
+        ),
+        "scenario_paths": hypothesis_engine.scenario_view(state),
         "landscape_coverage": landscape,
         "convergence_reason": state.get("last_convergence", {}).get("reason", ""),
         "continuation_packet": build_continuation_packet(state),
@@ -266,6 +644,7 @@ def build_resolution_view(state):
             "该备忘录不是正式研究报告，也不是交易、收益、目标价或仓位指令。",
             "结构化 URL 尚不等于页面内容已通过快照与 claim 对齐。",
             "OpportunitySeed 是研究队列；被阻塞或待核的线索不得表述为可投资候选。",
+            "探索假说与 ProxyTrail 只分配研究注意力，不得改写 root verdict 或候选成熟度。",
         ],
     }
 
@@ -294,7 +673,8 @@ def render_resolution_memo(state):
         f"{view['research_verdict']['evidence_direction']} / "
         f"{view['research_verdict']['actionability']}** ｜ "
         f"题型: **{view['research_verdict']['question_type']}**",
-        f"- 决策问题: {view['decision_question']} ｜ 视野: {view['horizon']}",
+        f"- 决策问题: {view['decision_question']} ｜ 视野: {view['horizon']} ｜ "
+        f"证据截止: {view.get('as_of_date') or 'UNKNOWN'}",
         f"- 覆盖: {view['coverage']['settled_cruxes']}/{view['coverage']['total_cruxes']} 条 crux 已形成可用方向；"
         f"{view['coverage']['never_contested_cruxes']} 条从未实际质证。",
         f"- 阻塞原因: {_text(view['convergence_reason']) or 'engine 尚未满足正式报告闸门。'}",
@@ -317,6 +697,10 @@ def render_resolution_memo(state):
             f"- 最强多头: {_text(item['best_bull']) or '—'}",
             f"- 最强空头: {_text(item['best_bear']) or '—'}",
             f"- 监控 / 反证: {_text(item['monitor_anchor']) or '—'} / {_text(item['falsifier']) or '—'}",
+            f"- 转换原因: `{item.get('transition_reason') or '—'}`；"
+            f"{_text(item.get('monitorable_semantics')) or '非耗尽型转换'}",
+            f"- 零信号事实回执: {item.get('zero_signal_receipt_count', 0)} 条；"
+            "`NONE_ZERO_SIGNAL_WASH` 只扩充账本，不移动支持度。",
             f"- 账本来源: {item['unique_source_count']} 个具体 URL；尚未等同于 snapshot verification。",
             "",
         ])
@@ -342,6 +726,192 @@ def render_resolution_memo(state):
                 f"| {index} | **{item['id']} {item['label']}** | {_status_label(item['status'])} | "
                 f"{', '.join(item['gap_codes']) or 'UNSTABLE'} | {_text(next_check)} |"
             )
+    exploration = view.get("hypothesis_exploration", {})
+    hypotheses = exploration.get("hypotheses", [])
+    action = exploration.get("exploration_action", {})
+    L.extend([
+        "",
+        "## 大胆假说与草蛇灰线（无晋级权限）",
+        f"- 探索动作: `{action.get('action_code', 'NO_EXPLORATION_TRACK')}` ｜ "
+        f"假说 `{action.get('hypothesis_id') or '—'}` ｜ "
+        f"{_text(action.get('instruction') or action.get('reason')) or '无'}",
+        f"- 授权状态: `{action.get('authorization_state', 'NOT_REQUIRED')}` ｜ "
+        f"执行就绪: `{action.get('executable_after_authorization', False)}` ｜ "
+        f"来源类: {_text(action.get('source_class')) or '—'} ｜ "
+        f"有界查询: {_text(action.get('bounded_query')) or '—'}。",
+        f"- Host action: `{action.get('action_id') or '—'}` ｜ "
+        f"host_status=`{action.get('host_action_status') or '—'}` ｜ "
+        f"assurance=`{action.get('authorization_assurance') or '—'}` ｜ "
+        f"proposal_drifted="
+        f"`{action.get('proposal_drifted', False)}`。",
+        (
+            f"- 设计回执目标: `{action.get('design_target_id') or '—'}` ｜ "
+            f"expected_state_revision="
+            f"`{action.get('design_state_revision', '—')}`；"
+            "仅允许写入探索设计，不授权搜索。"
+            if action.get("authorization_state") == "NEEDS_ACTION_DESIGN"
+            else "- 当前动作不需要新的 typed design 回执。"
+        ),
+        f"- 问题: {_text(action.get('question')) or '—'} ｜ "
+        f"成功: {_text(action.get('success_condition')) or '—'} ｜ "
+        f"停止: {_text(action.get('stop_condition')) or '—'}。",
+        f"- 预算: queries≤"
+        f"{action.get('budget_boundary', {}).get('max_bounded_queries', 0)}，"
+        f"documents≤"
+        f"{action.get('budget_boundary', {}).get('max_documents_read', 0)}，"
+        f"new trails≤"
+        f"{action.get('budget_boundary', {}).get('max_new_proxy_trails', 0)}；"
+        f"execution_receipt=`{action.get('execution_receipt')}`。",
+        "- 本节可在正式报告阻塞时继续保留启发式发现；它不能触发自动续跑、候选筛选或交易。",
+    ])
+    if not hypotheses:
+        L.append("- 无已登记假说。")
+    else:
+        L.append("| 假说 | 状态 | 价值传导 / 反证 | ProxyTrail |")
+        L.append("|:---|:---:|:---|:---|")
+        for item in hypotheses:
+            proxies = "；".join(
+                _proxy_direction_lineage(proxy)
+                for proxy in item.get("proxy_trails", [])[:3]
+            ) or "尚无"
+            asymmetry = item.get("asymmetry_case", {})
+            priority = item.get("exploration_priority", {})
+            L.append(
+                f"| **{_cell(item.get('hypothesis_id'))}** "
+                f"{_cell(item.get('hypothesis'))} | `{_cell(item.get('state'))}` | "
+                f"{_cell(item.get('observation_status'))}: "
+                f"{_cell(item.get('observation')) or '—'}；"
+                f"替代解释={_cell(item.get('strongest_alternative_explanation')) or '—'}；"
+                f"最低成本判别={_cell(item.get('cheap_discriminating_test')) or '—'}；"
+                f"定性非对称="
+                f"{_cell(asymmetry.get('upside_shape'))}/"
+                f"{_cell(asymmetry.get('convexity'))} vs "
+                f"{_cell(asymmetry.get('downside_shape'))}；"
+                f"signal={_cell(asymmetry.get('time_to_signal'))}；"
+                f"basis={_cell(asymmetry.get('basis')) or '—'}；"
+                f"探索排序={_cell(priority.get('band')) or 'PARK'}"
+                f"(score={priority.get('score', 0)}；"
+                f"components={_cell(priority.get('components'))}；"
+                f"reasons={_cell(priority.get('reasons'))})；"
+                f"争议字段={_cell(item.get('contested_fields'))}；"
+                f"争议变体={_cell(item.get('field_variants'))}；"
+                f"{_cell(item.get('value_transfer')) or '—'} / "
+                f"{_cell(item.get('falsifier')) or '—'}；"
+                f"expiry={_cell(item.get('expiry_date')) or '—'} | "
+                f"{_cell(proxies)} |"
+            )
+    L.extend(["", "### 已执行探索与负知识"])
+    action_history = [
+        item
+        for item in exploration.get("authorized_action_history", [])
+        if isinstance(item, dict)
+    ]
+    if not action_history:
+        L.append("- 尚无经显式授权并完成的探索动作。")
+    for item in action_history[-5:]:
+        receipt = item.get("execution_receipt") or {}
+        documents = receipt.get("document_receipts") or []
+        document_ids = ", ".join(
+            str(document.get("document_id") or "—")
+            for document in documents
+            if isinstance(document, dict)
+        ) or "无"
+        L.append(
+            f"- `{item.get('action_id', '—')}` "
+            f"`{item.get('execution_status', 'UNKNOWN')}`："
+            f"route={item.get('route_id') or receipt.get('route_id') or '—'}；"
+            f"proxy={item.get('proxy_id') or receipt.get('proxy_id') or '—'}；"
+            f"query={_text(item.get('bounded_query')) or '—'}；"
+            f"stop={_text(receipt.get('stop_reason')) or '—'}；"
+            f"assurance="
+            f"`{item.get('authorization_assurance') or '—'}`；"
+            f"documents={document_ids}；"
+            f"sha256=`{receipt.get('result_sha256', '—')}`；"
+            f"negative={_text(item.get('negative_knowledge')) or '—'}。"
+        )
+    terminal_history = [
+        item
+        for item in exploration.get("terminal_action_history", [])
+        if isinstance(item, dict)
+    ]
+    L.extend(["", "### Host 探索动作终态"])
+    if not terminal_history:
+        L.append("- 尚无已关闭的 host 探索动作。")
+    for item in terminal_history[-5:]:
+        L.append(
+            f"- `{item.get('action_id', '—')}` "
+            f"`{item.get('status', 'UNKNOWN')}`："
+            f"route={item.get('route_id') or '—'}；"
+            f"action_as_of={item.get('as_of_date') or '—'}；"
+            f"reason={_text(item.get('reason')) or '—'}；"
+            f"assurance="
+            f"`{item.get('authorization_assurance') or '—'}`；"
+            f"result_sha256=`{item.get('result_sha256') or '—'}`；"
+            f"result_ingested={item.get('result_ingested', False)}；"
+            f"proxy_ingested={item.get('proxy_ingested', False)}；"
+            f"automatic_retry={item.get('automatic_retry', False)}。"
+        )
+    design_history = [
+        item
+        for item in exploration.get("design_history", [])
+        if isinstance(item, dict)
+    ]
+    L.extend(["", "### Typed design 历史"])
+    if not design_history:
+        L.append("- 尚无 typed design 写入。")
+    for item in design_history[-5:]:
+        L.append(
+            f"- `{item.get('design_id', '—')}` / "
+            f"`{item.get('action_code', 'UNKNOWN')}` / "
+            f"假说 `{item.get('hypothesis_id', '—')}`："
+            f"{_text(item.get('design_note')) or '—'}；"
+            f"state `{item.get('state_before', '—')}` → "
+            f"`{item.get('state_after', '—')}`。"
+        )
+    closed_routes = [
+        item
+        for item in exploration.get("closed_routes", [])
+        if isinstance(item, dict)
+    ]
+    L.extend(["", "### 已关闭诊断路线"])
+    if not closed_routes:
+        L.append("- 尚无已关闭诊断路线。")
+    for item in closed_routes[-5:]:
+        L.append(
+            f"- `{item.get('route_id', '—')}` / action "
+            f"`{item.get('action_id', '—')}` / "
+            f"`{item.get('execution_status', 'UNKNOWN')}`："
+            f"query={_text(item.get('bounded_query')) or '—'}；"
+            f"stop={_text(item.get('stop_reason')) or '—'}。"
+        )
+    scenario = view.get("scenario_paths", {})
+    L.extend([
+        "",
+        "## 对称场景与非对称边界",
+        f"- 路径审计: `{scenario.get('status', 'MISSING')}`；"
+        "三路存在不代表等概率，也不产生收益预测。",
+    ])
+    for path in scenario.get("paths", []):
+        L.append(
+            f"- **{_text(path.get('path_type'))}**: "
+            f"{_text(path.get('summary'))}；触发 {_text(path.get('trigger_event'))}；"
+            f"传导 {_text(path.get('transmission_chain'))}；"
+            f"监控 {_text(path.get('monitor_anchor'))}；"
+            f"反证 {_text(path.get('falsifier'))}。"
+        )
+    if scenario.get("issues"):
+        L.append(
+            f"- 路径缺口: `{', '.join(scenario.get('issues', [])[:8])}`。"
+        )
+    threshold = scenario.get("break_even_threshold", {})
+    L.append(
+        "- 明示情景赔率门槛: "
+        + (
+            f"p*={threshold.get('p_star_percent')}%（非概率）"
+            if threshold.get("status") == "KNOWN"
+            else f"UNKNOWN（{threshold.get('reason', '缺少可比输入')}）"
+        )
+    )
     L.extend(["", "## 宝藏线索分诊（按唯一候选展示）", ""])
     if not view["opportunity_entities"]:
         L.append("- 本轮没有通过同轮、同 agent、同 crux 证据反查的线索。")
@@ -385,6 +955,7 @@ def build_synthesis_packet(state):
         "question_type": rd.get("question_type"),
         "logic_graph": rd.get("logic_graph"),
         "landscape_coverage": landscape_engine.summary(state),
+        "hypothesis_exploration": _compact_exploration(state, limit=7),
         "binding_crux": rd.get("binding_crux"),
         "focus_crux": rd.get("focus_crux"),
         "aggregation_rule": rd.get("aggregation_rule"),
@@ -420,6 +991,7 @@ def build_synthesis_packet(state):
             "Only use claims and URLs present in this packet.",
             "Do not interpret debate-support scores as probabilities or returns.",
             "Do not promote OpportunitySeeds beyond their screening_status.",
+            "Do not turn hypothesis exploration priority into probability, expected return, or sizing.",
         ],
     }
 

@@ -1,8 +1,9 @@
 # Frozen Benchmark Protocol
 
-Use this protocol to compare reasoning, maturity control, and report usability from identical frozen
-inputs. Do not load an assessment or future outcome into a research role's context. This protocol
-does not test source discovery, full-universe coverage, or alpha.
+Use this protocol to compare reasoning, maturity control, exploration quality, and report usability
+from identical frozen inputs. Do not load an assessment or future outcome into a research role's
+context. This protocol does not test live source discovery, full-universe coverage, expected return,
+or alpha.
 
 ## Separation
 
@@ -27,6 +28,16 @@ write each research input into a separate runtime directory. Copy the printed
 identifiers, paths, and packet hashes. Run `score` only after every declared case/variant pair has
 both a result and a blind assessment.
 
+Declare `candidate_variant` when—and only when—the suite is intended to gate a method change. It
+must name one declared arm and is included in the suite contract hash. Historical suites may omit
+it without changing their hashes; those suites remain valid for comparison, but `score` exits
+non-zero with `COMPARISON_READY_NOT_GATED`. `comparison_ready` is only a prerequisite. A declared
+candidate must also pass the exploration safety gate before `score` emits
+`METHOD_CHANGE_READY` and exits zero. A complete comparison with a failing candidate emits
+`BLOCKED_METHOD_CHANGE` (exit 4); a comparison-ready suite without a declared candidate emits
+`COMPARISON_READY_NOT_GATED` (exit 3); an incomplete comparison emits `BLOCKED_COMPARISON`
+(exit 2).
+
 `variant_manifest` is mandatory. A prompt-only baseline binds its instruction path and SHA-256. A
 skill arm binds a full Git commit plus the hashes of its entrypoint and orchestrator. Variant labels
 without executable pins are not experiments.
@@ -43,9 +54,13 @@ instructions such as “do not read assessor files” do not qualify as blind is
 
 Historical suite manifests remain immutable comparisons. For the current skill, first run
 `scripts/benchmark_current.py --check` and use the closed-packet suite and evaluator key resolved
-from `benchmarks/current.json`. The pointer binds the operational method identity, suite contract,
-current variant, and answer key. Never infer “current” from a filename, display label, or repository
-HEAD; benchmark-only commits must not masquerade as research-method changes.
+from `benchmarks/current.json`. The pointer separately binds the operational
+method identity, last calibrated method identity, calibration status, suite
+contract, calibrated variant, and answer key. `UNBENCHMARKED_METHOD_CHANGE`
+means the operational method has changed and the resolved historical suites
+remain controls only; they are not current-method effectiveness evidence.
+Never infer “current” from a filename, display label, or repository HEAD;
+benchmark-only commits must not masquerade as research-method changes.
 
 ```bash
 python3 scripts/benchmark_harness.py materialize-case \
@@ -62,6 +77,7 @@ Minimal suite:
   "schema_version": "trade-nothing.benchmark-suite.v3",
   "suite_id": "v014-six-case",
   "variants": ["single_agent", "v0_12", "v0_14"],
+  "candidate_variant": "v0_14",
   "variant_manifest": {
     "single_agent": {
       "runner_kind": "PROMPT_ONLY",
@@ -142,7 +158,7 @@ Minimal assessment:
 
 ```json
 {
-  "schema_version": "trade-nothing.benchmark-assessment.v1",
+  "schema_version": "trade-nothing.benchmark-assessment.v2",
   "case_id": "universe_01",
   "variant": "v0_13",
   "artifact_sha256": "same hash as the exact report",
@@ -154,6 +170,14 @@ Minimal assessment:
     "false_source_count": 0,
     "major_path_total": 0,
     "major_path_found": 0,
+    "insight_card_total": 0,
+    "insight_card_valid": 0,
+    "causal_path_total": 0,
+    "causal_path_valid": 0,
+    "exploration_trace_total": 0,
+    "exploration_trace_complete": 0,
+    "hypothesis_laundering_count": 0,
+    "formal_exploration_action_confusion_count": 0,
     "candidate_count": 0,
     "effective_seed_count": 0,
     "false_opportunity_count": 0,
@@ -166,6 +190,13 @@ Minimal assessment:
   }
 }
 ```
+
+The v2 assessment requires every insight/path/trace and boundary-confusion count. A historical v1
+assessment remains readable, but its missing exploration metrics are `NOT_ASSESSED`, never inferred
+as zero, and the suite cannot be comparison-ready for a method change. Any non-zero hypothesis
+laundering or formal/exploration-action confusion count fails the method-change gate regardless of
+idea count or path coverage. Discovery assessments use the parallel
+`trade-nothing.discovery-assessment.v2` contract.
 
 ## Comparison arms
 
@@ -185,7 +216,12 @@ any cap is not comparable. Report failed and recovered runs; do not silently dro
 The packet is selected and summarized by a curator. Even after evaluator conclusions are removed,
 source selection narrows the search space. Therefore `major_path_coverage` is closed-packet reasoning
 coverage, not discovery recall. Passing this suite can justify report or reasoning changes; it cannot
-justify claims that the system finds more opportunities.
+justify claims that the system finds more opportunities, earns excess returns, or has alpha.
+
+The added insight/path/trace metrics measure whether an arm can express a non-obvious mechanism,
+preserve alternatives and falsifiers, and maintain lineage from conjecture to evidence. They do not
+measure whether the conjecture will make money. A high score may justify another bounded test; it
+never justifies a recommendation, target price, position, or lower promotion gate.
 
 A discovery benchmark must be a separate `FROZEN_CORPUS_DISCOVERY` suite with an as-of searchable
 corpus, decoy documents, hidden entity/path labels, retrieval logs, and no live web or host
@@ -204,10 +240,13 @@ that method. This compares method projections under one runtime; it does not cla
 multi-agent orchestrator executed or that agent-isolation effects were measured.
 
 Use the discovery suite and evaluator key resolved by `scripts/benchmark_current.py --check`.
-The current manifest retains the single-agent and prior v0.14 arms, adds a Git- and
-method-identity-pinned current adapter, and leaves all historical suites unchanged. The adapter is
-explicitly a one-model projection: it cannot measure physical agent isolation or the full
-orchestrator. The pointer's suite contract hash is authoritative.
+The frozen manifest retains the single-agent and prior v0.14 arms and leaves
+all historical suites unchanged. When the pointer status is
+`UNBENCHMARKED_METHOD_CHANGE`, its selected adapter binds the last calibrated
+method, not the operational method awaiting a new blind comparison. Any
+adapter remains a one-model projection: it cannot measure physical agent
+isolation or the full orchestrator. The pointer's suite contract hash is
+authoritative.
 
 Research roles receive only the public dispatch plus two host-mediated gateway operations. `corpus_search` returns
 metadata and a short snippet; `corpus_read` returns a body only after search exposed that document
@@ -238,7 +277,9 @@ python3 scripts/discovery_benchmark_harness.py finalize-retrieval \
 The host must mediate those calls rather than exposing the CLI, repository, corpus path, or answer
 key to the research model. Store the report, retrieval log, retrieval receipt, host engine receipt,
 result, and later blind assessment together. Only after all nine case/variant pairs are complete may
-`score` produce a comparison-ready summary.
+`score` produce a comparison-ready summary. The discovery suite follows the same declared-candidate
+rule and method-change statuses as the closed-packet harness; comparison readiness alone never
+authorizes a method change.
 
 ## Metrics
 
@@ -246,12 +287,29 @@ An assessor records integer counts. The harness derives rates and cost-normalize
 
 - decisive claim precision and false-source count;
 - major value-path coverage;
+- valid insight cards: observation and inference are separated, the mechanism is non-trivial,
+  the strongest alternative explanation is stated, and a discriminating test exists;
+- valid causal paths: the stated value-transfer chain has identifiable links, an economic receiver
+  or loser, a falsifier, and no unsupported factual bridge;
+- complete exploration traces: a stable ID links wild hypothesis -> spark/proxy trail -> bounded
+  test or formal finding -> separately admitted seed when one exists;
+- hypothesis laundering count: any `HYPOTHESIS_ONLY` object presented as evidence, a candidate,
+  pricing proof, or formal state;
+- formal/exploration action confusion count: any research-only test presented as a legal promotion
+  or trading action;
 - candidate count, effective seeds, and false opportunities;
 - valid as-of pricing anchors;
 - candidate-maturity misreads;
 - 60-second comprehension questions;
 - manual edits;
 - Tokens and wall time per effective seed.
+
+For `insight_card_valid`, `causal_path_valid`, and `exploration_trace_complete`, score only against
+the frozen packet and typed artifact. Do not award points for eloquence, number of conjectures, or
+agreement with the evaluator's investment taste. Report both numerator and denominator; never use
+raw idea count as a win. In a closed-packet suite these are reasoning-and-lineage metrics. In a
+`FROZEN_CORPUS_DISCOVERY` suite they may additionally measure hidden-path retrieval under the fixed
+corpus, but they remain non-alpha metrics.
 
 Three- and six-month relative returns are a separate lagging observation. They must never replace
 frozen-thesis, pricing, vehicle, catalyst, and execution attribution.
@@ -261,6 +319,8 @@ frozen-thesis, pricing, vehicle, catalyst, and execution attribution.
 - If six cases show no path-coverage gain from Landscape Map, stop expanding it.
 - If twenty cases show no lower false-opportunity rate or higher path coverage than the same-model
   single-agent arm, delete redundant roles.
+- If insight/path/trace gains come with hypothesis laundering or formal/exploration action
+  confusion, fail the method change regardless of idea count.
 - If five consecutive live runs produce no valid as-of pricing anchor, stop prompt tuning and add a
   dedicated price/valuation/consensus adapter.
 - Never use candidate count, report length, or search count as a success metric.

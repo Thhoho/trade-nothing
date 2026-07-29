@@ -1,6 +1,14 @@
 {
-  "schema_version": "trade-nothing.benchmark-current.v1",
-  "method_identity": {
+  "schema_version": "trade-nothing.benchmark-current.v2",
+  "calibration_status": "UNBENCHMARKED_METHOD_CHANGE",
+  "operational_method_identity": {
+    "schema_version": "trade-nothing.method-identity.v1",
+    "scope": "operational-bundle.v1",
+    "method_version": "0.10.0",
+    "contract_sha256": "04db7c6237aaec0adef7fa560c5476b056a1534e86ab4cc4c65feed5afc972bc",
+    "file_count": 71
+  },
+  "last_calibrated_method_identity": {
     "schema_version": "trade-nothing.method-identity.v1",
     "scope": "operational-bundle.v1",
     "method_version": "0.9.9",

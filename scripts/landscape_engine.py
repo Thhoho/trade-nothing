@@ -29,8 +29,54 @@ def _text(value):
     return " ".join(str(value or "").split())
 
 
+def research_intent(frame_or_state):
+    """Return explicit intent, with a conservative legacy inference."""
+    explicit = _text(frame_or_state.get("research_intent")).upper()
+    if not explicit:
+        explicit = _text(
+            (frame_or_state.get("frame_contract") or {}).get("research_intent")
+        ).upper()
+    if explicit in {"THESIS_CHALLENGE", "OPPORTUNITY_DISCOVERY", "HYBRID"}:
+        return explicit
+    cruxes = frame_or_state.get("candidate_cruxes")
+    if cruxes is None:
+        cruxes = [
+            {"logic_role": item.get("logic_role")}
+            for item in frame_or_state.get("cruxes", {}).values()
+            if isinstance(item, dict)
+        ]
+    if any(
+        _text(item.get("logic_role")).upper() == "OPPORTUNITY_PATH"
+        for item in cruxes or [] if isinstance(item, dict)
+    ):
+        return "HYBRID"
+    if isinstance(frame_or_state.get("landscape_map"), dict):
+        return "HYBRID"
+    if isinstance(frame_or_state.get("hypothesis_garden"), dict):
+        return "HYBRID"
+    return "THESIS_CHALLENGE"
+
+
+def frame_paths(frame):
+    """Read legacy Landscape paths or v0.10 Hypothesis Garden paths."""
+    garden = frame.get("hypothesis_garden")
+    if isinstance(garden, list):
+        return garden
+    if isinstance(garden, dict) and isinstance(garden.get("wild_hypotheses"), list):
+        return garden["wild_hypotheses"]
+    top_level = frame.get("wild_hypotheses")
+    if isinstance(top_level, list):
+        return top_level
+    legacy = frame.get("landscape_map")
+    if isinstance(legacy, dict) and isinstance(legacy.get("paths"), list):
+        return legacy["paths"]
+    return []
+
+
 def is_required(frame_or_state):
     """Return whether the question explicitly asks for opportunity-path discovery."""
+    if research_intent(frame_or_state) in {"OPPORTUNITY_DISCOVERY", "HYBRID"}:
+        return True
     question_type = _text(frame_or_state.get("question_type")).upper()
     if question_type in {"UNIVERSE_SEARCH", "COMPARATIVE"}:
         return True
@@ -51,12 +97,13 @@ def validate_frame(frame):
     """Validate the entity-agnostic map without treating hypotheses as evidence."""
     if not is_required(frame):
         return []
-    raw_map = frame.get("landscape_map")
-    if not isinstance(raw_map, dict):
+    paths = frame_paths(frame)
+    if not paths:
+        if _text(frame.get("research_intent")).upper() in {
+            "OPPORTUNITY_DISCOVERY", "HYBRID",
+        }:
+            return ["opportunity_intent_requires_hypothesis_garden_or_landscape_map"]
         return ["opportunity_question_requires_landscape_map"]
-    paths = raw_map.get("paths")
-    if not isinstance(paths, list):
-        return ["landscape_paths_must_be_list"]
     issues = []
     if not 5 <= len(paths) <= 7:
         issues.append("landscape_requires_5_to_7_paths")
@@ -109,7 +156,9 @@ def validate_frame(frame):
         elif hypothesis.lower() in seen_hypotheses:
             issues.append(f"{prefix}_duplicate_hypothesis")
         seen_hypotheses.add(hypothesis.lower())
-        if _text(path.get("hypothesis_status")).upper() != "HYPOTHESIS":
+        if _text(path.get("hypothesis_status")).upper() not in {
+            "HYPOTHESIS", "HYPOTHESIS_ONLY",
+        }:
             issues.append(f"{prefix}_must_start_as_hypothesis")
         for field in ("economic_capture_test", "pricing_question", "falsifier"):
             if not _text(path.get(field)):
@@ -137,13 +186,14 @@ def initialize(frame):
     if not is_required(frame):
         return None
     paths = []
-    for raw in frame.get("landscape_map", {}).get("paths", []):
+    for raw in frame_paths(frame):
         paths.append({
+            "hypothesis_id": _text(raw.get("hypothesis_id")) or None,
             "path_id": _text(raw.get("path_id")),
             "archetype": _text(raw.get("archetype")).upper(),
             "linked_crux_id": _text(raw.get("linked_crux_id")),
             "hypothesis": _text(raw.get("hypothesis")),
-            "hypothesis_status": "HYPOTHESIS",
+            "hypothesis_status": "HYPOTHESIS_ONLY",
             "value_transfer_chain": [_text(item) for item in raw.get("value_transfer_chain", [])],
             "economic_capture_test": _text(raw.get("economic_capture_test")),
             "pricing_question": _text(raw.get("pricing_question")),

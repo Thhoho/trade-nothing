@@ -1,66 +1,179 @@
 # Trade Nothing
 
-Trade Nothing 是一套对抗式投资研究 Skill。它把研究拆成若干承重 crux，由偏多的
-Detective 和偏空的 Inquisitor 分别寻找证据与反证，再由确定性证据闸门判断是否允许
-生成正式报告。
+<p align="center">
+  <img src="assets/images/hero_banner.jpg" alt="Trade Nothing——越过共识寻找现实" width="900" />
+</p>
+
+<p align="center"><strong>大胆猜想，沿迹求证，只让经得起证据的东西晋级。</strong></p>
+
+<p align="center">
+  <a href="README.md">English</a> ·
+  <a href="SKILL.md">运行契约</a> ·
+  <a href="docs/hypothesis-led-research-v0.10.md">v0.10 设计说明</a>
+</p>
+
+Trade Nothing 是一套面向 Agent Runtime 的对抗式投资研究 Skill。它不是证否机器，也
+不是故事生成器：大胆、非共识的猜想可以先进入不可晋级的探索账本，再沿可观察代理
+线索、替代解释和证伪条件“草蛇灰线”地求证；正式结论则始终受确定性证据闸门和人工
+复核约束。
+
+目标不是追求最低风险，而是更积极地寻找收益风险不对称的机会，同时让下行摩擦、
+失效条件、证据缺口以及市场已经支付的价格无处隐藏。
 
 它是研究工作流，不是自动交易系统。它不会自动给出买卖指令、目标价、预期收益、
 Kelly 仓位或持仓比例。
 
+## v0.10.0：假说驱动研究
+
+> **想象负责提出，证据负责晋级，风险控制决定能否执行。**
+
+```mermaid
+flowchart LR
+    A["研究意图"] --> B["探索轨<br/>假说花园 → WildHypothesis → ProxyTrail"]
+    A --> C["正式轨<br/>Crux → 已接纳证据 → 根命题结论"]
+    B -. "新 Seed 必须重新通过证据准入" .-> D["OpportunitySeed"]
+    C --> D
+    D --> E["CandidateScreen → 快照绑定核验 → 人工复核"]
+    B --> F["一个有界探索动作<br/>设计 → 计划 → 明确授权 → 回执"]
+    F -. "不能晋级、定仓或交易" .-> B
+```
+
+两条轨道有意保持不对称：大胆假说可以在尚无引用时被记录，但不能改变 crux 支持度、
+根命题结论、CandidateScreen、Thesis、Decision、订单或持仓。它若要进入正式轨，
+必须新建 `OpportunitySeed`，并独立通过同一 Agent、同一轮次、同一 crux 的既有
+证据准入闸门。
+
+这次核心升级包括：
+
+- **大胆猜想成为一等研究对象。** `OPPORTUNITY_DISCOVERY` 和 `HYBRID` 先生成
+  5–7 条实体无关路径；每个 `WildHypothesis` 都要写清因果链、共识盲区、上行与
+  下行机制、催化剂、期限、替代解释和证伪条件。
+- **微弱线索变成可审计轨迹。** `ProxyTrail` 把一个可观察线索与方向、因果联系、
+  替代解释、来源谱系、有界查询和停止条件绑定起来，不允许从“有意思”直接跳到
+  “可投资”。
+- **收益风险不对称只调度注意力，不调度资金。** 上行形态、凸性、下行摩擦和
+  见到判别信号的时间，可以决定下一步优先研究什么；它们不是概率、预期收益、
+  目标价、方向或仓位输入。
+- **正式停止不再抹去探索价值。** 每份报告只有一个确定性 `formal_action`，同时
+  最多保留一个需要单独授权的 `exploration_action`。后者只能获取信息，不能覆盖
+  正式停止或推动候选晋级。
+- **证据耗尽也能诚实收敛。** Judge 连续给出零信号不会改变支持度；只有在来源充分、
+  多空双方都已探查且有界研究不再产生新证据时，crux 才可能进入 `MONITORABLE`。
+  从未探查、只有单边、来源单薄或新引入的 crux 继续失败关闭。
+
+完整设计见 [v0.10 设计说明](docs/hypothesis-led-research-v0.10.md)、
+[假说协议](references/hypothesis-protocol.md)和
+[报告契约](references/report-contract.md)。
+
+> [!IMPORTANT]
+> **校准状态：** v0.10.0 已实现，并通过确定性工程安全门；但
+> `scripts/benchmark_current.py --check` 当前返回 `UNBENCHMARKED_METHOD_CHANGE`。
+> 这表示运行方法已不同于最后校准的 v0.9.9 身份。现有 closed-packet 与 discovery
+> 套件只是历史控制，不是 v0.10 提高机会召回率、线索质量、Alpha、收益率或风险调整
+> 收益的证据。工程正确性、研究有效性和投资收益是三层不同结论。
+
 ## 现在真正可靠的部分
 
-- Judge 信号必须携带 claim、source、date 和具体文章/公告/API URL；否则不能推动 crux。
-- Judge 的引用必须能反查到隔离 agent 的原始 JSON，不能临时编造。
-- 同一 URL + claim + number 不能重复计分。
-- 每条 crux 至少需要两个不同的具体来源，才允许退休。
-- `continue` 和 `fuse_break` 都会阻断正式报告。
-- 报告中的数值是**辩论支持度**，不是经过历史校准的市场概率。
-- 运行状态写入 `TRADE_NOTHING_SCRATCH_DIR`，不再污染 Skill 源码目录。
-- 系统提醒与 webhook 默认关闭；只有显式传入 `--notify` / `--webhook` 才会触发。
+- Judge 信号必须携带 claim、source、date 和具体文章、公告或 API URL，否则不能
+  推动 crux。
+- Judge 引用必须能反查到隔离 Agent 的原始 JSON，不能临时编造。
+- 同一规范化 URL、claim 和 number 不能重复计分。
+- 即使保留了新的审计引用，Judge 零信号也绝不会改变辩论支持度。
+- `wild_hypotheses`、`hypothesis_sparks`、`proxy_trails` 和所有
+  `HYPOTHESIS_ONLY` 对象，对 Judge 评分、来源计数、收敛和晋级完全不可见。
+- `EVIDENCE_BACKED` 仍然只是探索成熟度，不是 `OpportunitySeed`，也不能进入
+  CandidateScreen。
+- `continue`、`fuse_break`、独立来源不足以及必要 crux 未解决，都会阻断正式报告。
+- `NO_EDGE` 只表示当前框架和证据下没有建立可用的预期差，不等于 `AVOID` 或
+  `SHORT`，也不要求删除一个有界的探索路径。
+- 报告数值只是辩论支持度和工作流启发式，不是经过校准的市场概率。
+- 探索执行严格遵循“类型化设计 → 计划 → 明确授权 → 回执”：一次精确查询、最多
+  三份文档、不得自动重试；状态或 as-of 漂移后不得摄入结果。
+- 运行状态写入 `TRADE_NOTHING_SCRATCH_DIR`，不污染 Skill 源码；提醒与 webhook
+  默认关闭，只有显式启用才会触发。
 
 ## 隔离是宿主能力，不是 Skill 自带能力
 
-Skill 本身无法保证“物理隔离”。宿主应把 Detective 和 Inquisitor 放进互不共享中间
-推理的独立上下文。如果只能由同一个模型切换角色，报告必须标注为 `degraded`，不得
-声称完成了物理隔离或真正的多智能体对抗。
+Framer 在父上下文内联运行且不浏览。Detective 和 Inquisitor 必须进入互不共享中间
+推理的独立上下文；CandidateScreen 与 claim 核验也有各自的隔离契约。如果宿主只能
+让同一个模型切换角色，运行必须标注为 `degraded`，不得声称完成了物理多智能体隔离。
 
-## 推荐流程：`-deepthink2`
-
-运行前先完整阅读 [SKILL.md](SKILL.md)。
+## 快速开始
 
 ```bash
-# 1. 立题：生成可证伪的研究问题与 2-5 条 crux。
+git clone https://github.com/Thhoho/trade-nothing.git
+cd trade-nothing
+python3 -m pip install -r requirements.txt
+```
+
+对于 Codex 和 Gemini 兼容的 Skill 目录，可以同步受控源码：
+
+```bash
+make install DEV_DIR="$(pwd)"
+```
+
+这个命令不会复制或删除运行期 JSON、state、scratch 或个人研究文档。对于 Claude
+Code、OpenHands 等其他 Agent Runtime，只需让宿主说明直接指向仓库中的 `SKILL.md`，
+并把隔离角色映射到相应运行机制。
+
+然后可以直接对 Agent 说：
+
+```text
+使用 trade-nothing -deepthink2，以 OPPORTUNITY_DISCOVERY 模式研究：
+“未来 3–6 个月，AI 数据中心电力约束可能把价值转移到哪些尚未充分定价的环节？”
+```
+
+推荐的 `-deepthink2` 主路径是：
+
+1. 定义有边界、可证伪的问题，并选择 `THESIS_CHALLENGE`、
+   `OPPORTUNITY_DISCOVERY` 或 `HYBRID`。
+2. 在父上下文内联运行 Framer，初始化确定性状态，再把选中的 OPEN crux 分派给
+   隔离的 Detective 与 Inquisitor。
+3. Judge 只对带引用的正式证据评分；由引擎而不是 LLM 更新支持度，并决定继续、
+   收敛或熔断。
+4. 机会研究必须先让有证据的 Seed 成熟并完成 CandidateScreen，再进入快照绑定的
+   claim 核验与人工复核。
+5. 如有价值，可以设计一个有界探索动作；计划不等于授权，只有用户对精确 action ID
+   的明确授权，才允许执行一次查询并提交一次回执。
+
+驱动底层命令前，必须完整阅读 [SKILL.md](SKILL.md)。运行恢复、CandidateScreen、
+claim 核验和探索执行的精确 schema 都以其中契约为准。
+
+## 最小手动流程
+
+```bash
+# 生成 framing 请求，再由宿主内联执行 agents/framer.md。
 python3 scripts/deepthink_orchestrator_v2.py --frame --topic "TARGET"
 
-# 2. 宿主运行 agents/framer.md，再初始化状态。
+# 用原样 Framer JSON 初始化。
 python3 scripts/deepthink_orchestrator_v2.py --init \
   --topic "TARGET" --frame-json '<framer_json>'
 
-# 3. 在隔离上下文运行 Detective/Inquisitor，再由 Judge 评分并逐轮提交。
+# 提交隔离的 Detective、Inquisitor 与 Judge 载荷。
 python3 scripts/deepthink_orchestrator_v2.py --submit \
   --topic "TARGET" --det '<detective_json>' \
   --inq '<inquisitor_json>' --judge '<judge_json>'
 
-# 4. 只有收敛和证据闸门同时通过，才会输出正式报告。
+# 只有确定性报告闸门允许时才渲染。
 python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET"
 ```
 
-主要状态：
+常见终态或续研状态：
 
-- `dispatch_subagents`：只继续质证 OPEN crux。
+- `dispatch_subagents`：只对有界的 OPEN-crux packet 继续质证。
 - `ready_for_report`：确定性收敛与证据闸门通过。
-- `blocked_max_rounds`：达到熔断轮次，禁止正式报告。
-- `blocked_unconverged`：仍有未决 crux，禁止正式报告。
-- `blocked_evidence_gate`：独立来源不足，禁止正式报告。
-- `no_edge`：立题阶段没有发现值得投入的非共识角度，提前停止。
+- `blocked_max_rounds`：达到熔断轮次，只能生成非正式 Resolution Memo。
+- `blocked_unconverged`：必要 crux 仍未解决，禁止正式报告。
+- `blocked_evidence_gate`：来源多样性或证据成熟度不足。
+- `no_edge`：尚未建立可正式使用的预期差；仍可保留一个明确标注的有界探索动作，
+  但必须单独授权。
 
 旧的 `-deepthink` 单后验/LFI 流程仅为兼容保留。其数值是未校准的历史启发式，不能
 包装成真实胜率。
 
-## v2 证据格式
+## 正式证据格式
 
-Detective 在 `crux_evidence` 中按 crux 提交证据；Inquisitor 在 `crux_attacks` 中按
-crux 提交攻击。引用对象格式如下：
+正式引用对象格式如下：
 
 ```json
 {
@@ -73,7 +186,8 @@ crux 提交攻击。引用对象格式如下：
 }
 ```
 
-裸域名、缺日期、缺来源，以及 Judge 自行补出的引用都会被拒绝。
+裸域名、缺日期、缺来源、超出冻结 as-of 的未来证据，以及 Judge 自行补出的引用都会
+被拒绝。
 
 ## 环境变量
 
@@ -84,30 +198,45 @@ crux 提交攻击。引用对象格式如下：
 | `TRADE_NOTHING_OUTPUT_DIR` | `~/trade-nothing-outputs` | 生成物 |
 | `TRADE_NOTHING_VAULT_DIR` | `~/trade-nothing-vault` | 研究资料库 |
 | `TRADE_NOTHING_EVOLUTION_PATH` | `<skill>/Methodology_Evolution.md` | 负面先验记忆 |
-| `TRADE_NOTHING_MODEL_DEEP` | 宿主默认 | 质量关键 agent 与 Judge |
+| `TRADE_NOTHING_MODEL_DEEP` | 宿主默认 | 质量关键角色与 Judge |
 
-## 维护与同步
+## 验证、维护与同步
 
 默认本地配置以 `~/Documents/trade-nothing` 为唯一开发源。
 
 ```bash
-# 确定性、离线的 v2 安全回归
+# 当前方法的确定性安全与回归门
 make test
 
-# 旧流程兼容测试
-make test-legacy
+# 完整离线单元测试发现
+python3 -B -m unittest discover -s scripts -p 'test_*.py'
 
-# 不作为发布闸门的在线数据源诊断
-make test-live
+# 版本与 benchmark 身份检查
+python3 scripts/version.py
+python3 scripts/benchmark_current.py --check --source-repo .
 
-# 同步受控源码到 Codex 与 Gemini 安装副本
-make install
-
-# 只校验哈希，不改文件
-make status
+# 同步受控源码，再核对精确哈希
+make install DEV_DIR="$(pwd)"
+make status DEV_DIR="$(pwd)"
 ```
 
-`make install` 不会复制或删除运行期 JSON、state、scratch 或个人研究文档。
+在线数据源诊断单独运行，不属于发布门：
+
+```bash
+make test-live
+```
+
+## 目录结构
+
+```text
+agents/       隔离角色契约
+scripts/      Orchestrator、确定性引擎、校验器与测试
+references/   规范性研究与交接协议
+docs/         架构与设计说明
+benchmarks/   冻结评估包与方法绑定
+assets/       报告模板与 README 插图
+SKILL.md      Agent 运行时主契约
+```
 
 ## 许可证
 

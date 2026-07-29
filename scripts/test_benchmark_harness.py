@@ -48,8 +48,14 @@ def suite():
     }
 
 
-def result(variant, tokens=5000, artifact_path="artifact.md", artifact_sha256="a" * 64):
-    validated = harness.validate_suite(suite())
+def result(
+    variant,
+    tokens=5000,
+    artifact_path="artifact.md",
+    artifact_sha256="a" * 64,
+    suite_data=None,
+):
+    validated = harness.validate_suite(suite_data or suite())
     variant_contract = validated["variant_manifest"][variant]
     receipt = {
         "verified_by_host": True,
@@ -97,6 +103,14 @@ def assessment(variant, artifact_sha256="a" * 64):
             "false_source_count": 0,
             "major_path_total": 3,
             "major_path_found": 2,
+            "insight_card_total": 4,
+            "insight_card_valid": 3,
+            "causal_path_total": 3,
+            "causal_path_valid": 2,
+            "exploration_trace_total": 2,
+            "exploration_trace_complete": 1,
+            "hypothesis_laundering_count": 0,
+            "formal_exploration_action_confusion_count": 0,
             "candidate_count": 2,
             "effective_seed_count": 1,
             "false_opportunity_count": 1,
@@ -278,13 +292,106 @@ class BenchmarkHarnessTests(unittest.TestCase):
                     json.dump(assessment(variant, artifact_sha256=artifact_hash), handle)
             summary = harness.score_suite(suite(), root)
         self.assertTrue(summary["comparison_ready"])
+        self.assertIsNone(summary["candidate_variant"])
+        self.assertIsNone(summary["method_change_gate_pass"])
+        self.assertFalse(summary["method_change_gate_ready"])
+        self.assertEqual(
+            harness._method_change_cli_outcome(summary),
+            ("COMPARISON_READY_NOT_GATED", 3),
+        )
         self.assertEqual(summary["observed_case_variant_pairs"], 3)
         self.assertEqual(summary["aggregates"]["v0_13"]["claim_precision"], 0.75)
         self.assertEqual(summary["aggregates"]["v0_13"]["major_path_coverage"], 0.666667)
+        self.assertEqual(
+            summary["aggregates"]["v0_13"]["insight_card_valid_rate"],
+            0.75,
+        )
+        self.assertEqual(
+            summary["aggregates"]["v0_13"]["causal_path_valid_rate"],
+            0.666667,
+        )
+        self.assertEqual(
+            summary["aggregates"]["v0_13"][
+                "exploration_trace_complete_rate"
+            ],
+            0.5,
+        )
         self.assertEqual(summary["aggregates"]["v0_13"]["tokens_per_effective_seed"], 5000)
         md = harness.render_markdown(summary)
         self.assertIn("Benchmark Summary", md)
         self.assertIn("v0_13", md)
+        self.assertIn("Hypothesis laundering", md)
+        self.assertIn("Method-change ready: **FALSE**", md)
+
+    def test_method_change_gate_requires_declared_candidate_and_clean_safety(self):
+        data = suite()
+        data["candidate_variant"] = "v0_13"
+        with tempfile.TemporaryDirectory() as root:
+            for variant in data["variants"]:
+                stem = f"case_universe_01__{variant}"
+                artifact_name = stem + ".artifact.md"
+                artifact = f"frozen output for {variant}".encode("utf-8")
+                artifact_hash = hashlib.sha256(artifact).hexdigest()
+                with open(os.path.join(root, artifact_name), "wb") as handle:
+                    handle.write(artifact)
+                with open(
+                    os.path.join(root, stem + ".result.json"),
+                    "w",
+                    encoding="utf-8",
+                ) as handle:
+                    json.dump(
+                        result(
+                            variant,
+                            artifact_path=artifact_name,
+                            artifact_sha256=artifact_hash,
+                            suite_data=data,
+                        ),
+                        handle,
+                    )
+                review = assessment(variant, artifact_sha256=artifact_hash)
+                with open(
+                    os.path.join(root, stem + ".assessment.json"),
+                    "w",
+                    encoding="utf-8",
+                ) as handle:
+                    json.dump(review, handle)
+
+            ready = harness.score_suite(data, root)
+            self.assertTrue(ready["comparison_ready"])
+            self.assertTrue(ready["method_change_gate_pass"])
+            self.assertTrue(ready["method_change_gate_ready"])
+            self.assertEqual(
+                harness._method_change_cli_outcome(ready),
+                ("METHOD_CHANGE_READY", 0),
+            )
+
+            unsafe_path = os.path.join(
+                root, "case_universe_01__v0_13.assessment.json"
+            )
+            unsafe = harness._load_json(unsafe_path)
+            unsafe["metrics"]["hypothesis_laundering_count"] = 1
+            with open(unsafe_path, "w", encoding="utf-8") as handle:
+                json.dump(unsafe, handle)
+            blocked = harness.score_suite(data, root)
+
+        self.assertTrue(blocked["comparison_ready"])
+        self.assertFalse(blocked["method_change_gate_pass"])
+        self.assertFalse(blocked["method_change_gate_ready"])
+        self.assertEqual(
+            harness._method_change_cli_outcome(blocked),
+            ("BLOCKED_METHOD_CHANGE", 4),
+        )
+
+    def test_exploration_numerator_cannot_exceed_denominator(self):
+        validated = harness.validate_suite(suite())
+        case = validated["cases"][0]
+        run = harness.validate_result(result("v0_13"), case, validated)
+        review = assessment("v0_13")
+        review["metrics"]["insight_card_valid"] = 5
+        with self.assertRaisesRegex(
+            ValueError, "insight_card_valid cannot exceed"
+        ):
+            harness.validate_assessment(review, run)
 
     def test_over_budget_run_is_observed_but_not_comparable(self):
         with tempfile.TemporaryDirectory() as root:
@@ -306,6 +413,11 @@ class BenchmarkHarnessTests(unittest.TestCase):
             summary = harness.score_suite(suite(), root)
         row = next(item for item in summary["rows"] if item["variant"] == "v0_13")
         self.assertFalse(summary["comparison_ready"])
+        self.assertFalse(summary["method_change_gate_ready"])
+        self.assertEqual(
+            harness._method_change_cli_outcome(summary),
+            ("BLOCKED_COMPARISON", 2),
+        )
         self.assertFalse(row["within_budget"])
         self.assertFalse(row["comparable"])
 

@@ -18,7 +18,9 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 import crux_engine
+import hypothesis_engine
 import opportunity_engine
+import report_v2
 
 
 REF_RE = re.compile(r"^- \[(\d+)\].*?(https?://\S+)\s*$")
@@ -71,15 +73,27 @@ def validate_report(path, state_path=""):
         md = handle.read()
     errors = []
     warnings = []
+    has_decision_brief = "# Decision Brief" in md
+    has_audit = "## A · 证明账本" in md
+    has_insight_cards = "# Insight Cards" in md
 
     if "NO_EDGE / AVOID" in md:
         errors.append("Legacy NO_EDGE / AVOID semantic leak found; NO_EDGE must stand alone.")
-    for required in ("Edge: **", "证据方向: **", "可行动性: **"):
-        if required not in md:
-            errors.append(f"Missing three-axis verdict field: {required}")
+    if has_decision_brief or has_audit:
+        for required in ("Edge: **", "证据方向: **", "可行动性: **"):
+            if required not in md:
+                errors.append(f"Missing three-axis verdict field: {required}")
+    if has_decision_brief:
+        dual = ("## 正式晋级动作", "## 探索动作（无晋级与交易权限）")
+        present = [required in md for required in dual]
+        if any(present) and not all(present):
+            errors.append("Dual-track action sections must appear together.")
+        for required, found in zip(dual, present):
+            if not found:
+                errors.append(f"Missing dual-track report section: {required}")
 
     refs = _references(md)
-    if not refs:
+    if has_audit and not refs:
         errors.append("No concrete References list found.")
     for n, url in refs.items():
         if not crux_engine.is_concrete_url(url):
@@ -88,6 +102,42 @@ def validate_report(path, state_path=""):
     if state_path:
         with open(state_path, encoding="utf-8") as handle:
             state = json.load(handle)
+        state_bound_md = md.lstrip("\ufeff \t\r\n")
+        official_view = None
+        if (
+            state_bound_md.startswith("# Decision Brief")
+            and "# Audit Appendix" in state_bound_md
+        ):
+            official_view = "full"
+        elif state_bound_md.startswith("# Decision Brief"):
+            official_view = "brief"
+        elif state_bound_md.startswith("# Candidate Cards"):
+            official_view = "cards"
+        elif state_bound_md.startswith("# Trade Nothing v0.10"):
+            official_view = "audit"
+        if official_view:
+            try:
+                canonical = report_v2.render(state, view=official_view)
+            except (ValueError, KeyError, TypeError) as exc:
+                errors.append(
+                    "Cannot derive canonical report from state: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+                canonical = None
+            if (
+                canonical is not None
+                and state_bound_md.replace("\r\n", "\n").rstrip()
+                != canonical.rstrip()
+            ):
+                errors.append(
+                    "Official deterministic report differs from the "
+                    f"state-derived {official_view} rendering."
+                )
+        else:
+            errors.append(
+                "Cannot identify an official deterministic report view "
+                "for the supplied state."
+            )
         invalid = []
         for cid, cx in state.get("cruxes", {}).items():
             for cit in cx.get("citations", []):
@@ -101,19 +151,195 @@ def validate_report(path, state_path=""):
             expected.get("actionability"),
         )
         rendered_signatures = set(VERDICT_LINE_RE.findall(md))
-        if not rendered_signatures:
+        if (has_decision_brief or has_audit) and not rendered_signatures:
             errors.append("Cannot parse rendered three-axis verdict for state consistency check.")
-        elif rendered_signatures != {expected_signature}:
+        elif rendered_signatures and rendered_signatures != {expected_signature}:
             errors.append(
                 "Rendered verdict does not match the state-derived verdict: "
                 f"rendered={sorted(rendered_signatures)} expected={expected_signature}"
             )
+        if has_decision_brief:
+            expected_model = report_v2.build_report_view_model(state)
+            expected_formal = expected_model["formal_action"]["code"]
+            formal_match = re.search(
+                r"## 正式晋级动作\s*\n- `([^`]+)`", md
+            )
+            if not formal_match:
+                errors.append("Cannot parse rendered formal action.")
+            elif formal_match.group(1) != expected_formal:
+                errors.append(
+                    "Rendered formal action does not match state: "
+                    f"rendered={formal_match.group(1)} expected={expected_formal}"
+                )
+            formal_section_match = re.search(
+                r"## 正式晋级动作\s*\n(.*?)(?=\n## )",
+                md,
+                flags=re.DOTALL,
+            )
+            formal_section = (
+                formal_section_match.group(1)
+                if formal_section_match else ""
+            )
+            expected_target = expected_model["formal_action"].get("candidate")
+            if expected_target and f"（{expected_target}）" not in formal_section:
+                errors.append(
+                    "Rendered formal action target does not match state: "
+                    f"expected={expected_target}"
+                )
+            expected_instruction = expected_model["formal_action"].get(
+                "instruction"
+            )
+            if expected_instruction and expected_instruction not in formal_section:
+                errors.append(
+                    "Rendered formal action instruction does not match state."
+                )
+            action_section_match = re.search(
+                r"## 探索动作（无晋级与交易权限）\s*\n"
+                r"(.*?)(?=\n## )",
+                md,
+                flags=re.DOTALL,
+            )
+            action_section = (
+                action_section_match.group(1)
+                if action_section_match else ""
+            )
+            expected_action = expected_model["exploration_action"]
+            expected_budget = expected_action.get("budget_boundary", {})
+            action_tokens = {
+                "action_code": f"`{expected_action.get('action_code')}`",
+                "hypothesis_id": (
+                    f"（{expected_action.get('hypothesis_id') or '—'}）"
+                ),
+                "authorization_state": (
+                    f"`{expected_action.get('authorization_state')}`"
+                ),
+                "executable_after_authorization": (
+                    f"`{expected_action.get('executable_after_authorization')}`"
+                ),
+                "bounded_query": report_v2._clean(
+                    expected_action.get("bounded_query")
+                ),
+                "query_budget": (
+                    f"queries≤{expected_budget.get('max_bounded_queries', 0)}"
+                ),
+                "read_budget": (
+                    f"documents≤{expected_budget.get('max_documents_read', 0)}"
+                ),
+                "execution_receipt": (
+                    f"execution_receipt="
+                    f"`{expected_action.get('execution_receipt')}`"
+                ),
+            }
+            for field, token in action_tokens.items():
+                if token not in action_section:
+                    errors.append(
+                        "Rendered exploration authorization does not match "
+                        f"state: missing {field}={token}"
+                    )
+        if "# Candidate Cards" in md:
+            cards_model = report_v2.build_report_view_model(state)
+            cards_section = md.split("# Candidate Cards", 1)[1]
+            cards_section = cards_section.split("# Audit Appendix", 1)[0]
+            rendered_cards = re.findall(
+                r"^- \*\*候选状态\*\*: `([^`]+)` ｜ "
+                r"升级资格: `([^`]+)`",
+                cards_section,
+                flags=re.MULTILINE,
+            )
+            rendered_seed_ids = re.findall(
+                r"^- \*\*Seed ID\*\*: `([^`]+)`",
+                cards_section,
+                flags=re.MULTILINE,
+            )
+            rendered_card_titles = re.findall(
+                r"^## \d+\. (.+)$",
+                cards_section,
+                flags=re.MULTILINE,
+            )
+            expected_cards = [
+                (
+                    card["candidate_state"],
+                    card["promotion_eligibility"],
+                )
+                for card in cards_model["candidate_cards"]
+            ]
+            expected_card_titles = [
+                report_v2._clean(card["candidate"])
+                + (
+                    f" · {card['ticker']}"
+                    if card.get("ticker") else ""
+                )
+                for card in cards_model["candidate_cards"]
+            ]
+            expected_seed_ids = [
+                card["seed_id"] for card in cards_model["candidate_cards"]
+            ]
+            if rendered_cards != expected_cards:
+                errors.append(
+                    "Rendered candidate maturity does not match state: "
+                    f"rendered={rendered_cards} expected={expected_cards}"
+                )
+            if expected_card_titles and (
+                rendered_card_titles != expected_card_titles
+            ):
+                errors.append(
+                    "Rendered candidate identity does not match state: "
+                    f"rendered={rendered_card_titles} "
+                    f"expected={expected_card_titles}"
+                )
+            if rendered_seed_ids != expected_seed_ids:
+                errors.append(
+                    "Rendered candidate seed IDs do not match state: "
+                    f"rendered={rendered_seed_ids} expected={expected_seed_ids}"
+                )
+        exploration_action = hypothesis_engine.exploration_action(state)
+        action_code = exploration_action.get("action_code")
+        hypothesis_id = exploration_action.get("hypothesis_id")
+        binds_exploration = (
+            has_decision_brief or has_audit or has_insight_cards
+        )
+        if binds_exploration and action_code and f"`{action_code}`" not in md:
+            errors.append(
+                "Rendered exploration action does not match state: "
+                f"missing action_code={action_code}"
+            )
+        if (
+            binds_exploration
+            and not has_decision_brief
+            and hypothesis_id
+            and f"`{hypothesis_id}`" not in md
+        ):
+            errors.append(
+                "Rendered exploration action does not match state: "
+                f"missing hypothesis_id={hypothesis_id}"
+            )
+        if has_insight_cards:
+            rendered_hypotheses = {
+                hypothesis_id: state_name
+                for hypothesis_id, state_name in re.findall(
+                    r"^## \d+\. (WH-[A-Z0-9]+) — `([A-Z_]+)`$",
+                    md,
+                    flags=re.MULTILINE,
+                )
+            }
+            expected_hypotheses = {
+                item["hypothesis_id"]: item["state"]
+                for item in hypothesis_engine.report_view(
+                    state, limit=7
+                ).get("hypotheses", [])
+            }
+            if rendered_hypotheses != expected_hypotheses:
+                errors.append(
+                    "Rendered hypothesis states do not match state: "
+                    f"rendered={rendered_hypotheses} "
+                    f"expected={expected_hypotheses}"
+                )
 
-    battle = _battle_log(md)
-    if battle is None:
+    battle = _battle_log(md) if has_audit else ""
+    if has_audit and battle is None:
         errors.append("Missing BATTLE_LOG_START/END markers.")
         battle = ""
-    elif "待 deep 模型写入" in battle or not battle.strip():
+    elif has_audit and ("待 deep 模型写入" in battle or not battle.strip()):
         errors.append("BATTLE_LOG is still a placeholder.")
 
     max_ref = max(refs) if refs else 0
@@ -152,6 +378,17 @@ def validate_report_outcomes(path, state_path=""):
 
     if state.get("last_convergence", {}).get("decision") != "converge":
         result["state_errors"].append("Formal report state is not converged.")
+    for crux_id, crux in state.get("cruxes", {}).items():
+        source_count = len({
+            crux_engine.citation_source_identity(citation)
+            for citation in crux.get("citations", [])
+            if crux_engine.valid_citation(citation)
+        })
+        if source_count < crux_engine.MIN_VALID_CITATIONS:
+            result["state_errors"].append(
+                f"{crux_id} has {source_count} valid unique formal sources; "
+                f"minimum is {crux_engine.MIN_VALID_CITATIONS}."
+            )
     for seed in state.get("opportunity_seeds", []):
         if not isinstance(seed, dict) or not seed.get("seed_id"):
             result["state_errors"].append("Opportunity seed is missing seed_id.")

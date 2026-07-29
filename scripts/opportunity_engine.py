@@ -133,6 +133,36 @@ def _reason(audit, reason, amount=1):
     reasons[reason] = reasons.get(reason, 0) + amount
 
 
+def _hypothesis_binding_issues(state, hypothesis_id, origin_crux):
+    """Validate optional exploration lineage without granting promotion rights."""
+    hypothesis_id = _text(hypothesis_id)
+    if not hypothesis_id:
+        return []
+    ledger = state.get("hypothesis_ledger")
+    hypotheses = ledger.get("hypotheses", []) if isinstance(ledger, dict) else []
+    hypothesis = next(
+        (
+            item for item in hypotheses
+            if isinstance(item, dict) and _text(item.get("hypothesis_id")) == hypothesis_id
+        ),
+        None,
+    )
+    if hypothesis is None:
+        return ["unknown_origin_hypothesis"]
+    context = hypothesis.get("context") or {}
+    linked_cruxes = {
+        _text(value)
+        for value in (
+            *(context.get("origin_cruxes") or []),
+            context.get("origin_crux"),
+        )
+        if _text(value)
+    }
+    if linked_cruxes and origin_crux not in linked_cruxes:
+        return ["origin_hypothesis_crux_mismatch"]
+    return []
+
+
 def _normalize_seed(raw, state, agent_name, round_num, allowed, audit):
     if not isinstance(raw, dict):
         _reason(audit, "seed_not_object")
@@ -141,6 +171,7 @@ def _normalize_seed(raw, state, agent_name, round_num, allowed, audit):
     candidate = _text(raw.get("candidate"))
     relation = _text(raw.get("relation_type")).upper()
     origin = _text(raw.get("origin_crux"))
+    origin_hypothesis_id = _text(raw.get("origin_hypothesis_id"))
     landscape_path_id = _text(raw.get("landscape_path_id"))
     asset_type = _text(raw.get("asset_type") or "OTHER").upper()
     causal_path = _text(raw.get("causal_path"))
@@ -152,6 +183,13 @@ def _normalize_seed(raw, state, agent_name, round_num, allowed, audit):
         return None
     if origin not in state.get("cruxes", {}):
         _reason(audit, "unknown_origin_crux")
+        return None
+    hypothesis_issues = _hypothesis_binding_issues(
+        state, origin_hypothesis_id, origin
+    )
+    if hypothesis_issues:
+        for reason in hypothesis_issues:
+            _reason(audit, reason)
         return None
     binding_issues = landscape_engine.seed_binding_issues(
         state, landscape_path_id, origin
@@ -192,6 +230,7 @@ def _normalize_seed(raw, state, agent_name, round_num, allowed, audit):
         "asset_type": asset_type,
         "relation_type": relation,
         "origin_crux": origin,
+        "origin_hypothesis_id": origin_hypothesis_id or None,
         "landscape_path_id": landscape_path_id or None,
         "causal_path": causal_path,
         "economic_exposure": _text(raw.get("economic_exposure")),
@@ -668,6 +707,7 @@ def entity_views(state):
                 {
                     "seed_id": seed.get("seed_id"),
                     "origin_crux": seed.get("origin_crux"),
+                    "origin_hypothesis_id": seed.get("origin_hypothesis_id"),
                     "relation_type": seed.get("relation_type"),
                     "assessment": result,
                 }
@@ -691,6 +731,19 @@ def _merge(existing, incoming):
         existing["ticker"] = incoming["ticker"]
     if existing.get("asset_type") == "OTHER" and incoming.get("asset_type") != "OTHER":
         existing["asset_type"] = incoming["asset_type"]
+
+    incoming_hypothesis = _text(incoming.get("origin_hypothesis_id"))
+    existing_hypothesis = _text(existing.get("origin_hypothesis_id"))
+    if incoming_hypothesis and not existing_hypothesis:
+        existing["origin_hypothesis_id"] = incoming_hypothesis
+    elif incoming_hypothesis and incoming_hypothesis != existing_hypothesis:
+        variants = existing.setdefault("field_variants", {}).setdefault(
+            "origin_hypothesis_id", []
+        )
+        for item in (existing_hypothesis, incoming_hypothesis):
+            if item and item not in variants:
+                variants.append(item)
+        variants.sort()
 
     incoming_window = incoming.get("catalyst_window")
     current_window = existing.get("catalyst_window")

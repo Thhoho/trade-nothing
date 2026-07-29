@@ -64,6 +64,11 @@ class ResearchOutputTests(unittest.TestCase):
         self.assertIn("NON", research_output.build_resolution_view(st)["output_type"])
         self.assertIn("NEVER_CONTESTED", first)
         self.assertIn("MISSING_FALSIFIER", first)
+        self.assertEqual(
+            research_output.build_resolution_view(st)["as_of_date"],
+            "2026-07-10",
+        )
+        self.assertIn("证据截止: 2026-07-10", first)
         self.assertNotIn("secret", first)
         self.assertNotIn("detective_raw", first)
 

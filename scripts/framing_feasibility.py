@@ -101,7 +101,7 @@ def _simulated_active_rounds(frame: dict[str, Any]) -> int:
             "path_id": _text(item.get("path_id")),
             "linked_crux_id": _text(item.get("linked_crux_id")),
         }
-        for item in (frame.get("landscape_map") or {}).get("paths", [])
+        for item in landscape_engine.frame_paths(frame)
         if isinstance(item, dict) and _text(item.get("path_id"))
     ]
     pending = sorted(paths, key=lambda item: item["path_id"])
@@ -144,7 +144,7 @@ def minimum_rounds(frame: dict[str, Any]) -> int:
         active_rounds = max(
             active_rounds,
             math.ceil(
-                len((frame.get("landscape_map") or {}).get("paths", []))
+                len(landscape_engine.frame_paths(frame))
                 / landscape_engine.MAX_PATHS_PER_ROLE_ROUND
             ),
         )
@@ -170,4 +170,3 @@ def validate_round_budget(frame: dict[str, Any]) -> list[str]:
 
 def validate_frame(frame: dict[str, Any]) -> list[str]:
     return sorted(set(validate_evidence_plans(frame) + validate_round_budget(frame)))
-

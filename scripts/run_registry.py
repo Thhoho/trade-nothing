@@ -31,6 +31,13 @@ CONTROL_RESULT_KEYS = (
     "blockers", "unresolved_cruxes", "candidate_state", "screening_state",
     "verification_state", "available_report_views", "report_view",
     "state_path", "run_purpose", "rounds_completed", "last_convergence", "execution_summary",
+    "formal_action", "exploration_action", "hypothesis_exploration",
+    "scenario_path_audit",
+    "action_id", "action_status", "authorization_state",
+    "authorization_assurance", "execution_receipt",
+    "design_audit", "cancellation_receipt", "stale_receipt",
+    "stale_result_receipt", "result_sha256",
+    "dispatch_contract", "formal_state_unchanged", "automatic_follow_on",
 )
 
 
@@ -258,8 +265,9 @@ def _control_result(result):
             key: view_model[key]
             for key in (
                 "schema_version", "topic", "decision_question", "horizon",
-                "question_type", "verdict", "candidate_counts", "next_action",
-                "change_trigger", "runtime",
+                "question_type", "verdict", "candidate_counts", "formal_action",
+                "exploration_action", "hypothesis_exploration", "scenario_paths",
+                "next_action", "change_trigger", "runtime",
             )
             if key in view_model
         }
