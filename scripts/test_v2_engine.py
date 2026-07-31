@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Offline regression tests for the v2 evidence and report safety gates."""
 import os
+import hashlib
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -755,6 +758,66 @@ class ReportSafetyTests(unittest.TestCase):
             self.assertIn(str(value), brief)
             self.assertIn(str(value), full)
 
+    def test_facts_box_locks_core_facts_in_under_forty_lines(self):
+        st = converged_state()
+        st["topic"] = "test <!-- FACTS_BOX_END -->"
+        st["as_of_date"] = "2026-07-31"
+        st["runtime_contract"] = {"isolation_status": "verified"}
+        st["rounds"] = [{"round": 1}, {"round": 2}, {"round": 3}]
+        st["cruxes"]["C1"].update({
+            "label": "binding | constraint",
+            "status": "MONITORABLE",
+            "retired": True,
+            "best_bull": "bull | case " + ("x" * 100),
+            "best_bear": "bear | case",
+            "citations": [citation("facts-a"), citation("facts-b")],
+        })
+        model = report_v2.build_report_view_model(st)
+        facts = report_v2.render(st, view="facts_box")
+        self.assertLess(len(facts.splitlines()), 40)
+        self.assertIn("<!-- FACTS_BOX_START", facts)
+        self.assertIn("<!-- FACTS_BOX_END -->", facts)
+        self.assertEqual(facts.count("<!-- FACTS_BOX_START"), 1)
+        self.assertEqual(facts.count("<!-- FACTS_BOX_END -->"), 1)
+        self.assertIn("FACTS-BOX-END", facts)
+        self.assertIn("**证据截止**: 2026-07-31", facts)
+        self.assertIn("隔离=verified", facts)
+        self.assertIn(r"C1 binding \| constraint", facts)
+        self.assertIn(r"bull \| case", facts)
+        self.assertIn("MONITORABLE", facts)
+        self.assertIn("完整证据账本见配套 Evidence Ledger 文件", facts)
+        for key in ("edge_state", "evidence_direction", "actionability"):
+            self.assertIn(str(model["verdict"][key]), facts)
+        if "temporal_contract" in model:
+            self.assertIn("**时间合同**", facts)
+            self.assertIn("**预测目标**: RELATIVE_HORIZON", facts)
+        self.assertIn(model["formal_action"]["code"], facts)
+        self.assertNotIn("# Insight Cards", facts)
+        self.assertNotIn("# Audit Appendix", facts)
+
+    def test_report_cli_accepts_facts_box_view(self):
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".json", encoding="utf-8"
+        ) as state_handle:
+            json.dump(converged_state(), state_handle)
+            state_handle.flush()
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    report_v2.__file__,
+                    "--state",
+                    state_handle.name,
+                    "--view",
+                    "facts_box",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+            )
+        self.assertIn("<!-- FACTS_BOX_START", completed.stdout)
+        self.assertNotIn("# Audit Appendix", completed.stdout)
+
     def test_universe_report_recomputes_root_verdict_and_hides_global_support_aggregates(self):
         st = converged_state()
         st["question_type"] = "UNIVERSE_SEARCH"
@@ -772,6 +835,7 @@ class ReportSafetyTests(unittest.TestCase):
             "reason_code": "STALE_GLOBAL_AGGREGATE",
         }
         md = report_v2.render(st)
+        facts = report_v2.render(st, view="facts_box")
         self.assertIn("INSUFFICIENT_EVIDENCE / UNDETERMINED / MONITOR", md)
         self.assertNotIn("INSUFFICIENT_EVIDENCE / BEAR / MONITOR", md)
         self.assertNotIn("最低路径支持度", md)
@@ -780,6 +844,9 @@ class ReportSafetyTests(unittest.TestCase):
         self.assertIn("## 研究轴证据状态", md)
         self.assertIn("不构成候选宇宙的整体多空方向", md)
         self.assertNotIn("## 原想法经质证后发生了什么", md)
+        self.assertIn("**研究轴质证**", facts)
+        self.assertNotIn("**经质证后**", facts)
+        self.assertIn("**发现路径覆盖**", facts)
 
     def test_validator_rejects_rendered_verdict_drift_from_state(self):
         st = converged_state()
@@ -800,6 +867,57 @@ class ReportSafetyTests(unittest.TestCase):
                 report_handle.name, state_handle.name
             )
         self.assertTrue(any("does not match" in item for item in errors))
+
+    def test_validator_accepts_exact_facts_box_with_free_narrative(self):
+        st = converged_state()
+        facts = report_v2.render(st, view="facts_box")
+        md = (
+            facts
+            + "\n\n# 供需矛盾决定下一步\n\n"
+            + "这段叙事可以按本次发现自由组织，不需要旧模板标题。\n"
+        )
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".md", encoding="utf-8"
+        ) as report_handle, tempfile.NamedTemporaryFile(
+            "w", suffix=".json", encoding="utf-8"
+        ) as state_handle:
+            report_handle.write(md)
+            report_handle.flush()
+            json.dump(st, state_handle)
+            state_handle.flush()
+            errors, _ = validate_report_v2.validate_report(
+                report_handle.name, state_handle.name
+            )
+        self.assertEqual(errors, [])
+
+    def test_validator_rejects_facts_box_drift_or_duplicate_markers(self):
+        st = converged_state()
+        facts = report_v2.render(st, view="facts_box")
+        expected_action = report_v2.build_report_view_model(st)["formal_action"]["code"]
+        drifted = facts.replace(
+            f"`{expected_action}`", "`RUN_CANDIDATE_SCREEN`", 1
+        )
+        duplicate = facts + "\n" + facts
+        for md, expected_error in (
+            (drifted, "Facts Box differs"),
+            (duplicate, "exactly one ordered START/END"),
+        ):
+            with tempfile.NamedTemporaryFile(
+                "w", suffix=".md", encoding="utf-8"
+            ) as report_handle, tempfile.NamedTemporaryFile(
+                "w", suffix=".json", encoding="utf-8"
+            ) as state_handle:
+                report_handle.write(md)
+                report_handle.flush()
+                json.dump(st, state_handle)
+                state_handle.flush()
+                errors, _ = validate_report_v2.validate_report(
+                    report_handle.name, state_handle.name
+                )
+            self.assertTrue(
+                any(expected_error in item for item in errors),
+                msg=f"missing {expected_error}: {errors}",
+            )
 
     def test_official_gov_record_counts_as_primary_source(self):
         st = converged_state()
@@ -936,10 +1054,39 @@ class ReportSafetyTests(unittest.TestCase):
         self.assertTrue(out["report_markdown"].startswith("# Decision Brief"))
         self.assertNotIn("# Audit Appendix", out["report_markdown"])
         self.assertNotIn("synthesis_packet", out)
+        self.assertIn("facts_box", out["available_report_views"])
+        self.assertIn("<!-- FACTS_BOX_START", out["facts_box_markdown"])
+        self.assertEqual(
+            out["facts_box_sha256"],
+            hashlib.sha256(out["facts_box_markdown"].encode("utf-8")).hexdigest(),
+        )
+        self.assertTrue(out["candidate_cards_markdown"].startswith("# Candidate Cards"))
+        self.assertIn("## A · 证明账本", out["evidence_ledger_markdown"])
+        self.assertTrue(out["report_markdown_deprecated"])
+        self.assertIn("两个主文件", out["instruction"])
         self.assertEqual(
             out["report_view_model"]["schema_version"],
             "trade-nothing.report-view-model.v2",
         )
+
+    def test_orchestrator_can_select_facts_box_compatibility_view(self):
+        topic = "facts box report view"
+        st = converged_state()
+        st["cruxes"]["C1"].update({
+            "status": "MONITORABLE",
+            "retired": True,
+            "first_contested": 1,
+            "contested_history": [0.5, 0.5, 0.5],
+            "citations": [citation("facts-view-a"), citation("facts-view-b")],
+        })
+        orchestrator._save(topic, st)
+        out = orchestrator.cmd_report(
+            topic, challenge_only=True, report_view="facts_box"
+        )
+        self.assertEqual(out["status"], "report_data_ready")
+        self.assertEqual(out["report_view"], "facts_box")
+        self.assertEqual(out["report_markdown"], out["facts_box_markdown"])
+        self.assertNotIn("synthesis_packet", out)
 
     def test_synthesis_packet_requires_explicit_opt_in(self):
         topic = "brief report synthesis opt in"
@@ -952,10 +1099,20 @@ class ReportSafetyTests(unittest.TestCase):
             "citations": [citation("synthesis-a"), citation("synthesis-b")],
         })
         orchestrator._save(topic, st)
+        without_synthesis = orchestrator.cmd_report(
+            topic, challenge_only=True, report_view="brief"
+        )
         out = orchestrator.cmd_report(
             topic, challenge_only=True, report_view="brief", include_synthesis=True
         )
         self.assertIn("synthesis_packet", out)
+        for field in (
+            "facts_box_markdown",
+            "facts_box_sha256",
+            "evidence_ledger_markdown",
+            "candidate_cards_markdown",
+        ):
+            self.assertEqual(out[field], without_synthesis[field])
 
 
 if __name__ == "__main__":

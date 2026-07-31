@@ -158,6 +158,11 @@ python3 scripts/deepthink_orchestrator_v2.py --submit \
 python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET"
 ```
 
+报告命令会返回锁定的 `facts_box_markdown`、独立的
+`evidence_ledger_markdown`、可选 Candidate Cards 和结构化 view model。新的宿主应把
+Facts Box 原样放在内容驱动的 Decision Brief 顶部，并单独保存 Evidence Ledger；
+确定性的 `brief` 与 `full` 仅作为兼容回退。
+
 常见终态或续研状态：
 
 - `dispatch_subagents`：只对有界的 OPEN-crux packet 继续质证。

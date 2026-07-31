@@ -30,6 +30,12 @@ VERDICT_LINE_RE = re.compile(
     r"Edge: \*\*([A-Z_]+)\*\* ｜ 证据方向: \*\*([A-Z_]+)\*\* ｜ "
     r"可行动性: \*\*([A-Z_]+)\*\*"
 )
+FACTS_VERDICT_LINE_RE = re.compile(
+    r"\*\*结论\*\*: Edge=\*\*([A-Z_]+)\*\* \| "
+    r"方向=\*\*([A-Z_]+)\*\* \| 可行动性=\*\*([A-Z_]+)\*\*"
+)
+FACTS_BOX_START = "<!-- FACTS_BOX_START"
+FACTS_BOX_END = "<!-- FACTS_BOX_END -->"
 DATA_NUMBER_RE = re.compile(
     r"(\$\s*\d+(?:\.\d+)?)|"
     r"(\d+(?:\.\d+)?\s*(?:%|元|亿元|亿|万元|万|MW|GW|GWh|Wh|℃|°C|美元|颗|吨|μm|um|cm2|倍|股|亿元?))|"
@@ -57,6 +63,14 @@ def _references(md):
     return refs
 
 
+def _facts_box_blocks(md):
+    pattern = re.compile(
+        r"<!-- FACTS_BOX_START[^\n]*-->\n.*?<!-- FACTS_BOX_END -->",
+        flags=re.DOTALL,
+    )
+    return pattern.findall(md.replace("\r\n", "\n"))
+
+
 def _ignore_numeric_line(line):
     stripped = line.strip()
     if not stripped:
@@ -74,9 +88,26 @@ def validate_report(path, state_path=""):
         md = handle.read()
     errors = []
     warnings = []
-    has_decision_brief = "# Decision Brief" in md
+    normalized_md = md.lstrip("\ufeff \t\r\n")
+    has_decision_brief = normalized_md.startswith("# Decision Brief")
     has_audit = "## A · 证明账本" in md
     has_insight_cards = "# Insight Cards" in md
+    facts_blocks = _facts_box_blocks(md)
+    facts_start_count = md.count(FACTS_BOX_START)
+    facts_end_count = md.count(FACTS_BOX_END)
+    has_facts_box = (
+        facts_start_count == 1
+        and facts_end_count == 1
+        and len(facts_blocks) == 1
+    )
+
+    if facts_start_count or facts_end_count:
+        if not has_facts_box:
+            errors.append(
+                "Facts Box must contain exactly one ordered START/END marker pair."
+            )
+        elif not normalized_md.startswith("---\n<!-- FACTS_BOX_START"):
+            errors.append("Facts Box must be embedded verbatim at the report top.")
 
     if "NO_EDGE / AVOID" in md:
         errors.append("Legacy NO_EDGE / AVOID semantic leak found; NO_EDGE must stand alone.")
@@ -105,7 +136,29 @@ def validate_report(path, state_path=""):
             state = json.load(handle)
         state_bound_md = md.lstrip("\ufeff \t\r\n")
         official_view = None
-        if (
+        if has_facts_box:
+            canonical_facts = ""
+            try:
+                canonical_facts = report_v2.render(state, view="facts_box")
+                canonical_blocks = _facts_box_blocks(canonical_facts)
+            except (ValueError, KeyError, TypeError) as exc:
+                errors.append(
+                    "Cannot derive canonical Facts Box from state: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+                canonical_blocks = []
+            if (
+                len(canonical_blocks) != 1
+                or facts_blocks[0].rstrip() != canonical_blocks[0].rstrip()
+            ):
+                errors.append(
+                    "Facts Box differs from the state-derived deterministic rendering."
+                )
+            if state_bound_md.replace("\r\n", "\n").rstrip() == canonical_facts.rstrip():
+                official_view = "facts_box"
+            else:
+                official_view = "composed_decision_brief"
+        elif (
             state_bound_md.startswith("# Decision Brief")
             and "# Audit Appendix" in state_bound_md
         ):
@@ -119,7 +172,9 @@ def validate_report(path, state_path=""):
             or state_bound_md.startswith("# Trade Nothing v0.10")
         ):
             official_view = "audit"
-        if official_view:
+        if official_view and official_view not in {
+            "facts_box", "composed_decision_brief"
+        }:
             try:
                 canonical = report_v2.render(state, view=official_view)
             except (ValueError, KeyError, TypeError) as exc:
@@ -137,7 +192,7 @@ def validate_report(path, state_path=""):
                     "Official deterministic report differs from the "
                     f"state-derived {official_view} rendering."
                 )
-        else:
+        elif not official_view:
             errors.append(
                 "Cannot identify an official deterministic report view "
                 "for the supplied state."
@@ -155,7 +210,8 @@ def validate_report(path, state_path=""):
             expected.get("actionability"),
         )
         rendered_signatures = set(VERDICT_LINE_RE.findall(md))
-        if (has_decision_brief or has_audit) and not rendered_signatures:
+        rendered_signatures.update(FACTS_VERDICT_LINE_RE.findall(md))
+        if (has_decision_brief or has_audit or has_facts_box) and not rendered_signatures:
             errors.append("Cannot parse rendered three-axis verdict for state consistency check.")
         elif rendered_signatures and rendered_signatures != {expected_signature}:
             errors.append(

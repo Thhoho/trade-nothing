@@ -106,11 +106,17 @@ class RunRegistryTests(unittest.TestCase):
     def test_large_result_and_report_are_content_addressed_not_inlined(self):
         manifest = run_registry.create_manifest("Artifact topic")
         report = "# Report\n\n" + ("decision evidence\n" * 2000)
+        facts_box = "<!-- FACTS_BOX_START -->\nlocked\n<!-- FACTS_BOX_END -->"
+        evidence_ledger = "# Evidence Ledger\n\ncomplete evidence"
+        candidate_cards = "# Candidate Cards\n\n0 candidates"
         result = {
             "status": "ready_for_report",
             "topic": manifest["topic"],
             "instruction": "consume the report path, not raw result",
             "report_markdown": report,
+            "facts_box_markdown": facts_box,
+            "evidence_ledger_markdown": evidence_ledger,
+            "candidate_cards_markdown": candidate_cards,
             "report_view_model": {
                 "schema_version": "trade-nothing.report-view-model.v1",
                 "topic": manifest["topic"],
@@ -124,6 +130,7 @@ class RunRegistryTests(unittest.TestCase):
         envelope = run_registry.stage_envelope(result, context=manifest)
         serialized = json.dumps(envelope)
         self.assertNotIn("decision evidence", serialized)
+        self.assertNotIn("complete evidence", serialized)
         self.assertNotIn("x" * 100, serialized)
         self.assertLess(len(serialized), 10000)
         self.assertEqual(run_registry.load_result_artifact(envelope), result)
@@ -134,6 +141,13 @@ class RunRegistryTests(unittest.TestCase):
         self.assertNotIn("candidate_cards", envelope["result"]["decision_brief"])
         with open(envelope["artifact_paths"]["report_path"], encoding="utf-8") as handle:
             self.assertEqual(handle.read(), report)
+        for path_key, expected in (
+            ("facts_box_path", facts_box),
+            ("evidence_ledger_path", evidence_ledger),
+            ("candidate_cards_path", candidate_cards),
+        ):
+            with open(envelope["artifact_paths"][path_key], encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), expected)
         self.assertEqual(
             envelope["artifacts"]["result"]["read_policy"]["parent_context"],
             "ENVELOPE_ONLY",

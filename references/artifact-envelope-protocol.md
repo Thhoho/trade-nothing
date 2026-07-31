@@ -48,10 +48,13 @@ reconstructing the artifact.
 ## Registered deepthink2 runs
 
 `run_registry.stage_envelope()` automatically persists the complete stage result under the run's
-`artifacts/` directory. Formal reports and resolution memos are also materialized as Markdown.
-The public `result` contains only control fields, while `artifacts.result` binds the exact full JSON.
-This changes the stage envelope from “bounded in typical cases” to “raw bodies excluded by
-construction.”
+`artifacts/` directory. Compatibility reports, deterministic Facts Boxes, Evidence Ledgers,
+Candidate Cards, and resolution memos are also materialized as separate content-addressed
+Markdown artifacts when present. Their paths are exposed as `report_path`, `facts_box_path`,
+`evidence_ledger_path`, `candidate_cards_path`, and `resolution_memo_path`; Markdown bodies remain
+out of the public envelope. The public `result` contains only control fields, while
+`artifacts.result` binds the exact full JSON. This changes the stage envelope from “bounded in
+typical cases” to “raw bodies excluded by construction.”
 
 Checkpoints may retain structured role JSON for deterministic resume and Judge input. They are
 internal state, not parent-context output; consumers must not read checkpoint payloads as a shortcut

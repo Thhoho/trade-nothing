@@ -281,12 +281,12 @@ python3 scripts/deepthink_orchestrator_v2.py --close-gap-task --topic "TARGET" \
 # 4. Report: only converged states may render a formal report. Opportunity questions with an
 #    unscreened READY_FOR_SCREENING seed default to the bounded CandidateScreen continuation below;
 #    report rendering is deferred until that batch completes. Use --challenge-only only when the
-#    user explicitly requests thesis critique without opportunity screening. The default report is
-#    compact, deterministic, and never embeds raw agent payloads. It separates the singular
-#    deterministic formal_action from an optional, human-authorized exploration_action.
+#    user explicitly requests thesis critique without opportunity screening. The orchestrator
+#    exposes a deterministic facts box, Evidence Ledger, candidate cards, and structured synthesis
+#    input. The parent compiles the content-driven Decision Brief without altering locked facts.
 python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET"
-# Low-context decision view (does not include synthesis input unless explicitly requested):
-python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET" --report-view brief
+# Low-context locked-facts view (synthesis input remains explicit opt-in):
+python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET" --report-view facts_box
 # Read references/report-contract.md before changing report status words, views, or next actions.
 # Explicit thesis-critique-only escape hatch:
 python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET" --challenge-only
@@ -356,6 +356,48 @@ python3 scripts/deepthink_orchestrator_v2.py --verify-claims --topic "TARGET" \
 python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARGET" \
     --snapshots snapshots.json --verifier '<claim_verifier_json>' --verifier-isolation verified
 ```
+
+#### Phase 4: Report Compilation（事实层锁定，叙事层综合）
+
+`--report` 输出三个确定性产物：
+
+- `facts_box_markdown`：原样嵌入 Decision Brief 顶部，不得修改；
+- `evidence_ledger_markdown`：独立保存为 `{topic}_evidence_ledger.md`；
+- `candidate_cards_markdown`：按内容需要嵌入 Brief 末尾或独立保存。
+
+同时保留 `report_view_model`；只有显式传入 `--include-synthesis` 时才会提供
+`synthesis_packet`。父上下文基于这些结构化输入编写叙事，并交付两个主文件：
+`{topic}_decision_brief.md` 与 `{topic}_evidence_ledger.md`。兼容字段
+`report_markdown` 与 `brief` / `full` 视图仍可读取，但新报告不得把它们当作默认成品。
+
+##### Decision Brief 约束
+
+1. 顶部逐字嵌入 `facts_box_markdown`。
+2. 标题必须反映本次研究最核心的发现，不使用通用报告标题。
+3. Facts Box 之后的叙事不超过 120 行，整个 Brief 不超过 150 行。
+4. 叙事结构从研究发现中生长，但必须覆盖：最有价值的 2–4 条洞见、对称场景和下一步
+   观察清单。
+5. 数值、状态词、crux 状态、候选计数、卡片动作码和正式动作必须与确定性产物一致。
+6. 引用只能来自 `report_view_model` 或显式提供的 `synthesis_packet`，使用
+   `[来源名, 日期](URL)` 内联标注；不得凭空新增引用。
+7. Facts Box 已包含统一边界声明，叙事中不得重复堆叠免责声明。
+
+##### 反模板约束（Anti-Template Rule）
+
+以下元素不得跨报告机械复用：
+
+- 固定节段名，例如“变异感知提纯”“猎杀元数据”“专家审计闭环”“运行边界”；
+- 固定 emoji 前缀，例如每篇都出现 🐑 / 🐺 / 🐂 / 🐻；
+- 固定反事实句式，例如“如果 N 个月后亏了 X%，最可能原因是什么”；
+- 固定 12 字段假说卡。
+
+发现数据矛盾，就围绕矛盾展开；发现供应链关系，就讲清因果链；发现时间窗口，就聚焦
+催化剂。不要因为旧模板存在某一节就补写无信息内容。叙事风格参考自然、内容驱动的雪球
+长文与克制、数字和来源明确的人工决策简报。
+
+> **Facts Box integrity:** LLM 严禁修改 `facts_box_markdown` 中的任何数值、状态词
+> (`edge_state`, `evidence_direction`, `actionability`)、crux 行、候选计数或
+> `formal_action`。解释可以增加语境，但不能暗示与锁定结论相反的判断。
 
 > **Integrity:** all support scores/statuses are computed by `crux_engine.py` from Judge signals;
 > the LLM must not write or alter these values. Convergence (every crux RESOLVED or MONITORABLE +
@@ -447,9 +489,14 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > optional `exploration_action` or null. The formal action alone may advance workflow state.
 > Exploration actions are bounded information-gain tests with a hypothesis ID, source class,
 > query/document cap, success condition, stop condition, and explicit authorization requirement.
-> Insight cards must label observation, inference, alternative explanation, falsifier, trace, and
-> evidence boundary. They never embed raw role output and never soften a STOP, WAIT, fuse break,
-> CandidateScreen blocker, or promotion gate. Read `references/report-contract.md`.
+> Every newly composed Decision Brief begins with the exact deterministic Facts Box; the host
+> validator rejects missing, duplicated, moved, or modified box content. Legacy deterministic
+> Insight Cards may retain their fixed field projection. Free narrative must still preserve
+> exploration status, observation versus inference, alternative explanation, falsifier, trace, and
+> evidence boundary, but it must not force those concepts into fixed headings or a fixed order.
+> Neither form embeds raw role output or softens a STOP, WAIT, fuse break, CandidateScreen blocker,
+> or promotion gate. The anti-template rule applies to free narrative, not deterministic status
+> icons or compatibility renderers. Read `references/report-contract.md`.
 
 > **CandidateScreen integrity:** screen only after root-thesis convergence. Run
 > `agents/candidate_analyst.md` and `agents/candidate_skeptic.md` in isolated contexts on the

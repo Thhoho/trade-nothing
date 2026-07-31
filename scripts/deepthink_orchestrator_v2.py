@@ -2986,6 +2986,9 @@ def cmd_report(topic, challenge_only=False, report_view="full", include_synthesi
     candidate_counts = candidate_screen_engine.summary(state)
     verification_counts = claim_verification_engine.summary(state)
     view_model = report_v2.build_report_view_model(state)
+    facts_box_markdown = report_v2.render_facts_box(view_model)
+    evidence_ledger_markdown = report_v2.render(state, view="audit")
+    candidate_cards_markdown = report_v2.render(state, view="cards")
     out = {"status": "report_data_ready", "topic": topic,
             "decision": rd["decision"], "binding_crux": rd["binding_crux"],
             "focus_crux": rd["focus_crux"], "aggregation_rule": rd["aggregation_rule"],
@@ -3002,15 +3005,29 @@ def cmd_report(topic, challenge_only=False, report_view="full", include_synthesi
             **verification_counts,
             "model": model_for("battle_log_synthesis"),
             "report_view": report_view,
-            "available_report_views": ["brief", "cards", "audit", "full"],
+            "available_report_views": [
+                "facts_box", "brief", "cards", "audit", "full"
+            ],
             "report_view_model": view_model,
+            "facts_box_markdown": facts_box_markdown,
+            "facts_box_sha256": hashlib.sha256(
+                facts_box_markdown.encode("utf-8")
+            ).hexdigest(),
+            "evidence_ledger_markdown": evidence_ledger_markdown,
+            "candidate_cards_markdown": candidate_cards_markdown,
             "report_markdown": report_v2.render(state, view=report_view),
+            "report_markdown_deprecated": True,
             "audit_state_path": _path(topic),
             "instruction": (
-                "默认正式报告已是可读确定性产物，不含 raw agent dump。"
-                "父上下文优先消费 report_view_model 或 brief；"
-                "formal_action 与 exploration_action 必须分开解释；探索动作只是一项"
-                "待授权研究任务，不得自动执行。不得读取 transcript、扩展候选或改变 engine 状态。"
+                "交付两个主文件：1. Decision Brief（总计≤150行）：顶部原样嵌入 "
+                "facts_box_markdown，再基于 report_view_model（若显式提供，也可使用 "
+                "synthesis_packet）写≤120行、由研究发现驱动的自由叙事；"
+                "不得采用跨报告固定节段名。2. Evidence Ledger：直接保存 "
+                "evidence_ledger_markdown。candidate_cards_markdown 可嵌入 Brief 末尾"
+                "或独立保存。LLM 严禁修改 facts box 的数值、状态词、crux 内容、"
+                "候选计数或正式动作；引用只能来自结构化输入并以内联链接标注。"
+                "formal_action 与 exploration_action 必须分开解释，且不得读取 "
+                "transcript、扩展候选、执行探索动作或改变 engine 状态。"
             )}
     if include_synthesis:
         out["synthesis_packet"] = research_output.build_synthesis_packet(state)
@@ -3077,7 +3094,7 @@ def main():
     ap.add_argument("--challenge-only", action="store_true",
                     help="render root-thesis report without default opportunity CandidateScreen")
     ap.add_argument("--report-view", default="full",
-                    choices=["brief", "cards", "audit", "full"],
+                    choices=["facts_box", "brief", "cards", "audit", "full"],
                     help="select one deterministic report view")
     ap.add_argument("--include-synthesis", action="store_true",
                     help="include optional compact synthesis input; off by default to save context")

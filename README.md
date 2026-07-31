@@ -165,6 +165,11 @@ python3 scripts/deepthink_orchestrator_v2.py --submit \
 python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET"
 ```
 
+The report command returns a locked `facts_box_markdown`, a separate
+`evidence_ledger_markdown`, optional Candidate Cards, and the structured view model. New hosts
+place the Facts Box verbatim at the top of a content-driven Decision Brief and persist the Evidence
+Ledger separately. The deterministic `brief` and `full` views remain compatibility fallbacks.
+
 Common terminal or continuation states include:
 
 - `dispatch_subagents`: continue only on the bounded open-crux packet.

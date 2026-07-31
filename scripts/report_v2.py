@@ -1854,9 +1854,161 @@ def render_audit(state):
     return _render_audit(state, include_title=True)
 
 
+def render_facts_box(view):
+    """Render the deterministic facts layer embedded verbatim in a Decision Brief."""
+    verdict = view["verdict"]
+    root = view["root_thesis"]
+    counts = view["candidate_counts"]
+    formal = view["formal_action"]
+    exploration_action = view.get("exploration_action") or {}
+    runtime = view["runtime"]
+    question_type = view.get("question_type", "CONJUNCTIVE")
+
+    def facts_text(value):
+        return (
+            _clean(value)
+            .replace("FACTS_BOX_START", "FACTS-BOX-START")
+            .replace("FACTS_BOX_END", "FACTS-BOX-END")
+        )
+
+    def summary(items):
+        return "；".join(
+            f"{facts_text(item.get('id'))} {facts_text(item.get('label'))}"
+            for item in items
+        ) or "无"
+
+    def table_cell(value, limit=None):
+        text = facts_text(value)
+        if limit is not None:
+            text = text[:limit]
+        return text.replace("|", r"\|")
+
+    survived_items = root.get("survived", [])
+    falsified_items = root.get("falsified", [])
+    monitorable_items = root.get("monitorable", [])
+    crux_items = survived_items + falsified_items + monitorable_items
+    seen = {item.get("id") for item in crux_items}
+    focus = root.get("focus")
+    if isinstance(focus, dict) and focus.get("id") not in seen:
+        crux_items.append(focus)
+
+    crux_rows = []
+    for item in crux_items:
+        status = item.get("status")
+        status_text = facts_text(status)
+        if status in _STATUS:
+            status_text += f" · {_STATUS[status]}"
+        crux_rows.append(
+            f"| {table_cell(item.get('id'))} {table_cell(item.get('label'))} "
+            f"| {table_cell(status_text)} "
+            f"| {table_cell(item.get('best_bull'), 80)} "
+            f"| {table_cell(item.get('best_bear'), 80)} |"
+        )
+
+    target = (
+        f"（{facts_text(formal.get('candidate'))}）"
+        if formal.get("candidate")
+        else ""
+    )
+    as_of_date = view.get("as_of_date")
+    if not as_of_date or as_of_date == "—":
+        as_of_date = "UNKNOWN"
+    forecast_target_date = (
+        view.get("forecast_target_date") or "RELATIVE_HORIZON"
+    )
+    if forecast_target_date == "—":
+        forecast_target_date = "RELATIVE_HORIZON"
+    temporal = view.get("temporal_contract")
+    temporal_line = ""
+    if isinstance(temporal, dict):
+        temporal_line = (
+            f"**时间合同**: 状态={facts_text(temporal.get('status'))} | "
+            f"需人工消歧={temporal.get('requires_human_resolution', False)}"
+        )
+    if question_type == "UNIVERSE_SEARCH":
+        crux_summary = (
+            f"**研究轴质证**: 正向证据 {summary(survived_items)} | "
+            f"负向证据 {summary(falsified_items)} | "
+            f"仍需监控 {summary(monitorable_items)}"
+        )
+    else:
+        crux_summary = (
+            f"**经质证后**: 活下来 {summary(survived_items)} | "
+            f"被推翻 {summary(falsified_items)} | "
+            f"仍需监控 {summary(monitorable_items)}"
+        )
+    landscape = view.get("landscape_map", {})
+    landscape_line = ""
+    if landscape.get("required"):
+        landscape_line = (
+            f"**发现路径覆盖**: 计划 {landscape.get('path_count', 0)} | "
+            f"SUPPORTED {landscape.get('supported_count', 0)} | "
+            f"REJECTED {landscape.get('rejected_count', 0)} | "
+            f"UNKNOWN {landscape.get('unknown_count', 0)} | "
+            f"UNPROBED {landscape.get('unprobed_count', 0)}"
+        )
+    lines = [
+        "---",
+        "<!-- FACTS_BOX_START — 以下内容由 report_v2.py 确定性生成，LLM 不得修改 -->",
+        "",
+        f"**研究对象**: {facts_text(view['topic'])}",
+        f"**决策问题**: {facts_text(view['decision_question'])} | "
+        f"**题型**: {facts_text(question_type)} | "
+        f"**视野**: {facts_text(view['horizon'])}",
+        f"**证据截止**: {facts_text(as_of_date)} | "
+        f"**预测目标**: {facts_text(forecast_target_date)}",
+    ]
+    if temporal_line:
+        lines.append(temporal_line)
+    lines.extend([
+        f"**结论**: Edge=**{facts_text(verdict['edge_state'])}** | "
+        f"方向=**{verdict['evidence_direction']}** | "
+        f"可行动性=**{verdict['actionability']}** | "
+        f"依据=`{facts_text(verdict.get('reason_code'))}`",
+        f"**运行证据覆盖**: {runtime['round_count']} 轮辩论 | "
+        f"{runtime['unique_source_count']} 去重来源 URL | "
+        f"{runtime['primary_source_count']} 一级来源 | "
+        f"隔离={facts_text(runtime['isolation_status'])}",
+        "",
+        "| Crux | 状态 | 多头最强证据 | 空头最强证据 |",
+        "|------|------|------------|------------|",
+        *crux_rows,
+        "",
+        crux_summary,
+    ])
+    if landscape_line:
+        lines.append(landscape_line)
+    lines.extend([
+        f"**候选线索**: 唯一候选 {counts['lead_count']} 个 | "
+        f"可筛选 {counts['ready_for_screening_count']} | "
+        f"已筛选 {counts['screened_count']} | "
+        f"待核验 {counts['thesis_candidate_count']} | "
+        f"可供人工 {counts['verified_for_human_count']}",
+        f"**正式动作**: `{facts_text(formal['code'])}`{target} — "
+        f"{facts_text(formal['instruction'])}",
+        f"**探索动作**: "
+        f"`{facts_text(exploration_action.get('action_code'))}`"
+        f"（{facts_text(exploration_action.get('hypothesis_id'))}） | "
+        f"授权={facts_text(exploration_action.get('authorization_state'))} — "
+        f"{facts_text(
+            exploration_action.get('instruction')
+            or exploration_action.get('reason')
+        )}",
+        "",
+        "> ⚠️ 支持度是辩论强度指标，不是概率。候选线索不是投资建议。",
+        "> 完整证据账本见配套 Evidence Ledger 文件。",
+        "",
+        "<!-- FACTS_BOX_END -->",
+        "---",
+    ])
+    return "\n".join(lines)
+
+
 def render(state, view="full"):
-    """Render a deterministic brief, candidate-card, audit, or full report."""
+    """Render a facts box, legacy brief, candidate cards, audit, or full report."""
     model = build_report_view_model(state)
+    if view == "facts_box":
+        return render_facts_box(model)
     if view == "brief":
         return _render_decision_brief(model)
     if view == "cards":
@@ -1864,7 +2016,9 @@ def render(state, view="full"):
     if view == "audit":
         return render_audit(state)
     if view != "full":
-        raise ValueError("unknown report view: expected brief, cards, audit, or full")
+        raise ValueError(
+            "unknown report view: expected facts_box, brief, cards, audit, or full"
+        )
     return "\n\n".join([
         _render_decision_brief(model),
         _render_insight_cards(model),
@@ -1880,6 +2034,12 @@ if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--state", default="", help="path to a v2 state json")
+    ap.add_argument(
+        "--view",
+        default="full",
+        choices=["facts_box", "brief", "cards", "audit", "full"],
+        help="report view to render",
+    )
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:
@@ -1900,6 +2060,6 @@ if __name__ == "__main__":
             "C6": {"signal": 0.0, "citations": []},
             "C2": {"signal": 0.5, "citations": []}})
         st["last_convergence"] = {"decision": "converge", "reason": "renderer selftest"}
-        print(render(st))
+        print(render(st, view=a.view))
     elif a.state:
-        print(render(json.load(open(a.state, encoding="utf-8"))))
+        print(render(json.load(open(a.state, encoding="utf-8")), view=a.view))

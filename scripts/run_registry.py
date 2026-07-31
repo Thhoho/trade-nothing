@@ -322,6 +322,9 @@ def _persist_result_artifacts(result, *, context, stage, status, budget):
     }
     for field, label in (
         ("report_markdown", "formal-report"),
+        ("facts_box_markdown", "facts-box"),
+        ("evidence_ledger_markdown", "evidence-ledger"),
+        ("candidate_cards_markdown", "candidate-cards"),
         ("resolution_memo_markdown", "resolution-memo"),
     ):
         if not result.get(field):
@@ -369,6 +372,16 @@ def stage_envelope(result, *, context=None, budget=None, persist=True):
         artifact_paths["result_path"] = artifacts["result"]["artifact_path"]
         if artifacts.get("formal_report"):
             artifact_paths["report_path"] = artifacts["formal_report"]["artifact_path"]
+        if artifacts.get("facts_box"):
+            artifact_paths["facts_box_path"] = artifacts["facts_box"]["artifact_path"]
+        if artifacts.get("evidence_ledger"):
+            artifact_paths["evidence_ledger_path"] = (
+                artifacts["evidence_ledger"]["artifact_path"]
+            )
+        if artifacts.get("candidate_cards"):
+            artifact_paths["candidate_cards_path"] = (
+                artifacts["candidate_cards"]["artifact_path"]
+            )
         if artifacts.get("resolution_memo"):
             artifact_paths["resolution_memo_path"] = artifacts["resolution_memo"]["artifact_path"]
     elif context.get("run_id"):

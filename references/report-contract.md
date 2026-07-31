@@ -19,20 +19,30 @@ visible for human resolution; they are not silently rewritten.
 
 ## Views
 
-- `brief`: root-thesis verdict, what survived/failed, candidate counts, the deterministic
-  `formal_action`, one clearly separated `exploration_action` or null, change trigger, and runtime
-  limits. Prefer this when parent-context cost matters.
+- `facts_box`: deterministic compact summary with the three-axis verdict, crux table, candidate
+  counts, runtime evidence counts, and singular `formal_action`. Embed it verbatim at the top of
+  every new Decision Brief. A narrative model must not modify any value, status word, crux row,
+  count, or action in this box.
+- `brief`: **legacy** deterministic template containing the root-thesis verdict, what
+  survived/failed, candidate counts, `formal_action`, one clearly separated
+  `exploration_action` or null, change trigger, and runtime limits. Preserved for backward
+  compatibility; prefer `facts_box` plus content-driven narrative synthesis for new reports.
 - `cards`: one card per exact candidate identity. Show status before narrative, then economic
   exposure, expectation gap, pricing anchor, explicit trading vehicle and bilateral tradability
   assessment, catalyst, falsifier, blockers, and next action.
 - `audit`: complete crux ledger, source registry, CandidateScreen matrix, snapshot alignment, and
   runtime details, plus exploration lineage from wild hypothesis through proxy trails and tests.
-- `full`: `brief -> insight cards -> candidate cards -> collapsed audit`. This is the default
-  persisted Markdown artifact.
+  Persist this separately as the Evidence Ledger.
+- `full`: **deprecated for new reports**. Retains
+  `brief -> insight cards -> candidate cards -> collapsed audit` for backward compatibility.
+  New reports use `facts_box` plus narrative synthesis and persist `audit` separately.
 
-For a registered run, the stage envelope persists the selected Markdown view and returns its
-content-addressed `report_path`; it does not inline the report into the parent context. Only open the
-full artifact when the user asks to read/audit it. Otherwise return the brief projection and path.
+`--report` returns `facts_box_markdown`, `evidence_ledger_markdown`, and
+`candidate_cards_markdown` together with `report_view_model`. The compatibility field
+`report_markdown` remains available but is marked deprecated. For a registered run, the stage
+envelope persists the selected compatibility view and the complete result artifact; it does not
+inline the report bodies into the parent context. Load the result artifact when compiling the two
+new files, and open the Evidence Ledger only when the user asks to read or audit it.
 
 Select a view with:
 
@@ -45,6 +55,26 @@ when the caller explicitly wants optional narrative enhancement. A synthesis may
 must not change any state, count, blocker, next-action code, source, maturity term, exploration
 status, or observation/inference boundary. It may not invent a spark that is absent from the stored
 exploration ledger.
+
+## Composed Decision Brief
+
+The orchestrator produces a report-data bundle; it does not make an unconstrained narrative model
+the source of report truth. A host composes a new Decision Brief in this order:
+
+1. embed `facts_box_markdown` verbatim at the file top;
+2. append no more than 120 lines of content-driven narrative from `report_view_model` and, only
+   when present, `synthesis_packet`;
+3. optionally append `candidate_cards_markdown` without rewriting card states or action codes.
+
+The complete Brief stays within 150 lines before any separately persisted Candidate Cards. It must
+surface both the locked `formal_action` and the research-only `exploration_action` without implying
+that the latter is authorized. Narrative structure and headings may vary; the verdict, time
+contract, crux rows, coverage counts, candidate counts, action codes, and evidence boundaries may
+not. Citations must already exist in structured input and use inline publisher/date links.
+
+Registered runs persist the Facts Box, Evidence Ledger, and Candidate Cards as separate
+content-addressed artifacts. The LLM-composed Brief is a later host artifact; the compatibility
+`report_path` is not evidence that free narrative composition occurred.
 
 ## Insight cards
 
@@ -224,6 +254,11 @@ three separate claims:
 No one result implies either of the other two.
 Exploration richness is not a fourth promotion gate. A valid report may contain
 `HYPOTHESIS_ONLY` insight cards, provided their labels and evidence boundaries match state.
+
+For a composed Decision Brief, validation compares only the marked Facts Box byte-for-byte with
+`render(state, "facts_box")`; text after the box may vary. A missing, duplicated, moved, or modified
+Facts Box fails report validation. Legacy deterministic `brief`, `cards`, `audit`, and `full` views
+continue to require whole-view equality with the state-derived renderer.
 
 ## Research allocation and evidence matrix
 
