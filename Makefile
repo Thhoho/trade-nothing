@@ -65,6 +65,7 @@ test:
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_research_output.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_candidate_screen_engine.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_claim_verification_engine.py
+	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_version.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_benchmark_current.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_benchmark_harness.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_discovery_benchmark_harness.py

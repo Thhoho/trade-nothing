@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Trade Nothing v0.10 — Tier-1 Structured Data Providers (citable hard anchors)
+Trade Nothing v0.11.0 — Tier-1 Structured Data Providers (citable hard anchors)
 
 The empirical finding: the old DDG-regex "verified_crawler" returns UNAVAILABLE for
 tenders/SMM/customs, so the system is de-facto WebSearch-driven for qualitative evidence.
@@ -23,7 +23,7 @@ try:
 except Exception:
     def clean_proxy_env(): pass
 
-UA = "TradeNothing/0.10 research (contact: weiqi.x12@gmail.com)"
+UA = "TradeNothing/0.11.0 research (contact: weiqi.x12@gmail.com)"
 
 
 def _get(url, headers=None, timeout=12):

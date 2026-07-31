@@ -190,7 +190,7 @@ bottom price, target price, or path probability.
 
 ---
 
-### Mode F: `-deepthink2` — Crux-Based Adversarial Pipeline (v0.10, recommended)
+### Mode F: `-deepthink2` — Crux-Based Adversarial Pipeline (v0.11.0, recommended)
 
 > Replaces the single-posterior + LFI layer (which railroaded every run to 0%/100% and always
 > burned 12 rounds) with two separate ledgers: a non-promotable **exploration ledger** for wild
@@ -464,8 +464,9 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > ledger may compute `downside / (upside + downside)` as a break-even success threshold. It does not
 > estimate success probability, expected return, target price, direction, or position size; missing
 > inputs remain `UNKNOWN`.
-> Expiry and falsifier remain explicit audit fields in v0.10; the runtime does not silently invent a
-> terminal state, delete a hypothesis, or promote it on their basis.
+> Introduced in v0.10 and retained in v0.11.0, expiry and falsifier remain explicit audit fields;
+> the runtime does not silently invent a terminal state, delete a hypothesis, or promote it on
+> their basis.
 > Read `references/hypothesis-protocol.md` before changing the exploration ledger, role payloads,
 > maturity transitions, proxy evidence, priority heuristic, or report projection.
 > `OPPORTUNITY_DISCOVERY` and `HYBRID` frames must use the entity-agnostic 5–7 path Landscape Map in

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Trade Nothing v0.10 — Crux Orchestrator  (-deepthink2; parallel to deepthink_orchestrator.py)
+Trade Nothing v0.11.0 — Crux Orchestrator  (-deepthink2; parallel to deepthink_orchestrator.py)
 
 Deterministic state machine. Control flow lives in code; the LLM only produces content.
 
@@ -3044,7 +3044,7 @@ def _jload(s):
     return json.loads(s) if s else {}
 
 def main():
-    ap = argparse.ArgumentParser(description="Trade Nothing v0.10 Crux Orchestrator")
+    ap = argparse.ArgumentParser(description="Trade Nothing v0.11.0 Crux Orchestrator")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--frame", action="store_true")
     g.add_argument("--init", action="store_true")

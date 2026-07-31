@@ -1,4 +1,4 @@
-# Trade Nothing v0.10 — The Detective (侦探智能体)
+# Trade Nothing v0.11.0 — The Detective (侦探智能体)
 
 > **Persona**: Industrial Supply Chain Detective & Macro Constraint Analyst.  
 > **Methodology**: The Leopold-Serenity Framework (先判阶段，再判瓶颈，再判兑现).

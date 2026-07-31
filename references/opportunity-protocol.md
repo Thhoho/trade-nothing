@@ -37,9 +37,10 @@ conditions, not additional states. These labels are exploration maturity, not en
 states. Even exploration `EVIDENCE_BACKED` must satisfy the independent Admission rule below before
 an `OpportunitySeed` exists.
 
-Expiry and falsifier are explicit audit fields in v0.10, not silently inferred maturity states.
-Crossing either boundary must stay visible for human review or a later explicitly authorized run;
-the runtime does not delete, promote, or relabel the hypothesis automatically.
+Introduced in v0.10 and retained in v0.11.0, expiry and falsifier are explicit audit fields, not
+silently inferred maturity states. Crossing either boundary must stay visible for human review or
+a later explicitly authorized run; the runtime does not delete, promote, or relabel the hypothesis
+automatically.
 
 Every new `hypothesis_spark` should carry `subject`, `origin_crux`, optional
 `landscape_path_id`, `status=HYPOTHESIS_ONLY`, `hypothesis`, `why_nonconsensus`, a list-valued

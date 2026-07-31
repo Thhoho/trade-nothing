@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cross-engine regression tests for the v0.10 exploration architecture."""
+"""Cross-engine regression tests for the exploration architecture introduced in v0.10."""
 
 import copy
 import os
@@ -24,7 +24,7 @@ from test_v2_engine import converged_state
 
 
 def explicit_hybrid_frame():
-    """Upgrade a complete legacy universe frame to the explicit v0.10 garden."""
+    """Upgrade a complete legacy universe frame to the garden schema introduced in v0.10."""
     raw = orchestrator_frame()
     raw.pop("landscape_map", None)
     raw["research_intent"] = "HYBRID"

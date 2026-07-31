@@ -9,7 +9,8 @@
 <p align="center">
   <a href="README_zh.md">中文</a> ·
   <a href="SKILL.md">Runtime contract</a> ·
-  <a href="docs/hypothesis-led-research-v0.10.md">v0.10 design</a>
+  <a href="docs/release-v0.11.0.md">v0.11.0 release</a> ·
+  <a href="docs/hypothesis-led-research-v0.10.md">v0.10 foundation design</a>
 </p>
 
 Trade Nothing is an adversarial investment-research skill for agent runtimes. It is neither a
@@ -24,7 +25,7 @@ hide.
 It is a research workflow, not an automated trading system. It does not produce an automatic
 buy/sell instruction, target price, expected return, Kelly allocation, or position size.
 
-## v0.10.0: hypothesis-led research
+## v0.11.0: hypothesis-led, time-bounded research
 
 > **Imagination proposes. Evidence promotes. Risk control governs execution.**
 
@@ -44,8 +45,16 @@ citation. It cannot change a crux score, root verdict, CandidateScreen result, T
 order, or position. To cross into the formal track, a newly drafted `OpportunitySeed` must
 independently pass the existing same-agent, same-round, same-crux evidence gate.
 
-What changed:
+v0.11.0 retains the v0.10 hypothesis-led foundation and makes time, research allocation, and
+human-facing report outputs explicit contracts. The current method includes:
 
+- **Time semantics are fail-closed.** `as_of_date` is the evidence cutoff, `horizon` is the
+  relative decision window, and `forecast_target_date` is an optional exact future target. A
+  future target can never masquerade as evidence coverage.
+- **Reports have a locked facts layer.** Every new Decision Brief begins with the exact
+  deterministic Facts Box; the Evidence Ledger and Candidate Cards are separate, content-addressed
+  artifacts. Free narrative may improve readability but cannot rewrite state, citations, or action
+  gates.
 - **Bold conjecture is a first-class research object.** `OPPORTUNITY_DISCOVERY` and `HYBRID`
   frames begin with 5–7 entity-agnostic paths. Each `WildHypothesis` records a causal chain,
   consensus blind spot, upside and downside mechanisms, catalyst, expiry, alternative
@@ -64,16 +73,17 @@ What changed:
   bounded research adds no new evidence. Never-probed, one-sided, source-thin, or newly introduced
   cruxes remain fail-closed.
 
-Read the full [v0.10 design note](docs/hypothesis-led-research-v0.10.md),
+Read the [v0.11.0 release note](docs/release-v0.11.0.md), the historical
+[v0.10 foundation design](docs/hypothesis-led-research-v0.10.md),
 [hypothesis protocol](references/hypothesis-protocol.md), and
 [report contract](references/report-contract.md).
 
 > [!IMPORTANT]
-> **Calibration status:** v0.10.0 is implemented and passes the deterministic engineering safety
+> **Calibration status:** v0.11.0 is implemented and passes the deterministic engineering safety
 > gates, but `scripts/benchmark_current.py --check` currently returns
 > `UNBENCHMARKED_METHOD_CHANGE`. The operational method differs from the last calibrated v0.9.9
 > identity. Existing closed-packet and discovery suites remain historical controls; they are not
-> evidence that v0.10 improves opportunity recall, lead quality, alpha, return, or risk-adjusted
+> evidence that v0.11 improves opportunity recall, lead quality, alpha, return, or risk-adjusted
 > return. Engineering correctness, research effectiveness, and investment performance are three
 > separate claims.
 

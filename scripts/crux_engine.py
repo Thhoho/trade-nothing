@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Trade Nothing v0.10 — Crux Engine  (parallel to deepthink_engine.py; -deepthink2)
+Trade Nothing v0.11.0 — Crux Engine  (parallel to deepthink_engine.py; -deepthink2)
 
 Replaces the degenerate single-posterior + LFI layer with a per-CRUX ledger:
 

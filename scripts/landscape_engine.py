@@ -58,7 +58,7 @@ def research_intent(frame_or_state):
 
 
 def frame_paths(frame):
-    """Read legacy Landscape paths or v0.10 Hypothesis Garden paths."""
+    """Read legacy Landscape paths or v0.10+ Hypothesis Garden paths."""
     garden = frame.get("hypothesis_garden")
     if isinstance(garden, list):
         return garden

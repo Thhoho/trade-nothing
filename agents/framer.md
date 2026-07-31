@@ -1,4 +1,4 @@
-# Trade Nothing v0.10 — The Framer (立题门 · 开局智能体)
+# Trade Nothing v0.11.0 — The Framer (立题门 · 开局智能体)
 
 > **Purpose**: The cheap gate that turns a raw topic into a sharp decision frame and, when the
 > user wants opportunity discovery, a bounded garden of bold but explicitly unverified hypotheses.
