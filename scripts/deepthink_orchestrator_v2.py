@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Trade Nothing v0.11.0 — Crux Orchestrator  (-deepthink2; parallel to deepthink_orchestrator.py)
+Trade Nothing v0.13.0 — Crux Orchestrator  (-deepthink2; parallel to deepthink_orchestrator.py)
 
 Deterministic state machine. Control flow lives in code; the LLM only produces content.
 
@@ -48,6 +48,7 @@ import candidate_gap_engine
 import candidate_screen_engine
 import claim_verification_engine
 import framing_feasibility
+import tracking_engine
 import research_output
 import run_registry
 import research_start_packet
@@ -838,7 +839,7 @@ def _enforce_round_scope(judge, state, policy, admitted_ids):
             signal["quality_flags"] = sorted(set(flags))
     return sorted(allowed)
 
-def frame_prompt(topic, start_context=None):
+def frame_prompt(topic, start_context=None, briefing_context=None):
     prompt = ("[HOST EXECUTION CONTRACT — MANDATORY]\n"
             "Execute the Framer inline in the current parent context. Do not call "
             "define_subagent, invoke_subagent, Task, delegate, context-fork, or any equivalent "
@@ -867,77 +868,133 @@ def frame_prompt(topic, start_context=None):
                 "payload_sha256": start_context["payload_sha256"],
             }, ensure_ascii=False)
         )
+    if briefing_context:
+        prompt += (
+            "\n[USER BRIEFING — 背景上下文，不是证据]\n"
+            + json.dumps(briefing_context, ensure_ascii=False, indent=2)
+            + "\n使用 briefing 中的信息来定义更精准的 crux、evidence_plan 和"
+            "hypothesis_garden。所有 briefing 内容仍必须在 premise_audit 中标记为"
+            "HYPOTHESIS。briefing 中的 URL 不能直接当作 SOURCED 引用。"
+        )
     return prompt
 
+def _exploration_summary_table(state, max_rows=20):
+    """Compress the hypothesis ledger into a compact markdown table for prompts.
+
+    Full JSON dumps of 35+ hypotheses consume ~5,600 tokens per round (45% of the
+    Detective prompt).  A summary table with one row per hypothesis cuts this to
+    ~700 tokens while keeping enough information for agents to reference existing
+    hypotheses when creating sparks and proxy trails.
+    """
+    ledger = state.get("hypothesis_ledger", {})
+    hypotheses = ledger.get("hypotheses", []) if isinstance(ledger, dict) else []
+    if not isinstance(hypotheses, list) or not hypotheses:
+        return "（尚无探索假说）"
+    rows = []
+    for item in hypotheses[:max_rows]:
+        if not isinstance(item, dict):
+            continue
+        hid = item.get("hypothesis_id", "?")
+        hypothesis_text = _compact_text(item.get("hypothesis", ""), limit=40)
+        state_label = item.get("state", "HYPOTHESIS_ONLY")
+        priority = (item.get("exploration_priority") or {}).get("band", "—")
+        proxy_count = len([
+            t for t in item.get("proxy_trails", [])
+            if isinstance(t, dict)
+        ])
+        rows.append(
+            f"| `{hid}` | {hypothesis_text} | `{state_label}` | {priority} | "
+            f"{proxy_count} 条 |"
+        )
+    header = (
+        "| 假说ID | 猜想 (≤40字) | 状态 | 优先级 | ProxyTrail |\n"
+        "|--------|-------------|------|--------|------------|\n"
+    )
+    trailer = ""
+    if len(hypotheses) > max_rows:
+        trailer = f"\n（另有 {len(hypotheses) - max_rows} 条假说，见 state.json → hypothesis_ledger）"
+    return header + "\n".join(rows) + trailer
+
+
+def _crux_scope_compact(state, open_ids):
+    """Compact crux scope display: key facts only, no full evidence_plan JSON."""
+    lines = []
+    for cid in open_ids:
+        cx = state["cruxes"][cid]
+        catalyst = cx.get("catalyst_window", {})
+        catalyst_text = ""
+        if isinstance(catalyst, dict) and catalyst.get("event"):
+            catalyst_text = (
+                f"{catalyst.get('event', '—')} @ {catalyst.get('expected_by', '—')} "
+                f"[{catalyst.get('date_status', 'REVIEW_CHECKPOINT')}]"
+            )
+        # Summarise pending evidence routes instead of dumping full JSON.
+        plan = cx.get("evidence_plan", [])
+        if isinstance(plan, list) and plan:
+            pending_routes = [
+                r.get("publisher_class", "?") for r in plan
+                if isinstance(r, dict)
+            ]
+            route_text = "、".join(pending_routes[:3]) if pending_routes else "—"
+        else:
+            route_text = "—"
+        lines.append(
+            f"- **[{cid}] {cx['label']}** ({cx.get('logic_role', 'THESIS_HINGE')})\n"
+            f"  对方最强(bear): {cx.get('best_bear') or '（暂无）'}\n"
+            f"  我方最强(bull): {cx.get('best_bull') or '（暂无）'}\n"
+            f"  监控: {cx.get('monitor_anchor', '')}\n"
+            f"  反证: {cx.get('falsifier', '')}\n"
+            f"  催化: {catalyst_text}\n"
+            f"  待查路线: {route_text}"
+        )
+    return "\n".join(lines)
+
+
 def dispatch_prompts(state, round_num):
+    """Generate round-scoped dispatch prompts with static directives moved to agent.md.
+
+    v0.13 change: budget rules, chain-check rules, opportunity harvest rules,
+    exploration rules, landscape rules, and evidence-format constraints now live
+    permanently in detective.md / inquisitor.md.  The round prompt carries only
+    dynamic state: which cruxes to probe, what's been established, the current
+    exploration summary, and this round's scheduling contract.
+    """
     policy = _round_policy(state, round_num)
     open_ids = policy["dispatch_cruxes"]
     landscape_plan = landscape_engine.ensure_round_plan(
         state, round_num, dispatch_cruxes=open_ids
     )
     fc = state.get("forbidden_consensus", [])
-    lines = []
-    for cid in open_ids:
-        cx = state["cruxes"][cid]
-        catalyst = cx.get("catalyst_window", {})
-        catalyst_text = (f"{catalyst.get('event', '—')} @ {catalyst.get('expected_by', '—')} "
-                         f"[{catalyst.get('date_status', 'UNVERIFIED')}; "
-                         f"basis={catalyst.get('basis_claim_id', '—')}]"
-                         if isinstance(catalyst, dict) else str(catalyst or "—"))
-        lines.append(f"- [{cid}] {cx['label']}: {cx.get('definition','')}\n"
-                     f"    逻辑角色: {cx.get('logic_role', 'THESIS_HINGE')}\n"
-                     f"    对方当前最强点(bear): {cx.get('best_bear') or '（暂无）'}\n"
-                     f"    我方当前最强点(bull): {cx.get('best_bull') or '（暂无）'}\n"
-                     f"    监控锚点: {cx.get('monitor_anchor','')}\n"
-                     f"    反证条件: {cx.get('falsifier','')}\n"
-                     f"    催化窗口: {catalyst_text}\n"
-                     f"    冻结证据路线: "
-                     f"{json.dumps(cx.get('evidence_plan', []), ensure_ascii=False)}")
-    scope = "\n".join(lines)
-    resolved = [f"{cid}({state['cruxes'][cid]['label']})" for cid, cx in state["cruxes"].items()
-                if cx["retired"] and cx["status"].startswith("RESOLVED")]
-    # ── 退休 crux 上下文（不需重辩，但供产业链交叉引用）──
+    scope = _crux_scope_compact(state, open_ids)
+    resolved = [
+        f"{cid}({state['cruxes'][cid]['label']})"
+        for cid, cx in state["cruxes"].items()
+        if cx["retired"] and cx["status"].startswith("RESOLVED")
+    ]
+    # Retired crux context (for supply-chain cross-reference only).
     retired_ctx = ""
-    retired_cruxes = [(cid, cx) for cid, cx in state["cruxes"].items() if cx["retired"]]
+    retired_cruxes = [
+        (cid, cx) for cid, cx in state["cruxes"].items() if cx["retired"]
+    ]
     if retired_cruxes:
-        rc_lines = [f"  - {cid}({cx['label']}): {cx['status']}, debate-support={int(cx['p_history'][-1]*100)}/100, "
-                    f"bull={cx.get('best_bull') or '?'}, bear={cx.get('best_bear') or '?'}"
-                    for cid, cx in retired_cruxes]
-        retired_ctx = ("\n📋 已收敛 crux 上下文（不需重辩，但供产业链交叉引用）:\n"
-                       + "\n".join(rc_lines))
-    # ── 产业链检查：只服务当前 crux，不为制造篇幅而重复全链路 ──
-    chain_directive = (
-        "\n🔗 产业链检查（按需）:\n"
-        "  1. 只追踪能改变当前 OPEN crux 的价值链节点，不重复已经登记的行业背景\n"
-        "  2. 新发现必须带具体公司/项目/产能/招标/海关页面；没有增量就返回 null\n"
-        "  3. 禁止为了满足新颖性强行制造新维度或晚期 crux"
-    )
-    opportunity_directive = (
-        "\n💎 OpportunitySeed 收割（每个 agent 每轮最多 3 条，可为 0）:\n"
-        "  1. 原命题若失败，继续找替代者、竞争者、瓶颈所有者、基础资产所有者、二阶受益者或做空候选\n"
-        "  2. 必须写清 crux 结果→价值转移→候选经济暴露；只有主题名称不得提交\n"
-        "  3. evidence 必须逐字复用本 agent 本轮同一 origin_crux 的结构化证据\n"
-        "  4. 线索仅进入后续筛选队列，不得给收益率、目标价或仓位"
-    )
-    exploration_packet = research_output._compact_exploration(
-        state, limit=7
-    )
-    # Dispatch carries prior ledger facts but never the separately authorized
-    # report-level research action.
-    exploration_packet.pop("exploration_action", None)
+        rc_lines = [
+            f"  - {cid}({cx['label']}): {cx['status']}, "
+            f"support={int(cx['p_history'][-1]*100)}/100, "
+            f"bull={cx.get('best_bull') or '?'}, bear={cx.get('best_bear') or '?'}"
+            for cid, cx in retired_cruxes
+        ]
+        retired_ctx = (
+            "\n📋 已收敛 crux 上下文（不需重辩，供产业链交叉引用）:\n"
+            + "\n".join(rc_lines)
+        )
+    # Exploration summary table (compact, not full JSON).
+    exploration_table = _exploration_summary_table(state)
     exploration_directive = (
-        "\n✨ 假说探索轨（无证据评分、候选晋级或交易权限）:\n"
-        f"{json.dumps(exploration_packet, ensure_ascii=False)}\n"
-        "  1. 每个 agent 每轮最多 3 条 hypothesis_sparks + 3 条 proxy_trails，可为 0\n"
-        "  2. 新猜想可无引用，但必须 HYPOTHESIS_ONLY，写因果链、最强替代解释、反证和最低成本判别测试\n"
-        "  3. proxy_trails 只记录本轮实际遇到的观察，不得把搜索计划冒充线索；"
-        "用已有 hypothesis_id 或同轮猜想的 exact hypothesis 绑定\n"
-        "  4. 有来源的 ProxyTrail 仍不进入 Judge；只有独立 OpportunitySeed 重新满足同轮、同 agent、"
-        "同 crux 证据门，才可进入正式候选轨\n"
-        "  5. payoff 只接受已明示且同单位的 upside/downside；缺失置 null，禁止编造胜率、目标价或仓位\n"
-        "  6. 不得为探索轨新增搜索、工具调用或轮次；只可记录执行本轮正式 crux/Landscape "
-        "任务时顺带遇到的观察。报告级 exploration_action 未经用户另行授权，不在本轮执行。"
+        "\n✨ 假说探索轨（现有假说摘要，引用时使用 hypothesis_id）:\n"
+        f"{exploration_table}\n"
+        "规则见 detective.md / inquisitor.md §探索轨。"
     )
+    # Landscape assignments.
     landscape_by_id = {
         item.get("path_id"): item
         for item in state.get("landscape_map", {}).get("paths", [])
@@ -947,81 +1004,84 @@ def dispatch_prompts(state, round_num):
     def landscape_directive(role):
         assigned = landscape_plan.get("assignments", {}).get(role, [])
         if not assigned:
-            return "\n🗺 Landscape Map: 本轮无路径分配；输出 landscape_findings=[]。"
-        packets = [landscape_by_id[path_id] for path_id in assigned if path_id in landscape_by_id]
+            return "\n🗺 Landscape: 本轮无路径分配；输出 landscape_findings=[]。"
+        packets = [
+            landscape_by_id[pid] for pid in assigned if pid in landscape_by_id
+        ]
         return (
-            "\n🗺 Landscape Map 路径质证（硬分配，每轮最多 2 条）:\n"
+            "\n🗺 Landscape 路径质证（硬分配）:\n"
             f"{json.dumps(packets, ensure_ascii=False)}\n"
-            "  1. 每条分配路径恰好返回一个 landscape_findings 项；不得改 path_id 或 linked_crux_id\n"
-            "  2. state 只能 SUPPORTED / REJECTED / UNKNOWN；非 UNKNOWN 必须逐字复用本角色"
-            "同轮、linked_crux_id 下的结构化 evidence/attack\n"
-            "  3. 两条 search_queries 是该路径的查询上限，不得扩写成实体名单后全网撒网\n"
-            "  4. Landscape 是覆盖账本，不是推荐；不得以候选数量替代路径质证"
+            "规则见 detective.md / inquisitor.md §Landscape。"
         )
-    budget_directive = (
-        "\n🧮 有界研究预算（硬上限）:\n"
-        f"  1. 每个 agent 本轮最多 {min(10, 2 * max(1, len(open_ids)))} 次网页搜索，"
-        "每条本轮 crux 最多 2 次\n"
-        "  2. 每条 crux 最多保留 2 个一级来源 + 1 个补充来源\n"
-        "  3. 连续 2 次搜索没有新增一级证据，立即返回 UNKNOWN/INSUFFICIENT_EVIDENCE\n"
-        "  4. 优先执行该 crux 冻结的不同 publisher_class 证据路线；不得把同一发布者的换页查询当成第二路线\n"
-        "  5. 禁止重复查询、重复域名和为了必须回答而换词无限搜索"
-    )
+    # Scheduling contract (the only per-round policy that changes).
     scope_directive = (
-        f"\n🎯 本轮调度契约: free_roam_allowed={str(policy['free_roam_allowed']).lower()}, "
-        f"new_cruxes_allowed={str(policy['new_cruxes_allowed']).lower()}, "
-        f"new_crux_cutoff_round={policy['new_crux_cutoff_round']}。\n"
-        f"本轮只处理 {policy['dispatch_cruxes']}；延后但仍 OPEN: "
+        f"\n🎯 本轮调度: free_roam={str(policy['free_roam_allowed']).lower()}, "
+        f"new_cruxes={str(policy['new_cruxes_allowed']).lower()}, "
+        f"cutoff_round={policy['new_crux_cutoff_round']}。\n"
+        f"本轮处理: {policy['dispatch_cruxes']}；延后: "
         f"{policy['deferred_open_cruxes']}。\n"
-        "未检验 crux 永远优先；若 free-roam 或新增 crux 被禁用，不得用旧 crux 或新主题替代当前任务。"
+        "未检验 crux 永远优先。"
     )
-    common = (f"决策问题: {state['decision_question']} | 视野: {state['horizon']} | as-of: "
-              f"{state.get('frame_contract', {}).get('as_of_date', '—')}\n"
-              f"分析单元: {state.get('frame_contract', {}).get('unit_of_analysis', '—')}\n"
-              f"立题事实状态: {state.get('frame_contract', {}).get('quality_status', 'UNVERIFIED')}\n"
-              "立题前提账本（HYPOTHESIS 不是事实，必须在辩论中验证）:\n"
-              f"{json.dumps(state.get('frame_contract', {}).get('premise_audit', []), ensure_ascii=False)}\n"
-              f"本轮重点质证以下 OPEN crux:\n{scope}\n"
-              f"{retired_ctx}\n"
-              f"历史负面先验（必须显式检查，不得机械照抄）:\n"
-              f"{_compact_text(state.get('negative_priors','（无）'))}\n"
-              f"平庸共识禁区(禁用): {fc}\n"
-              f"{chain_directive}\n"
-              f"{exploration_directive}\n"
-              f"{opportunity_directive}\n"
-              f"{budget_directive}\n"
-              f"{scope_directive}\n"
-              "硬约束: 每个数据点必须带 来源+具体URL+日期；禁止主页级URL；"
-              "不确定性必须明确表达；无来源数字必须省略或置 null；没有新维度时明确写 null。")
-    det = (f"[Detective · detective.md · model={model_for('detective')}] Round {round_num}\n{common}\n"
-           f"{landscape_directive('detective')}\n"
-           "任务: 对每个 OPEN crux 用**带URL的硬数据**加固多头/反驳空头。\n"
-           "额外要求: 输出中必须包含 supply_chain_map 字段描述本轮新发现的产业链节点。\n"
-           "输出 detective.md 的 JSON。")
+    # ── Assemble the common dynamic section ──
+    common = (
+        f"决策问题: {state['decision_question']} | 视野: {state['horizon']} | "
+        f"as-of: {state.get('frame_contract', {}).get('as_of_date', '—')}\n"
+        f"分析单元: {state.get('frame_contract', {}).get('unit_of_analysis', '—')} | "
+        f"立题状态: {state.get('frame_contract', {}).get('quality_status', 'UNVERIFIED')}\n"
+        "立题前提（HYPOTHESIS 非事实）:\n"
+        f"{json.dumps(state.get('frame_contract', {}).get('premise_audit', []), ensure_ascii=False)}\n"
+        f"本轮重点质证以下 OPEN crux:\n{scope}\n"
+        f"{retired_ctx}\n"
+        f"历史负面先验（必须显式检查）:\n"
+        f"{_compact_text(state.get('negative_priors','（无）'))}\n"
+        f"平庸共识禁区: {fc}\n"
+        f"{exploration_directive}\n"
+        f"{scope_directive}"
+    )
+    # ── Role-specific prompts ──
+    det = (
+        f"[Detective · detective.md · model={model_for('detective')}] Round {round_num}\n"
+        f"{common}\n"
+        f"{landscape_directive('detective')}\n"
+        "任务: 对每个 OPEN crux 用带URL的硬数据加固多头/反驳空头。\n"
+        "输出 detective.md 的 JSON（含 supply_chain_map）。"
+    )
     free_roam_text = (
-        f"⭐ FREE-ROAM(最多1个名额): 可对以下已收敛 crux 用新硬数据攻击: {resolved or '（暂无）'}。"
-        if policy["free_roam_allowed"] else
-        "⛔ 本轮 FREE-ROAM 禁用：存在从未质证 crux 或已临近轮次上限。"
+        f"⭐ FREE-ROAM(最多1个): 可攻击已收敛 crux: {resolved or '（暂无）'}。"
+        if policy["free_roam_allowed"]
+        else "⛔ FREE-ROAM 禁用（存在未检验 crux 或临近轮次上限）。"
     )
     new_crux_text = (
-        "发现全新攻击面时，按 judge.md 完整 schema 提出。"
-        if policy["new_cruxes_allowed"] else
-        "本轮禁止新增 crux；将潜在线索留在叙事中，不得让其阻塞当前 run。"
+        "发现全新攻击面时，按 inquisitor.md 完整 schema 提出 new_crux。"
+        if policy["new_cruxes_allowed"]
+        else "本轮禁止新增 crux；潜在线索留在叙事中，不得阻塞当前 run。"
     )
-    inq = (f"[Inquisitor · inquisitor.md · model={model_for('inquisitor')}] Round {round_num}\n{common}\n"
-           f"{landscape_directive('inquisitor')}\n"
-           f"任务: 对每个 OPEN crux 发起带数据的致命攻击。{new_crux_text}\n"
-           f"{free_roam_text}\n输出 inquisitor.md 的 JSON。")
-    judge = (f"[Judge · judge.md · model={model_for('judge_scoring')}] Round {round_num}\n"
-             f"读 Detective/Inquisitor 两份 JSON，对 OPEN crux {open_ids} 各打一个 signal∈[-1,1]+引用，"
-             f"free-roam={policy['free_roam_allowed']}，new_cruxes={policy['new_cruxes_allowed']}。"
-             "完全忽略 hypothesis_sparks、proxy_trails 与所有 HYPOTHESIS_ONLY 内容；"
-             "它们不得进入 signal、citations 或 new_cruxes。"
-             "严格按 judge.md 的 JSON 输出。")
-    return {"open_cruxes": policy["open_cruxes"], "dispatch_cruxes": open_ids,
-            "round_policy": policy,
-            "landscape_assignments": landscape_plan.get("assignments", {}),
-            "detective_prompt": det, "inquisitor_prompt": inq, "judge_prompt": judge}
+    inq = (
+        f"[Inquisitor · inquisitor.md · model={model_for('inquisitor')}] Round {round_num}\n"
+        f"{common}\n"
+        f"{landscape_directive('inquisitor')}\n"
+        f"任务: 对每个 OPEN crux 发起带数据的致命攻击。{new_crux_text}\n"
+        f"{free_roam_text}\n"
+        "输出 inquisitor.md 的 JSON（含 scenario_paths 和 odds_calibration）。"
+    )
+    judge = (
+        f"[Judge · judge.md · model={model_for('judge_scoring')}] Round {round_num}\n"
+        f"读 Detective/Inquisitor 两份 JSON，对 OPEN crux {open_ids} 各打一个 "
+        f"signal∈[-1,1]+引用，free-roam={policy['free_roam_allowed']}，"
+        f"new_cruxes={policy['new_cruxes_allowed']}。"
+        "完全忽略 hypothesis_sparks、proxy_trails 与所有 HYPOTHESIS_ONLY 内容；"
+        "它们不得进入 signal、citations 或 new_cruxes。"
+        "严格按 judge.md 的 JSON 输出。"
+    )
+    return {
+        "open_cruxes": policy["open_cruxes"],
+        "dispatch_cruxes": open_ids,
+        "round_policy": policy,
+        "landscape_assignments": landscape_plan.get("assignments", {}),
+        "detective_prompt": det,
+        "inquisitor_prompt": inq,
+        "judge_prompt": judge,
+    }
 
 
 def candidate_screen_prompts(state, seeds, as_of_date):
@@ -1132,13 +1192,29 @@ def _research_start_context(topic, packet, frame=None):
     return context
 
 
-def cmd_frame(topic, start_packet=None):
+def _resolve_briefing(briefing_input):
+    """Resolve the optional user briefing into framing context.
+
+    Returns None when empty; {"type": "url", "content": ...} when the input
+    looks like an http(s) URL (the parent context fetches the page); otherwise
+    {"type": "text", "content": ...} truncated to 2000 chars.
+    """
+    stripped = (briefing_input or "").strip()
+    if not stripped:
+        return None
+    if stripped.startswith(("http://", "https://")):
+        return {"type": "url", "content": briefing_input}
+    return {"type": "text", "content": briefing_input[:2000]}
+
+
+def cmd_frame(topic, start_packet=None, briefing=""):
     try:
         start_context = _research_start_context(topic, start_packet)
     except research_start_packet.PacketValidationError as exc:
         return {"status": "start_packet_rejected", "topic": topic, "reason": str(exc)}
     if start_context and not topic:
         topic = start_context["question"]["topic"]
+    briefing_context = _resolve_briefing(briefing)
     return {"status": "need_framing", "topic": topic, "model": model_for("crux_extraction"),
             "execution_contract": {
                 "dispatch_mode": "INLINE_PARENT",
@@ -1148,7 +1224,7 @@ def cmd_frame(topic, start_packet=None):
                 "stage_timeout_seconds": 120,
                 "on_timeout": "call --runtime-failure --stage framing --reason '<brief reason>'",
             },
-            "framer_prompt": frame_prompt(topic, start_context),
+            "framer_prompt": frame_prompt(topic, start_context, briefing_context),
             "research_start_context": start_context,
             "artifact_policy": _frame_artifact_policy(),
             "instruction": (
@@ -1320,12 +1396,16 @@ def cmd_submit(topic, detective, inquisitor, judge):
     # Harvest before convergence so a final-round candidate/evidence change cannot be
     # hidden by a premature coverage-complete decision.
     harvest = opportunity_engine.harvest_round(state, round_num, detective, inquisitor)
+    # Promote mature EVIDENCE_BACKED hypotheses into draft OpportunitySeeds
+    # before convergence so a final-round evidence change is captured.
+    hypothesis_escalation = opportunity_engine.escalate_mature_hypotheses(state, round_num)
     signals = judge.get("crux_signals", {})
     conv = crux_engine.submit_round(
         state, round_num, signals,
         round_context={
             "landscape_audit": landscape_audit,
             "opportunity_harvest": harvest,
+            "hypothesis_escalation": hypothesis_escalation,
             "crux_probe_audit": crux_probe_audit,
             "hypothesis_audit": hypothesis_audit,
             "scenario_path_audit": scenario_path_audit,
@@ -1339,11 +1419,16 @@ def cmd_submit(topic, detective, inquisitor, judge):
     state["rounds"][-1]["landscape_audit"] = landscape_audit
     state["rounds"][-1]["hypothesis_audit"] = hypothesis_audit
     state["rounds"][-1]["scenario_path_audit"] = scenario_path_audit
+    state["rounds"][-1]["hypothesis_escalation"] = hypothesis_escalation
     # Root convergence can change screening eligibility; refresh only deterministic
     # projections, never the underlying seed evidence.
     opportunity_engine.refresh_candidate_states(state)
     harvest.update(opportunity_engine.summary(state))
     state["rounds"][-1]["opportunity_harvest"] = harvest
+    # Tracking sync MUST run after submit_round + refresh_candidate_states so the
+    # ledger sees post-convergence candidate states (e.g. seeds that just became
+    # READY/WATCHLIST in this round are correctly marked ESCALATED).
+    tracking_engine.sync_tracking_ledger(state, round_num, odds_payload=inquisitor)
     _save(topic, state)
     dt = state["decision_trace"][-1]
     binding_crux = (dt["weakest"] if state.get("question_type") in {
@@ -2926,12 +3011,20 @@ def cmd_resume_blocked(topic, extra_rounds=0):
     )
     return out
 
-def cmd_report(topic, challenge_only=False, report_view="full", include_synthesis=False):
+def cmd_report(topic, challenge_only=False, report_view="full", include_synthesis=False, allow_non_formal=False):
     state = _load(topic)
     if not state:
         return {"status": "error", "reason": "状态不存在。"}
     conv = state.get("last_convergence", {})
     if conv.get("decision") != "converge":
+        if allow_non_formal:
+            import report_v2
+            ledger_md = report_v2.render_non_formal_ledger(state)
+            return {"status": "non_formal_ledger_ready", "topic": topic,
+                    "formal_report_allowed": False,
+                    "convergence": conv,
+                    "evidence_ledger_markdown": ledger_md,
+                    "instruction": "非正式证据账本已生成（研究未收敛）。"}
         unresolved = [cid for cid, cx in state.get("cruxes", {}).items()
                       if cx.get("status") in ("PENDING", "OPEN")]
         resolution = cmd_resolution_memo(topic)
@@ -2943,7 +3036,7 @@ def cmd_report(topic, challenge_only=False, report_view="full", include_synthesi
                 "audit_state_path": _path(topic),
                 "instruction": "正式报告已物理阻断；改为交付非正式 Resolution Memo。"}
     landscape = landscape_engine.summary(state)
-    if landscape["required"] and not landscape["coverage_complete"]:
+    if not allow_non_formal and landscape["required"] and not landscape["coverage_complete"]:
         return {
             "status": "blocked_landscape_coverage",
             "topic": topic,
@@ -2980,6 +3073,9 @@ def cmd_report(topic, challenge_only=False, report_view="full", include_synthesi
                 ),
             })
             return dispatch
+    # Refresh tracking ledger to reflect any post-submit state transitions before
+    # the report view model captures tracking_rows.
+    tracking_engine.sync_tracking_ledger(state, len(state.get("rounds", [])))
     import report_v2
     opportunity_counts = opportunity_engine.summary(state)
     gap_counts = candidate_gap_engine.summary(state)
@@ -3044,7 +3140,7 @@ def _jload(s):
     return json.loads(s) if s else {}
 
 def main():
-    ap = argparse.ArgumentParser(description="Trade Nothing v0.11.0 Crux Orchestrator")
+    ap = argparse.ArgumentParser(description="Trade Nothing v0.13.0 Crux Orchestrator")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--frame", action="store_true")
     g.add_argument("--init", action="store_true")
@@ -3075,6 +3171,7 @@ def main():
     ap.add_argument("--frame-json", default="")
     ap.add_argument("--start-packet", default="",
                     help="tradenothing-next research-start packet JSON path or object")
+    ap.add_argument("--briefing", default="", help="optional user briefing text or URL for framing context")
     ap.add_argument("--det", default=""); ap.add_argument("--inq", default=""); ap.add_argument("--judge", default="")
     ap.add_argument("--analyst", default=""); ap.add_argument("--skeptic", default="")
     ap.add_argument("--as-of", default=""); ap.add_argument("--seed-id", default="")
@@ -3093,6 +3190,8 @@ def main():
     ap.add_argument("--claim-id", default="")
     ap.add_argument("--challenge-only", action="store_true",
                     help="render root-thesis report without default opportunity CandidateScreen")
+    ap.add_argument("--allow-non-formal", action="store_true",
+                    help="generate non-formal evidence ledger even when unconverged")
     ap.add_argument("--report-view", default="full",
                     choices=["facts_box", "brief", "cards", "audit", "full"],
                     help="select one deterministic report view")
@@ -3161,7 +3260,7 @@ def main():
             "reason": f"cannot load research-start packet: {exc}",
         }, ensure_ascii=False, indent=2))
         return
-    if a.frame:  out = cmd_frame(a.topic, start_packet)
+    if a.frame:  out = cmd_frame(a.topic, start_packet, briefing=a.briefing)
     elif a.init: out = cmd_init(
         a.topic, _jload(a.frame_json), a.runtime_isolation, start_packet
     )
@@ -3171,6 +3270,7 @@ def main():
         challenge_only=a.challenge_only,
         report_view=a.report_view,
         include_synthesis=a.include_synthesis,
+        allow_non_formal=a.allow_non_formal,
     )
     elif a.resolution_memo: out = cmd_resolution_memo(a.topic)
     elif a.resume_blocked: out = cmd_resume_blocked(a.topic, a.extra_rounds)

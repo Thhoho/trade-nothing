@@ -61,6 +61,8 @@ test:
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_hypothesis_integration.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_evidence_exhaustion_convergence.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_opportunity_engine.py
+	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_path_analysis.py
+	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_tracking_engine.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_candidate_gap_engine.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_research_output.py
 	PYTHONDONTWRITEBYTECODE=1 python3 $(ROOT_DIR)/scripts/test_candidate_screen_engine.py

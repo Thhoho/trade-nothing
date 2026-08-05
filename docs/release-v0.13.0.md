@@ -1,8 +1,8 @@
-# Trade Nothing v0.11.0
+# Trade Nothing v0.13.0
 
 Release date: 2026-07-31
 
-v0.11.0 is the current operational release of Trade Nothing. It retains the hypothesis-led
+v0.13.0 is the current operational release of Trade Nothing. It retains the hypothesis-led
 exploration architecture introduced in v0.10 and adds explicit temporal contracts, bounded
 research-allocation semantics, and a facts-locked human reporting bundle.
 
@@ -58,7 +58,7 @@ persist the three layers as separate content-addressed artifacts.
 
 `scripts/benchmark_current.py --check` returns `UNBENCHMARKED_METHOD_CHANGE`. The exact operational
 identity is recorded in `benchmarks/current.json`; the last calibrated identity remains v0.9.9.
-Deterministic engineering gates passing for v0.11.0 is not evidence of improved discovery recall,
+Deterministic engineering gates passing for v0.13.0 is not evidence of improved discovery recall,
 research effectiveness, alpha, return, or risk-adjusted performance.
 
 ## Release verification
@@ -71,11 +71,11 @@ python3 scripts/benchmark_current.py --check --source-repo .
 make test
 ```
 
-The annotated Git tag `v0.11.0` must point to the exact commit that passes these checks.
+The annotated Git tag `v0.13.0` must point to the exact commit that passes these checks.
 
 ## 中文摘要
 
-v0.11.0 是当前运行版本：它保留 v0.10 的假说驱动探索基础，并新增失败关闭的时间契约、
+v0.13.0 是当前运行版本：它保留 v0.10 的假说驱动探索基础，并新增失败关闭的时间契约、
 有界研究预算语义，以及由 Facts Box、Evidence Ledger、Candidate Cards 组成的三层报告
 产物。历史设计、冻结基准和旧标签继续保留原版本号；当前版本通过工程门不代表研究有效性
 或投资收益已经得到证明。

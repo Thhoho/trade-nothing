@@ -13,6 +13,7 @@ import re
 from datetime import date
 
 import crux_engine
+import hypothesis_engine
 import landscape_engine
 
 
@@ -163,6 +164,73 @@ def _hypothesis_binding_issues(state, hypothesis_id, origin_crux):
     return []
 
 
+def _find_hypothesis(state, hypothesis_id):
+    """Look up a WildHypothesis by id in the hypothesis ledger (any schema shape)."""
+    if not hypothesis_id:
+        return None
+    ledger = state.get("hypothesis_ledger", {})
+    hypotheses = ledger.get("hypotheses") if isinstance(ledger, dict) else ledger
+    if not isinstance(hypotheses, list):
+        return None
+    for item in hypotheses:
+        if not isinstance(item, dict):
+            continue
+        if (
+            item.get("hypothesis_id") == hypothesis_id
+            or item.get("spark_id") == hypothesis_id
+        ):
+            return item
+    return None
+
+
+def _inherit_expectation_gap(state, hypothesis_id):
+    """Backfill a seed's expectation gap from its linked WildHypothesis.
+
+    Agents may submit a seed without restating why ordinary expectations miss the
+    path. The linked hypothesis already records that non-consensus claim; inherit it
+    so the seed contract does not fail on an empty gap. Returns "" when unlinked or
+    the ledger has no matching entry.
+    """
+    item = _find_hypothesis(state, hypothesis_id)
+    if not item:
+        return ""
+    return _text(item.get("why_nonconsensus") or item.get("surprise_if_true"))
+
+
+def _inherit_path_fields(state, seed):
+    """Backfill payoff structure and causal chain from the linked hypothesis.
+
+    The hypothesis carries the qualitative asymmetry case, scenario paths, causal
+    chain, and optional payoff magnitudes. Inheriting them gives every seed an
+    explicit odds structure (upside/downside shape, break-even status) and a causal
+    skeleton, so the report can present a path with its logic chain rather than a
+    bare status card. Inherited fields never relax the evidence contract.
+    """
+    item = _find_hypothesis(state, seed.get("origin_hypothesis_id"))
+    if not item:
+        return
+    if not seed.get("asymmetry_case"):
+        seed["asymmetry_case"] = hypothesis_engine._asymmetry_case(item)
+    if not seed.get("scenario_paths"):
+        seed["scenario_paths"] = copy.deepcopy(
+            item.get("scenario_paths")
+            if isinstance(item.get("scenario_paths"), dict)
+            else {}
+        )
+    if not seed.get("causal_chain"):
+        chain = item.get("causal_chain")
+        if isinstance(chain, list) and chain:
+            seed["causal_chain"] = [c for c in chain if _text(c)]
+    if not seed.get("payoff"):
+        payoff = item.get("payoff")
+        if isinstance(payoff, dict):
+            seed["payoff"] = {
+                "upside": payoff.get("upside"),
+                "downside": payoff.get("downside"),
+                "unit": _text(payoff.get("unit")) or "UNSPECIFIED_SAME_UNIT",
+            }
+
+
 def _normalize_seed(raw, state, agent_name, round_num, allowed, audit):
     if not isinstance(raw, dict):
         _reason(audit, "seed_not_object")
@@ -240,10 +308,23 @@ def _normalize_seed(raw, state, agent_name, round_num, allowed, audit):
         "catalyst_window": _normalize_catalyst_window(raw.get("catalyst_window")),
         "falsifier": _text(raw.get("falsifier")),
         "evidence": accepted,
+        "asymmetry_case": hypothesis_engine._asymmetry_case(raw),
+        "scenario_paths": copy.deepcopy(
+            raw.get("scenario_paths") if isinstance(raw.get("scenario_paths"), dict) else {}
+        ),
+        "causal_chain": [
+            c for c in (raw.get("causal_chain") or []) if _text(c)
+        ],
+        "payoff": hypothesis_engine._payoff(raw),
         "first_seen_round": round_num,
         "last_seen_round": round_num,
         "source_agents": [agent_name],
     }
+    if not seed["why_market_may_miss"]:
+        seed["why_market_may_miss"] = _inherit_expectation_gap(
+            state, seed["origin_hypothesis_id"]
+        )
+    _inherit_path_fields(state, seed)
     key = _seed_key(seed)
     if not key.split("|", 1)[0]:
         _reason(audit, "invalid_candidate_identity")
@@ -776,6 +857,23 @@ def _merge(existing, incoming):
                 if item and item not in variants:
                     variants.append(item)
 
+    # Backfilled path fields: fill only when the existing seed lacks them.
+    for field in ("asymmetry_case", "scenario_paths", "payoff"):
+        incoming_value = incoming.get(field)
+        if (
+            isinstance(incoming_value, dict)
+            and incoming_value
+            and not existing.get(field)
+        ):
+            existing[field] = copy.deepcopy(incoming_value)
+    incoming_chain = incoming.get("causal_chain")
+    if (
+        isinstance(incoming_chain, list)
+        and incoming_chain
+        and not existing.get("causal_chain")
+    ):
+        existing["causal_chain"] = copy.deepcopy(incoming_chain)
+
     evidence = existing.setdefault("evidence", [])
     evidence_keys = {crux_engine.citation_identity(c) for c in evidence}
     for citation in incoming.get("evidence", []):
@@ -833,6 +931,280 @@ def harvest_round(state, round_num, detective=None, inquisitor=None):
     refresh_candidate_states(state)
     audit.update(summary(state))
     return audit
+
+
+def _escalation_evidence(hypothesis):
+    """Collect valid citations from a hypothesis's proxy trails.
+
+    Returns (evidence_bearing_trail_count, deduplicated_citations,
+    independent_publisher_domains).  Domain identity is derived from citation
+    URLs, never from agent-supplied labels.
+    """
+    trails = hypothesis.get("proxy_trails") if isinstance(hypothesis, dict) else None
+    trails = trails if isinstance(trails, list) else []
+    trail_count = 0
+    citations = []
+    domains = set()
+    seen = set()
+    for trail in trails:
+        if not isinstance(trail, dict):
+            continue
+        items = trail.get("evidence")
+        items = items if isinstance(items, list) else []
+        valid = [c for c in items if crux_engine.valid_citation(c)]
+        if valid:
+            trail_count += 1
+        for citation in valid:
+            key = crux_engine.citation_identity(citation)
+            if key and key not in seen:
+                seen.add(key)
+                citations.append(copy.deepcopy(citation))
+            domain = crux_engine.citation_publisher_identity(citation)
+            if domain:
+                domains.add(domain)
+    return trail_count, citations, domains
+
+
+def _first_context_value(context, field, plural_field):
+    """Return one context value, preferring the singular field then the list."""
+    context = context if isinstance(context, dict) else {}
+    value = context.get(field)
+    if isinstance(value, list):
+        value = value[0] if value else None
+    if not _text(value):
+        values = context.get(plural_field)
+        if isinstance(values, list) and values:
+            value = values[0]
+    return _text(value) or None
+
+
+def escalate_mature_hypotheses(state, round_num):
+    """Auto-promote EVIDENCE_BACKED hypotheses into draft OpportunitySeeds.
+
+    Escalation is conservative by design: every draft seed is classified
+    SECOND_ORDER, and its maturity label comes from the deterministic evidence
+    gate (evidence_maturity), never from agent claims.  A draft seed is a
+    research-queue entry, not a screen-ready or investable candidate.  The
+    draft is skipped when its seed_id already exists in the ledger or when the
+    hypothesis has already been escalated (same origin_hypothesis_id).
+    """
+    result = {
+        "escalated_count": 0,
+        "escalated_ids": [],
+        "skipped_existing": 0,
+        "skipped_immature": 0,
+    }
+    if not isinstance(state, dict):
+        return result
+    ledger = state.get("hypothesis_ledger")
+    hypotheses = ledger.get("hypotheses", []) if isinstance(ledger, dict) else []
+    seeds = state.setdefault("opportunity_seeds", [])
+    existing_seed_ids = {
+        _text(seed.get("seed_id"))
+        for seed in seeds
+        if isinstance(seed, dict)
+    }
+    existing_origin_hypotheses = {
+        _text(seed.get("origin_hypothesis_id"))
+        for seed in seeds
+        if isinstance(seed, dict)
+    }
+    for hypothesis in hypotheses:
+        if not isinstance(hypothesis, dict):
+            continue
+        if hypothesis.get("state") != EVIDENCE_BACKED:
+            continue
+        trail_count, citations, domains = _escalation_evidence(hypothesis)
+        candidate = _text(hypothesis.get("hypothesis"))[:60]
+        if trail_count < 2 or len(domains) < 2 or not candidate:
+            result["skipped_immature"] += 1
+            continue
+        context = hypothesis.get("context")
+        origin_crux = _first_context_value(context, "origin_crux", "origin_cruxes")
+        landscape_path_id = _first_context_value(
+            context, "landscape_path_id", "landscape_path_ids"
+        )
+        causal_chain = [
+            c for c in (hypothesis.get("causal_chain") or []) if _text(c)
+        ]
+        seed = {
+            "candidate": candidate,
+            "relation_type": "SECOND_ORDER",
+            "origin_crux": origin_crux,
+            "origin_hypothesis_id": _text(hypothesis.get("hypothesis_id")),
+            "landscape_path_id": landscape_path_id,
+            "causal_path": " -> ".join(causal_chain),
+            "economic_exposure": _text(hypothesis.get("value_transfer")),
+            "why_market_may_miss": _text(hypothesis.get("why_nonconsensus")),
+            "catalyst": _text(hypothesis.get("catalyst")),
+            "falsifier": _text(hypothesis.get("falsifier")),
+            "evidence": citations,
+            "asymmetry_case": hypothesis_engine._asymmetry_case(hypothesis),
+            "scenario_paths": copy.deepcopy(
+                hypothesis.get("scenario_paths")
+                if isinstance(hypothesis.get("scenario_paths"), dict)
+                else {}
+            ),
+            "causal_chain": causal_chain,
+            "payoff": hypothesis_engine._payoff(hypothesis),
+            "source_agents": ["hypothesis_escalation"],
+            "first_seen_round": round_num,
+            "last_seen_round": round_num,
+        }
+        key = _seed_key(seed)
+        if not key.split("|", 1)[0]:
+            result["skipped_immature"] += 1
+            continue
+        seed["seed_id"] = _seed_id(key)
+        seed["entity_id"] = entity_id(seed)
+        seed["maturity"] = evidence_maturity(seed)
+        origin_hypothesis_id = _text(seed.get("origin_hypothesis_id"))
+        if (
+            seed["seed_id"] in existing_seed_ids
+            or (
+                origin_hypothesis_id
+                and origin_hypothesis_id in existing_origin_hypotheses
+            )
+        ):
+            result["skipped_existing"] += 1
+            continue
+        seeds.append(seed)
+        existing_seed_ids.add(seed["seed_id"])
+        if origin_hypothesis_id:
+            existing_origin_hypotheses.add(origin_hypothesis_id)
+        result["escalated_count"] += 1
+        result["escalated_ids"].append(seed["seed_id"])
+    return result
+
+
+def _node_phrases(node):
+    """Split one causal-chain node into matchable phrases (>=3 chars).
+
+    Shorter substrings (2 chars) produce too many false-positive matches — e.g. the
+    phrase "算力" in a node would match any evidence claim mentioning "算力中心" even
+    when the claim is about a different causal link entirely.  Requiring >=3 chars
+    trades some recall for substantially fewer spurious "evidence_touched" marks.
+    """
+    text = _text(node)
+    if not text:
+        return set()
+    phrases = {text}
+    for part in re.split(r"[\s，。、,;；|()（）→\-]+|[与和及]|->|⇒", text):
+        part = part.strip()
+        if len(part) >= 3:
+            phrases.add(part)
+    return {p for p in phrases if p}
+
+
+def _split_causal_path(path):
+    """Split a seed causal_path string into ordered nodes.
+
+    Separators: arrows (→, ->, ⇒), Chinese/English semicolons (；, ;), and
+    Chinese enumeration commas (，) when they separate full clauses.  Numeric
+    ranges like "利用率>80%" are protected from being split on ">".
+    """
+    text = _text(path)
+    if not text:
+        return []
+    # Protect numeric ">" patterns (e.g. "利用率>80%", "净利+540%") from split.
+    placeholder = "__GT_PROTECTED__"
+    text = re.sub(r"(\d+)\s*>\s*(\d)", rf"\1{placeholder}\2", text)
+    text = re.sub(r"(\d+)\s*>\s*([\d.]+%)", rf"\1{placeholder}\2", text)
+    nodes = []
+    for part in re.split(r"\s*(?:->|→|⇒|；|;)\s*", text):
+        node = _text(part)
+        if not node:
+            continue
+        # Restore protected ">" inside numeric contexts.
+        node = node.replace(placeholder, ">")
+        # Split long clauses on Chinese enumeration commas only when the result
+        # yields two non-trivial segments (avoids splitting "A，B" into fragments).
+        if "，" in node and len(node) > 15:
+            sub_parts = [s.strip() for s in node.split("，") if len(s.strip()) >= 4]
+            if len(sub_parts) >= 2:
+                nodes.extend(_text(p) for p in sub_parts)
+                continue
+        nodes.append(node)
+    return nodes
+
+
+def path_analysis(state, seed):
+    """Deterministic logic-chain annotation for one seed.
+
+    Splits the causal chain into ordered nodes and marks each node with:
+    - evidence_touched: at least one phrase (>=3 chars) from the node text appears
+      as a substring in an accepted evidence claim.  This is TEXTUAL OVERLAP only —
+      it does NOT verify that the evidence actually supports the causal link.
+    - observable: a node phrase appears in the catalyst or falsifier watch text,
+      meaning there is a planned future observation event for this link.
+
+    The chain is a research skeleton, not a proven causal claim; "confirmed" counts
+    textual matches, not logical verification.  Report consumers must treat
+    evidence_touched as "this node is mentioned in evidence", not "this node is true".
+    """
+    chain = seed.get("causal_chain") if isinstance(seed.get("causal_chain"), list) else []
+    chain = [c for c in chain if _text(c)]
+    if not chain:
+        chain = _split_causal_path(seed.get("causal_path"))
+    if not chain:
+        return None
+    claims = [
+        _text(c.get("claim"))
+        for c in seed.get("evidence", [])
+        if isinstance(c, dict) and _text(c.get("claim"))
+    ]
+    watch = " ".join(
+        filter(None, (_text(seed.get("catalyst")), _text(seed.get("falsifier"))))
+    )
+    nodes = []
+    for node in chain:
+        phrases = _node_phrases(node)
+        touched = any(
+            phrase in claim for phrase in phrases for claim in claims
+        )
+        observable = any(phrase in watch for phrase in phrases)
+        nodes.append({
+            "node": _text(node).strip("。."),
+            "evidence_touched": touched,
+            "observable": observable,
+        })
+    return {
+        "chain": nodes,
+        "confirmed": sum(1 for n in nodes if n["evidence_touched"]),
+        "unverified": sum(1 for n in nodes if not n["evidence_touched"]),
+        "observed": sum(1 for n in nodes if n["observable"]),
+    }
+
+
+def odds_summary(seed):
+    """Deterministic odds declaration for one seed.
+
+    Qualitative asymmetry shape (upside shape / convexity / downside shape /
+    time-to-signal) plus the break-even success threshold when the linked
+    hypothesis supplied payoff magnitudes. This is a workflow heuristic for path
+    triage, never a probability, expected return, or position-sizing input.
+    """
+    case = seed.get("asymmetry_case") or {}
+    if not hypothesis_engine._asymmetry_case_is_substantive(case):
+        return None
+    parts = []
+    for field, label in (
+        ("upside_shape", "上行形状"),
+        ("convexity", "凸性"),
+        ("downside_shape", "下行形状"),
+        ("time_to_signal", "信号时间"),
+    ):
+        value = _text(case.get(field)).upper()
+        if value and value != "UNKNOWN":
+            parts.append(f"{label}={value}")
+    payoff = seed.get("payoff") or {}
+    break_even = hypothesis_engine._payoff_break_even(payoff)
+    return {
+        "qualitative": "｜".join(parts) if parts else None,
+        "basis": _text(case.get("basis")) or None,
+        "break_even": break_even,
+        "has_numeric_payoff": bool(break_even and break_even.get("status") == "KNOWN"),
+    }
 
 
 def summary(state):

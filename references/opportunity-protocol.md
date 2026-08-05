@@ -37,7 +37,7 @@ conditions, not additional states. These labels are exploration maturity, not en
 states. Even exploration `EVIDENCE_BACKED` must satisfy the independent Admission rule below before
 an `OpportunitySeed` exists.
 
-Introduced in v0.10 and retained in v0.11.0, expiry and falsifier are explicit audit fields, not
+Introduced in v0.10 and retained in v0.13.0, expiry and falsifier are explicit audit fields, not
 silently inferred maturity states. Crossing either boundary must stay visible for human review or
 a later explicitly authorized run; the runtime does not delete, promote, or relabel the hypothesis
 automatically.

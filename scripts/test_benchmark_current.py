@@ -18,7 +18,7 @@ class BenchmarkCurrentTests(unittest.TestCase):
         self.assertFalse(result["current_method_calibrated"])
         self.assertEqual(
             result["operational_method_identity"]["method_version"],
-            "0.11.0",
+            "0.13.0",
         )
         self.assertNotEqual(
             result["operational_method_identity"]["contract_sha256"],

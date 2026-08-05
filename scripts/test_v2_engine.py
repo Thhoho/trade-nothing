@@ -428,7 +428,9 @@ class OrchestratorTests(unittest.TestCase):
         self.assertEqual(first["open_cruxes"], ["C1", "C2", "C3"])
         self.assertEqual(first["dispatch_cruxes"], ["C1", "C2"])
         self.assertEqual(first["round_policy"]["deferred_open_cruxes"], ["C3"])
-        self.assertIn("最多 4 次网页搜索", first["detective_prompt"])
+        # v0.13: static directives moved to agent.md; verify prompt carries dynamic state
+        self.assertIn("本轮调度: free_roam=false", first["detective_prompt"])
+        self.assertIn("本轮处理: ['C1', 'C2']", first["detective_prompt"])
 
         st["cruxes"]["C1"]["first_contested"] = 1
         st["cruxes"]["C2"]["first_contested"] = 1

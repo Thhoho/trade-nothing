@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Trade Nothing v0.11.0 — Compact Formal Report Renderer
+Trade Nothing v0.13.0 — Compact Formal Report Renderer
 
 Architecture:
   FIXED LAYER (脚本物理生成，数值勿改):
@@ -20,6 +20,7 @@ import os, sys, json, hashlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import crux_engine
 import hypothesis_engine
+import tracking_engine
 import landscape_engine
 import opportunity_engine
 import candidate_gap_engine
@@ -439,6 +440,9 @@ def _candidate_cards(state):
             "isolation_status": screen.get("isolation_status", "unverified"),
             "screen_gap_summary": screen_gaps,
             "path_count": len(entity.get("paths", [])),
+            "path_analysis": opportunity_engine.path_analysis(state, seed),
+            "odds_summary": opportunity_engine.odds_summary(seed),
+            "scenario_paths": seed.get("scenario_paths") or {},
             "next_action_code": action_code,
             "next_action": action_text,
             "gap_task": gap_task,
@@ -676,6 +680,7 @@ def build_report_view_model(state):
         },
         "candidate_counts": counts,
         "candidate_cards": cards,
+        "tracking_rows": tracking_engine.active_tracked(state),
         "landscape_map": landscape,
         "hypothesis_exploration": exploration,
         "exploration_gap": exploration_gap,
@@ -1627,10 +1632,26 @@ def _render_decision_brief(view):
     ])
 
 
+def _candidate_gate_label(card):
+    """Short human label for where a candidate is gated (deterministic, no scoring)."""
+    state = card["candidate_state"]
+    if state == opportunity_engine.VERIFIED_FOR_HUMAN:
+        return "可升级"
+    if state == opportunity_engine.THESIS_CANDIDATE:
+        return "待核验"
+    gap = card.get("screen_gap_summary", {}).get("primary")
+    if gap:
+        return f"筛选缺 {gap}"
+    blockers = card.get("blocking_reasons") or []
+    if blockers:
+        return f"缺 {'、'.join(blockers[:2])}"
+    return state
+
+
 def _render_candidate_cards(view):
     lines = [
         "# Candidate Cards",
-        "> 先看状态，再看故事。未完成筛选或 claim 核验的对象都不是推荐。",
+        "> 先讲机会结构，再讲证据状态。故事是路径假设，状态是证据门；任何候选都不是推荐。",
         "",
     ]
     cards = view["candidate_cards"]
@@ -1640,62 +1661,168 @@ def _render_candidate_cards(view):
             "- 本轮没有形成具备有效证据路径的唯一候选；不得用行业关键词或知名公司凑数。",
         ])
         return "\n".join(lines)
+    # Tracking list: paths with favorable odds but incomplete evidence stay visible
+    # with their upgrade/abandon checkpoints. Tracking is not a recommendation.
+    tracking_rows = view.get("tracking_rows") or []
+    if tracking_rows:
+        lines.extend([
+            "## 跟踪清单（赔率可行但证据未完备：值得跟踪，不是推荐）",
+            "| 候选 | 赔率姿态 | 检查点·升级 | 检查点·放弃 | 失败信号 | 下一动作 |",
+            "|------|------|------|------|------|------|",
+        ])
+        for row in tracking_rows:
+            ticker = f" · {row['ticker']}" if row.get("ticker") else ""
+            chain_brief = (
+                f"链{row['chain_counts']['confirmed']}实"
+                f"/{row['chain_counts']['unverified']}虚"
+                f"/{row['chain_counts']['observed']}观"
+            )
+            lines.append(
+                f"| {_clean(row['candidate'])}{ticker} | {row['odds_posture']} "
+                f"({chain_brief}) | {_clean(row['upgrade_checkpoint'])} | "
+                f"{_clean(row['abandon_checkpoint'])} | "
+                f"{_clean(row['failure_signal']) or '—'} | "
+                f"{_clean(row['gap_next_action'])} |"
+            )
+        lines.append("")
+    # Research pipeline overview: every candidate visible with its logic-chain
+    # density and odds posture before any single-card detail. Deterministic only.
+    lines.append("## 研究管线（全部候选：逻辑确定性 × 赔率姿态 × 卡点）")
+    lines.append("| 候选 | 逻辑链（有证据/待验证/待观测） | 赔率姿态 | 状态 | 卡点 |")
+    lines.append("|------|------|------|------|------|")
+    for card in cards:
+        path = card.get("path_analysis") or {}
+        chain_info = (
+            f"{path.get('confirmed', 0)}/{path.get('unverified', 0)}"
+            f"/{path.get('observed', 0)}"
+            if path.get("chain")
+            else "—"
+        )
+        odds = card.get("odds_summary") or {}
+        if odds.get("has_numeric_payoff"):
+            be = odds.get("break_even") or {}
+            odds_posture = f"break-even {be.get('p_star_percent')}%"
+        elif odds.get("qualitative"):
+            odds_posture = odds["qualitative"]
+        else:
+            odds_posture = "未声明"
+        lines.append(
+            f"| {_clean(card['candidate'])} | {chain_info} | {odds_posture} | "
+            f"`{card['candidate_state']}` | {_candidate_gate_label(card)} |"
+        )
+    lines.append("")
     for index, card in enumerate(cards, 1):
         ticker = f" · {card['ticker']}" if card["ticker"] else ""
+        lines.append(f"## {index}. {card['candidate']}{ticker}")
+        story_parts = [card["relation_label"]]
+        exposure = card["economic_exposure"]
+        if exposure and exposure not in {"—", "-"}:
+            story_parts.append(exposure)
+        lines.append(
+            f"- **故事**: {' → '.join(story_parts)}（源 crux {card['origin_crux']} · "
+            f"Landscape `{card['landscape_path_id'] or 'legacy-unmapped'}`）。"
+        )
+        gap = card["expectation_gap"]
+        if gap and gap not in {"—", "-"}:
+            lines.append(f"  - **市场可能漏看**: {gap.rstrip('。')}。")
+        path = card.get("path_analysis") or {}
+        chain = path.get("chain") or []
+        if chain:
+            lines.append("- **逻辑链确定性**(研究骨架，非已证因果):")
+            for node in chain:
+                marks = []
+                if node.get("evidence_touched"):
+                    marks.append("✅ 有证据触达")
+                else:
+                    marks.append("⚠️ 待验证")
+                if node.get("observable"):
+                    marks.append("📌 有待观测事件")
+                lines.append(
+                    f"  - {node['node']} — {'｜'.join(marks) if marks else '⚠️ 待验证'}"
+                )
+        odds = card.get("odds_summary") or {}
+        if odds:
+            odds_line = "- **赔率结构**: "
+            pieces = []
+            if odds.get("qualitative"):
+                pieces.append(odds["qualitative"])
+            be = odds.get("break_even") or {}
+            if be.get("status") == "KNOWN":
+                pieces.append(f"break-even 成功率 {be.get('p_star_percent')}%")
+            elif be.get("reason"):
+                pieces.append(f"break-even 不可算（{be['reason']}）")
+            if odds.get("basis"):
+                pieces.append(f"依据: {odds['basis'].rstrip('。')}")
+            if pieces:
+                lines.append(odds_line + "；".join(pieces) + "。")
+        scenario_paths = card.get("scenario_paths") or {}
+        if scenario_paths:
+            lines.append("- **对称场景**:")
+            for key, label in (("bull", "上行"), ("base", "基准"), ("bear", "下行")):
+                value = _clean(scenario_paths.get(key))
+                if value:
+                    lines.append(f"  - {label}: {value.rstrip('。')}。")
+        if card["catalyst"] and card["catalyst"] not in {"—", "-"}:
+            lines.append(f"- **检查点·升级**: {card['catalyst'].rstrip('。')}。")
+        if card["falsifier"] and card["falsifier"] not in {"—", "-"}:
+            lines.append(f"- **检查点·放弃**: {card['falsifier'].rstrip('。')}。")
+        lines.append(f"- **锚**: {card['pricing_anchor']}。")
+        lines.append(
+            f"- **可交易载体**: {card['trading_vehicle']}；"
+            f"可交易性 `{card['tradability_assessment']}`。"
+        )
         lines.extend([
-            f"## {index}. {card['candidate']}{ticker}",
             f"- **Seed ID**: `{card['seed_id']}`。",
             f"- **候选状态**: `{card['candidate_state']}` ｜ 升级资格: "
             f"`{card['promotion_eligibility']}` ｜ P1 `{card['screen_status']}` ｜ "
-            f"P2 `{card['claim_verification_status']}`。",
-            f"- **价值路径**: {card['relation_label']} / {card['origin_crux']}；"
-            f"Landscape `{card['landscape_path_id'] or 'legacy-unmapped'}`；"
-            f"经济暴露: {card['economic_exposure']}。",
-            f"- **预期差**: {card['expectation_gap']}。",
-            f"- **定价锚**: {card['pricing_anchor']}。",
-            f"- **可交易载体**: {card['trading_vehicle']}；"
-            f"可交易性 `{card['tradability_assessment']}`。",
-            f"- **催化 / 反证**: {card['catalyst']} / {card['falsifier']}。",
-            f"- **证据边界**: 隔离 `{card['isolation_status']}`；独立价值路径 "
-            f"{card['path_count']} 条，路径之间不得拼接证据晋级。",
+            f"P2 `{card['claim_verification_status']}` ｜ 隔离 `{card['isolation_status']}` ｜ "
+            f"独立路径 {card['path_count']} 条，路径之间不得拼接证据晋级。",
         ])
         if card.get("origin_hypothesis_id") not in {"", "—", None}:
             lines.append(
                 f"- **探索谱系**: `{card['origin_hypothesis_id']}`；"
                 "该绑定只解释发现来源，不降低 Seed 证据门。"
             )
+        audit_lines = []
+        blocking = card.get("blocking_reasons") or []
+        if blocking:
+            audit_lines.append(f"- **阻塞原因**: {', '.join(blocking)}。")
         gap_summary = card.get("screen_gap_summary", {})
         if gap_summary.get("primary"):
-            lines.append(
+            audit_lines.append(
                 f"- **首要筛选缺口**: {gap_summary['primary']} ｜ Analyst "
                 f"{gap_summary['analyst_answer']} ｜ Skeptic {gap_summary['skeptic_answer']}。"
             )
             if gap_summary.get("dependent"):
-                lines.append(f"- **派生未研究项**: {', '.join(gap_summary['dependent'])}。")
+                audit_lines.append(f"- **派生未研究项**: {', '.join(gap_summary['dependent'])}。")
             if gap_summary.get("source_gaps"):
-                lines.append(f"- **来源门槛**: {', '.join(gap_summary['source_gaps'])}。")
+                audit_lines.append(f"- **来源门槛**: {', '.join(gap_summary['source_gaps'])}。")
             if gap_summary.get("process_gaps"):
-                lines.append(f"- **流程门槛**: {', '.join(gap_summary['process_gaps'])}。")
-        elif card["blocking_reasons"]:
-            lines.append(f"- **阻塞原因**: {', '.join(card['blocking_reasons'])}。")
+                audit_lines.append(f"- **流程门槛**: {', '.join(gap_summary['process_gaps'])}。")
         gap_task = card.get("gap_task") or {}
         if gap_task:
-            lines.append(
+            audit_lines.append(
                 f"- **候选补证任务**: `{gap_task['task_id']}` ｜ blocker "
                 f"`{gap_task['blocker_code']}` ｜ 目标: {gap_task['target_claim']} ｜ "
                 f"来源: {', '.join(gap_task['required_source_types'])} ｜ "
                 f"预算: {gap_task['search_budget']} 次。"
             )
-            lines.append(
+            audit_lines.append(
                 f"- **任务终止条件**: 成功 — {gap_task['success_condition']}；"
                 f"失败 — {gap_task['failure_condition']}"
             )
         gap_resolution = card.get("gap_resolution") or {}
         if gap_resolution:
-            lines.append(
+            audit_lines.append(
                 f"- **候选补证结果**: `{gap_resolution.get('status')}` — "
                 f"{gap_resolution.get('reason') or '无附加说明'}。"
             )
+        if audit_lines:
+            lines.append("<details><summary>审计细节：阻塞、筛选缺口、补证任务</summary>")
+            lines.append("")
+            lines.extend(audit_lines)
+            lines.append("")
+            lines.append("</details>")
         lines.extend([
             f"- **下一动作**: `{card['next_action_code']}` — {card['next_action']}",
             "",
@@ -1978,12 +2105,22 @@ def render_facts_box(view):
     ])
     if landscape_line:
         lines.append(landscape_line)
+    candidate_cards = view.get("candidate_cards", [])
+    truncated = len(candidate_cards) > 6
+    visible = candidate_cards[:6]
+    candidate_state_line = _clean("；".join(
+        f"{facts_text(card['candidate'])}（{_candidate_gate_label(card)}）"
+        for card in visible
+    )) or "无"
+    if truncated:
+        candidate_state_line += f"；另有 {len(candidate_cards) - 6} 个候选（见候选卡片）"
     lines.extend([
         f"**候选线索**: 唯一候选 {counts['lead_count']} 个 | "
         f"可筛选 {counts['ready_for_screening_count']} | "
         f"已筛选 {counts['screened_count']} | "
         f"待核验 {counts['thesis_candidate_count']} | "
         f"可供人工 {counts['verified_for_human_count']}",
+        f"**候选状态**: {candidate_state_line}",
         f"**正式动作**: `{facts_text(formal['code'])}`{target} — "
         f"{facts_text(formal['instruction'])}",
         f"**探索动作**: "
@@ -2028,6 +2165,150 @@ def render(state, view="full"):
         + _render_audit(state, include_title=False)
         + "\n\n</details>",
     ])
+
+
+def render_non_formal_ledger(state):
+    """Render an auditable evidence ledger from unconverged state.
+
+    Skips the convergence guard in build_report_view_model / _render_audit.
+    All underlying data extraction (crux_engine.report_data, _citation_quality,
+    _evidence_matrix) is convergence-agnostic.  The output carries a
+    NON_FORMAL_LEDGER header and must never be represented as a formal report.
+    """
+    def _compact(text, limit=80):
+        if not isinstance(text, str):
+            return str(text)[:limit]
+        return text[:limit] + ("…" if len(text) > limit else "")
+
+    rd = crux_engine.report_data(state)
+    topic = state.get("topic", "")
+    question = state.get("decision_question", "")
+    horizon = state.get("horizon", "")
+    as_of = (state.get("frame_contract") or {}).get("as_of_date", "—")
+    question_type = state.get("question_type", "")
+    last_conv = state.get("last_convergence", {})
+    n_rounds = len(state.get("rounds", []))
+    quality = _citation_quality(state)
+
+    lines = []
+    lines.append(f"# Trade Nothing v0.13.0 — 非正式证据账本 (Non-Formal Evidence Ledger)")
+    lines.append("")
+    lines.append("> **⚠️ 非正式产物。** 研究管线未收敛，此账本不得被引用为正式报告。")
+    lines.append("> 它仅用于保存已收集的证据、暴露缺口并定义下一轮最小研究任务。")
+    lines.append("")
+    lines.append(f"- **Topic**: {topic}")
+    lines.append(f"- **决策问题**: {question}")
+    lines.append(f"- **视野**: {horizon} ｜ **证据截止**: {as_of} ｜ **题型**: {question_type}")
+    lines.append(f"- **轮次**: {n_rounds} ｜ **收敛状态**: {last_conv.get('decision', 'UNKNOWN')}")
+    lines.append(f"- **阻塞原因**: {last_conv.get('reason', '—')}")
+    lines.append(f"- **引用质量**: 有效 {quality.get('valid', 0)} / 已检查 {quality.get('checked', 0)}")
+    lines.append("")
+
+    # ── A. 证明账本 (per crux) ──
+    lines.append("## A · 证明账本 (Crux Evidence Ledger)")
+    lines.append("")
+    lines.append("| Crux | 标签 | 角色 | 支持度 | 状态 | 有效引用 | 唯一来源 |")
+    lines.append("|:---|:---|:---|:---:|:---:|:---:|:---:|")
+    for c in rd["cruxes"]:
+        lines.append(
+            f"| **{c['id']}** | {c['label']} | {c['logic_role']} | "
+            f"{c['support_score']:.3f} | {c['status']} | "
+            f"{len(c['valid_citations'])} | {len(c['unique_source_urls'])} |"
+        )
+    lines.append("")
+
+    for c in rd["cruxes"]:
+        lines.append(f"### {c['id']} — {c['label']}")
+        lines.append("")
+        lines.append(f"- **逻辑角色**: {c['logic_role']}")
+        lines.append(f"- **支持度**: {c['support_score']:.3f} ｜ **状态**: {c['status']}")
+        lines.append(f"- **多头最强**: {c.get('best_bull') or '—'}")
+        lines.append(f"- **空头最强**: {c.get('best_bear') or '—'}")
+        lines.append(f"- **监控锚点**: {c.get('monitor_anchor', '—')}")
+        lines.append(f"- **反证条件**: {c.get('falsifier', '—')}")
+        if c.get("catalyst_window", {}).get("event"):
+            cat = c["catalyst_window"]
+            lines.append(f"- **催化窗口**: {cat.get('event')} @ {cat.get('expected_by', '—')} [{cat.get('date_status', '—')}]")
+        lines.append("")
+
+        valid = c.get("valid_citations", [])
+        if valid:
+            lines.append("| # | Claim | 数值 | 来源 | 日期 | URL |")
+            lines.append("|:---|:---|:---|:---|:---|:---|")
+            for i, cit in enumerate(valid, 1):
+                lines.append(
+                    f"| {i} | {_compact(cit.get('claim', ''), limit=80)} | "
+                    f"{cit.get('number') or '—'} | {cit.get('source', '—')} | "
+                    f"{cit.get('date', '—')} | {cit.get('url', '—')} |"
+                )
+            lines.append("")
+        else:
+            lines.append("（无有效引用）\n")
+
+    # ── B. 引用注册表 (all unique citations) ──
+    lines.append("## B · 引用注册表 (Citation Registry)")
+    lines.append("")
+    all_citations = []
+    seen_keys = set()
+    for c in rd["cruxes"]:
+        for cit in c.get("valid_citations", []):
+            key = crux_engine.citation_identity(cit)
+            if key and key not in seen_keys:
+                seen_keys.add(key)
+                all_citations.append((c["id"], cit))
+    lines.append(f"**总计**: {len(all_citations)} 条唯一引用")
+    lines.append("")
+    lines.append("| # | Crux | Claim | 来源 | 日期 | URL |")
+    lines.append("|:---|:---|:---|:---|:---|:---|")
+    for i, (cid, cit) in enumerate(all_citations, 1):
+        lines.append(
+            f"| {i} | {cid} | {_compact(cit.get('claim', ''), limit=60)} | "
+            f"{cit.get('source', '—')} | {cit.get('date', '—')} | "
+            f"{cit.get('url', '—')} |"
+        )
+    lines.append("")
+
+    # ── C. 证据质量闸 ──
+    lines.append("## C · 证据质量闸 (Citation Quality Gate)")
+    lines.append("")
+    lines.append(f"- 有效引用: {quality.get('valid', 0)}")
+    lines.append(f"- 已检查: {quality.get('checked', 0)}")
+    issues = quality.get("issues", [])
+    if issues:
+        lines.append("- **问题**:")
+        for issue in issues:
+            lines.append(f"  - {issue}")
+    else:
+        lines.append("- 无质量问题")
+    lines.append("")
+
+    # ── D. 探索假说 ──
+    hl = state.get("hypothesis_ledger", {})
+    hyps = hl.get("hypotheses", []) if isinstance(hl, dict) else []
+    if hyps:
+        lines.append("## D · 探索假说 (Hypothesis Garden)")
+        lines.append("")
+        lines.append("| ID | 猜想 | 状态 | 优先级 |")
+        lines.append("|:---|:---|:---|:---|")
+        for h in hyps:
+            if not isinstance(h, dict):
+                continue
+            lines.append(
+                f"| {h.get('hypothesis_id', '?')} | "
+                f"{_compact(h.get('hypothesis', ''), limit=50)} | "
+                f"{h.get('state', '—')} | "
+                f"{(h.get('exploration_priority') or {}).get('band', '—')} |"
+            )
+        lines.append("")
+
+    # ── Footer ──
+    lines.append("---")
+    lines.append("")
+    lines.append(
+        "*此账本由 Trade Nothing v0.13.0 `render_non_formal_ledger` 生成。"
+        "非正式产物，不构成交易建议。*"
+    )
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":

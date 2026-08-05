@@ -41,7 +41,7 @@ class VersionSemanticTests(unittest.TestCase):
             judge = fixture / "agents/judge.md"
             judge.write_text(
                 judge.read_text(encoding="utf-8").replace(
-                    "Trade Nothing v0.11.0", "Trade Nothing v0.10", 1
+                    "Trade Nothing v0.13.0", "Trade Nothing v0.10", 1
                 ),
                 encoding="utf-8",
             )

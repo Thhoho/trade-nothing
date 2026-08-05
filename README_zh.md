@@ -9,7 +9,7 @@
 <p align="center">
   <a href="README.md">English</a> ·
   <a href="SKILL.md">运行契约</a> ·
-  <a href="docs/release-v0.11.0.md">v0.11.0 发布说明</a> ·
+  <a href="docs/release-v0.13.0.md">v0.13.0 发布说明</a> ·
   <a href="docs/hypothesis-led-research-v0.10.md">v0.10 基础设计</a>
 </p>
 
@@ -24,7 +24,7 @@ Trade Nothing 是一套面向 Agent Runtime 的对抗式投资研究 Skill。它
 它是研究工作流，不是自动交易系统。它不会自动给出买卖指令、目标价、预期收益、
 Kelly 仓位或持仓比例。
 
-## v0.11.0：假说驱动、时间有界的研究
+## v0.13.0：假说驱动、时间有界的研究
 
 > **想象负责提出，证据负责晋级，风险控制决定能否执行。**
 
@@ -44,7 +44,7 @@ flowchart LR
 必须新建 `OpportunitySeed`，并独立通过同一 Agent、同一轮次、同一 crux 的既有
 证据准入闸门。
 
-v0.11.0 保留 v0.10 的假说驱动基础，并把时间、研究预算分配和面向人的报告输出升级为
+v0.13.0 保留 v0.10 的假说驱动基础，并把时间、研究预算分配和面向人的报告输出升级为
 显式契约。当前方法包括：
 
 - **时间语义失败关闭。** `as_of_date` 是证据截止日，`horizon` 是相对决策窗口，
@@ -68,13 +68,13 @@ v0.11.0 保留 v0.10 的假说驱动基础，并把时间、研究预算分配�
   多空双方都已探查且有界研究不再产生新证据时，crux 才可能进入 `MONITORABLE`。
   从未探查、只有单边、来源单薄或新引入的 crux 继续失败关闭。
 
-完整说明见 [v0.11.0 发布说明](docs/release-v0.11.0.md)、历史
+完整说明见 [v0.13.0 发布说明](docs/release-v0.13.0.md)、历史
 [v0.10 基础设计](docs/hypothesis-led-research-v0.10.md)、
 [假说协议](references/hypothesis-protocol.md)和
 [报告契约](references/report-contract.md)。
 
 > [!IMPORTANT]
-> **校准状态：** v0.11.0 已实现，并通过确定性工程安全门；但
+> **校准状态：** v0.13.0 已实现，并通过确定性工程安全门；但
 > `scripts/benchmark_current.py --check` 当前返回 `UNBENCHMARKED_METHOD_CHANGE`。
 > 这表示运行方法已不同于最后校准的 v0.9.9 身份。现有 closed-packet 与 discovery
 > 套件只是历史控制，不是 v0.11 提高机会召回率、线索质量、Alpha、收益率或风险调整

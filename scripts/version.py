@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 
-__version__ = "0.11.0"
+__version__ = "0.13.0"
 
 
 def _surface_contracts(version):

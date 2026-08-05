@@ -19,7 +19,7 @@ description: >
   or any agent framework supporting sub-agent delegation.
 ---
 
-# Trade Nothing v0.11.0 — The Sovereign Alpha Hunter
+# Trade Nothing v0.13.0 — The Sovereign Alpha Hunter
 
 > **"Propose boldly where consensus may be wrong; follow faint proxy trails before the answer is
 > obvious; promote nothing until evidence survives adversarial checks. Seek upside actively without
@@ -190,7 +190,7 @@ bottom price, target price, or path probability.
 
 ---
 
-### Mode F: `-deepthink2` — Crux-Based Adversarial Pipeline (v0.11.0, recommended)
+### Mode F: `-deepthink2` — Crux-Based Adversarial Pipeline (v0.13.0, recommended)
 
 > Replaces the single-posterior + LFI layer (which railroaded every run to 0%/100% and always
 > burned 12 rounds) with two separate ledgers: a non-promotable **exploration ledger** for wild
@@ -357,6 +357,19 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
     --snapshots snapshots.json --verifier '<claim_verifier_json>' --verifier-isolation verified
 ```
 
+#### Phase 3.7: Tracking Track（赔率轨 — v0.12,并行研究轨）
+
+被正式闸门卡住的 OpportunitySeed(未达 `READY_FOR_SCREENING` 且非 REJECTED),若同时满足——
+赔率实质(`asymmetry_case` 已声明)、逻辑链 ≥3 环、升级/放弃检查点齐全——由
+`scripts/tracking_engine.py` 确定性写入 `tracking_ledger`(ACTIVE),每轮 harvest 后自动同步。
+
+- 账本状态: `ACTIVE` → `ESCALATED`(seed 经正式轨升级)/ `CLOSED`(被筛选否决,记录 close_reason)。
+- **跟踪 ≠ 推荐**: 不改变 crux 评分、收敛、筛选、晋级或 validator 契约;无晋级与交易权限。
+- Inquisitor 对每条 seed 声明 `odds_calibration`(`success_enablers` / `primary_failure_mode` /
+  `failure_signal`),失败信号在准入时写入账本,供后续轮次与人工复核使用。
+- 报告呈现为「跟踪清单」: 赔率姿态 × 检查点·升级 × 检查点·放弃 × 失败信号 × 下一动作。
+- 设计文档: `docs/path-led-research-v0.12.md`;测试: `scripts/test_tracking_engine.py`。
+
 #### Phase 4: Report Compilation（事实层锁定，叙事层综合）
 
 `--report` 输出三个确定性产物：
@@ -464,7 +477,7 @@ python3 scripts/deepthink_orchestrator_v2.py --submit-verification --topic "TARG
 > ledger may compute `downside / (upside + downside)` as a break-even success threshold. It does not
 > estimate success probability, expected return, target price, direction, or position size; missing
 > inputs remain `UNKNOWN`.
-> Introduced in v0.10 and retained in v0.11.0, expiry and falsifier remain explicit audit fields;
+> Introduced in v0.10 and retained in v0.13.0, expiry and falsifier remain explicit audit fields;
 > the runtime does not silently invent a terminal state, delete a hypothesis, or promote it on
 > their basis.
 > Read `references/hypothesis-protocol.md` before changing the exploration ledger, role payloads,
@@ -665,7 +678,7 @@ copied with the skill.
 
 ---
 
-*Trade Nothing v0.11.0 — Hunt Alpha, Not Consensus.*
+*Trade Nothing v0.13.0 — Hunt Alpha, Not Consensus.*
 *Adversarial multi-agent architecture with full lifecycle negative feedback loops.*
 
 

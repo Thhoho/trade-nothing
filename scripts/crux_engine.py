@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Trade Nothing v0.11.0 — Crux Engine  (parallel to deepthink_engine.py; -deepthink2)
+Trade Nothing v0.13.0 — Crux Engine  (parallel to deepthink_engine.py; -deepthink2)
 
 Replaces the degenerate single-posterior + LFI layer with a per-CRUX ledger:
 
@@ -577,6 +577,7 @@ def submit_round(state, round_num, judge_signals, round_context=None):
             "opportunity_harvest",
             "crux_probe_audit",
             "hypothesis_audit",
+            "hypothesis_escalation",
         ):
             if isinstance(round_context.get(key), dict):
                 round_record[key] = round_context[key]
