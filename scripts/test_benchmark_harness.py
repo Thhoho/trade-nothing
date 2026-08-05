@@ -9,6 +9,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import benchmark_harness as harness
 
 
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+INSTALLED_PACKAGE = os.path.isfile(
+    os.path.join(REPO_ROOT, ".trade-nothing-install-manifest.json")
+)
+
+
 def suite():
     prompt_hash = "c" * 64
     return {
@@ -166,8 +172,11 @@ class BenchmarkHarnessTests(unittest.TestCase):
             validated["variant_manifest"]["48e0366"]["method_contract_sha256"],
             "1d68e4ace893ad8e91541af12a8f5da32a9c6b4ac003855dab0395697568107e",
         )
-        verified = harness.verify_git_variants(data, repo_root)
-        self.assertEqual([item["variant"] for item in verified], ["v0_14", "48e0366"])
+        if not INSTALLED_PACKAGE:
+            verified = harness.verify_git_variants(data, repo_root)
+            self.assertEqual(
+                [item["variant"] for item in verified], ["v0_14", "48e0366"]
+            )
         answer_key = harness._load_json(
             os.path.join(
                 repo_root,
@@ -210,6 +219,8 @@ class BenchmarkHarnessTests(unittest.TestCase):
             harness.validate_result(data, case, validated)
 
     def test_canonical_git_variant_pins_are_real(self):
+        if INSTALLED_PACKAGE:
+            self.skipTest("pinned Git objects are unavailable in an installed package")
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         suite_path = os.path.join(
             repo_root, "benchmarks", "v014-six-case", "suite.json"

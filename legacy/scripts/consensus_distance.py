@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ARCHIVED v0.9 target-price heuristic; excluded from the published research skill.
 """
 Trade Nothing v0.9 — Consensus Distance Calculator (共识距离计算器)
 

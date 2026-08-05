@@ -17,6 +17,47 @@ Never label a future target as “as of” or imply evidence extends to that dat
 invalid temporal contract blocks a new project handoff. Historical artifacts keep the conflict
 visible for human resolution; they are not silently rewritten.
 
+## Report grade and the two hard gates
+
+Every run produces a report. Unmet gates lower `report_grade` and constrain what the report may do;
+they never delete the research. Withholding output only moved report writing outside the engine,
+where nothing is checked.
+
+| Grade | Meaning |
+| --- | --- |
+| `FORMAL` | Converged, coverage complete, every crux independently sourced, screened, claim-verified. |
+| `PROVISIONAL` | Converged, but at least one gate unmet. Deliverable and useful; not publishable. |
+| `EXPLORATORY` | Not converged. Deliverable as research; no external use. |
+
+Exactly two gates remain hard:
+
+- `publication_allowed` (`FORMAL` only) — any artifact leaving the author's hands: public posts,
+  newsletters, shared documents. A run that cannot reach `FORMAL` must not produce one.
+- `ranking_allowed` (requires a completed CandidateScreen) — ordering, scoring, or recommendation
+  language over named securities.
+
+Both booleans and the unmet-gate list appear in the Facts Box, so a reader sees the limitation
+before the narrative.
+
+## Claim tiers
+
+Claims carry a tier label. A weakly supported claim is publishable inside the report *with its
+label*; stripping the label is the violation, not holding the belief.
+
+- `VERIFIED` — two or more independent publisher domains. May be asserted plainly.
+- `SINGLE_SOURCE` — real citation, no independent corroboration. Must be marked
+  "单一来源·未交叉验证".
+- `HYPOTHESIS` — no valid citation. Must be marked "假说". Explicitly allowed in the body, because
+  the exploration ledger is where non-consensus insight comes from. Promoting a hypothesis to a bare
+  assertion is hypothesis laundering and is the actual red line.
+
+## Self-description is script-filled
+
+Citation counts, round counts, independent-publisher counts, coverage ratio, and convergence status
+come from `evidence_counts` and `research_grade`. A narrative model must never write these numbers.
+A hand-written evidence count is precisely how a report ends up claiming more support than its
+ledger holds.
+
 ## Views
 
 - `facts_box`: deterministic compact summary with the three-axis verdict, crux table, candidate
@@ -121,7 +162,8 @@ supporting and opposing evidence, but candidate direction and pricing remain can
 
 Do not turn `NO_EDGE` into `SHORT`. Do not call a lead, READY seed, WATCHLIST, or unverified
 THESIS_CANDIDATE an opportunity, recommendation, or simulated-trade candidate.
-An opportunity-oriented report is invalid while any Landscape path is `UNPROBED`.
+An opportunity-oriented report with `UNPROBED` paths is delivered at a reduced `report_grade` with
+the coverage gap stated; it is not withheld.
 `NO_EDGE` or zero candidates may coexist with high-information exploration actions. Those actions
 mean “worth one more bounded test,” not “investable.”
 

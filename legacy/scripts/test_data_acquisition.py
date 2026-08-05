@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""
+"""ARCHIVED with the legacy provider gateway.
+
 Trade Nothing v0.9.1 — Real Data Acquisition Verification Suite
 """
 import os

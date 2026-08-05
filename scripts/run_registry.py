@@ -31,6 +31,8 @@ CONTROL_RESULT_KEYS = (
     "blockers", "unresolved_cruxes", "candidate_state", "screening_state",
     "verification_state", "available_report_views", "report_view",
     "state_path", "run_purpose", "rounds_completed", "last_convergence", "execution_summary",
+    "runner_terminal_status", "runner_terminal_instruction", "stopped_reason",
+    "resumable", "pinned_method_identity", "current_method_identity",
     "formal_action", "exploration_action", "hypothesis_exploration",
     "scenario_path_audit",
     "action_id", "action_status", "authorization_state",
@@ -150,16 +152,34 @@ def adopt_manifest(topic, state_path):
     )
 
 
-def load_manifest(run_id):
+def _load_manifest_structural(run_id):
     data = load_json_safe(manifest_path(run_id), default=None)
     if not isinstance(data, dict) or data.get("schema") != SCHEMA:
         raise ValueError("run_manifest_not_found_or_invalid")
     if data.get("run_id") != run_id:
         raise ValueError("run_manifest_id_mismatch")
-    if data.get("method_identity"):
-        method_identity.validate_method_identity(data["method_identity"])
     data["run_purpose"] = normalize_run_purpose(data.get("run_purpose"))
     data["state_path"] = _validated_state_path(data.get("state_path"))
+    return data
+
+
+def inspect_manifest(run_id):
+    """Read a manifest without authorizing resume after method drift."""
+    data = _load_manifest_structural(run_id)
+    current = method_identity.build_method_identity()
+    pinned = data.get("method_identity")
+    data["method_identity_check"] = {
+        "status": "match" if pinned == current else "drift",
+        "pinned": pinned,
+        "current": current,
+    }
+    return data
+
+
+def load_manifest(run_id):
+    data = _load_manifest_structural(run_id)
+    if data.get("method_identity"):
+        method_identity.validate_method_identity(data["method_identity"])
     return data
 
 

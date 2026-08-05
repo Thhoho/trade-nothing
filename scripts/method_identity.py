@@ -23,8 +23,14 @@ def canonical_json(value):
 def _operational_paths(root=ROOT):
     root = Path(root).resolve()
     paths = [root / "SKILL.md"]
-    for folder, suffix in (("agents", ".md"), ("references", ".md"), ("scripts", ".py")):
-        for path in (root / folder).glob(f"*{suffix}"):
+    for folder, suffixes in (
+        ("agents", (".md", ".yaml")),
+        ("references", (".md",)),
+        ("scripts", (".py",)),
+    ):
+        for path in (root / folder).iterdir():
+            if path.suffix not in suffixes:
+                continue
             if folder == "scripts" and path.name.startswith("test_"):
                 continue
             paths.append(path)
@@ -87,7 +93,11 @@ def build_method_identity_from_git(repo, commit):
     paths = sorted(
         path for path in names
         if path == "SKILL.md"
-        or (path.startswith("agents/") and path.count("/") == 1 and path.endswith(".md"))
+        or (
+            path.startswith("agents/")
+            and path.count("/") == 1
+            and (path.endswith(".md") or path.endswith(".yaml"))
+        )
         or (path.startswith("references/") and path.count("/") == 1 and path.endswith(".md"))
         or (
             path.startswith("scripts/")

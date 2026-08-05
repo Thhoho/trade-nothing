@@ -66,6 +66,49 @@ def verifier_payload(st, snapshots, overrides=None, quote_override=None):
     return {"claim_verifications": results}
 
 
+def install_verifier_dispatch(st, snapshots):
+    packet = claim_engine.build_verifier_packet(st, snapshots)
+    dispatch = claim_engine.verifier_dispatch_record(packet, "fixture verifier prompt")
+    st["claim_verifier_dispatches"] = [dispatch]
+    return dispatch
+
+
+def verifier_receipt(st, verifier, runner_kind="agy_separate_process_v1"):
+    dispatch = st["claim_verifier_dispatches"][-1]
+    role = {
+        "invocation_id": "fixture-verifier-invocation",
+        "process_id": 4242,
+        "exit_code": 0,
+        "timed_out": False,
+        "prompt_sha256": dispatch["prompt_sha256"],
+        "payload_sha256": candidate_screen_engine.payload_sha256(verifier),
+    }
+    receipt = {
+        "schema": "claim-verifier-isolation.v1",
+        "runner_kind": runner_kind,
+        "host_enforced": True,
+        "dispatch_id": dispatch["dispatch_id"],
+        "claim_ids": dispatch["claim_ids"],
+        "snapshot_ids": dispatch["snapshot_ids"],
+        "verifier": role,
+    }
+    receipt["receipt_id"] = claim_engine.isolation_receipt_id(receipt)
+    return receipt
+
+
+def apply_verified(st, snapshots, verifier, **kwargs):
+    if not st.get("claim_verifier_dispatches"):
+        install_verifier_dispatch(st, snapshots)
+    return claim_engine.apply_verifier_results(
+        st,
+        snapshots,
+        verifier,
+        isolation_status="verified",
+        isolation_receipt=verifier_receipt(st, verifier),
+        **kwargs,
+    )
+
+
 class EvidenceSnapshotTests(unittest.TestCase):
     def test_html_snapshot_is_deterministic_and_excludes_script(self):
         body = b"<html><head><title>Source</title></head><body><p>Revenue was 10.</p><script>fake 99</script></body></html>"
@@ -119,9 +162,7 @@ class ClaimVerificationEngineTests(unittest.TestCase):
     def test_exact_snapshot_spans_unlock_human_draft(self):
         st = screened_state()
         snapshots = snapshot_payload(st)
-        audit = claim_engine.apply_verifier_results(
-            st, snapshots, verifier_payload(st, snapshots), isolation_status="verified"
-        )
+        audit = apply_verified(st, snapshots, verifier_payload(st, snapshots))
         screen = st["candidate_screens"][0]
         self.assertEqual(screen["claim_verification_status"], "VERIFIED")
         self.assertEqual(screen["promotion_packet"]["status"], "DRAFT_REQUIRES_HUMAN")
@@ -136,13 +177,9 @@ class ClaimVerificationEngineTests(unittest.TestCase):
         st = screened_state()
         snapshots = snapshot_payload(st)
         verifier = verifier_payload(st, snapshots)
-        claim_engine.apply_verifier_results(
-            st, snapshots, verifier, isolation_status="verified"
-        )
+        apply_verified(st, snapshots, verifier)
         original = copy.deepcopy(st["claim_verifications"])
-        replay = claim_engine.apply_verifier_results(
-            st, snapshots, verifier, isolation_status="verified"
-        )
+        replay = apply_verified(st, snapshots, verifier)
         self.assertEqual(replay["accepted_verifications"], 0)
         self.assertEqual(
             sorted(replay["replayed_claim_ids"]),
@@ -154,16 +191,12 @@ class ClaimVerificationEngineTests(unittest.TestCase):
         st = screened_state()
         snapshots = snapshot_payload(st)
         verifier = verifier_payload(st, snapshots)
-        claim_engine.apply_verifier_results(
-            st, snapshots, verifier, isolation_status="verified"
-        )
+        apply_verified(st, snapshots, verifier)
         original_verifications = copy.deepcopy(st["claim_verifications"])
         original_screen = copy.deepcopy(st["candidate_screens"][0])
         first = claim_engine.collect_claim_requests(st)[0]["claim_id"]
         changed = verifier_payload(st, snapshots, overrides={first: "CONTRADICTS"})
-        conflict = claim_engine.apply_verifier_results(
-            st, snapshots, changed, isolation_status="verified"
-        )
+        conflict = apply_verified(st, snapshots, changed)
         self.assertEqual(conflict["accepted_verifications"], 0)
         self.assertEqual(conflict["conflicting_claim_ids"], [first])
         self.assertEqual(st["claim_verifications"], original_verifications)
@@ -174,9 +207,7 @@ class ClaimVerificationEngineTests(unittest.TestCase):
         snapshots = snapshot_payload(st)
         first = claim_engine.collect_claim_requests(st)[0]["claim_id"]
         payload = verifier_payload(st, snapshots, quote_override={first: "This sentence is not in the page."})
-        claim_engine.apply_verifier_results(
-            st, snapshots, payload, requested_claim_id=first, isolation_status="verified"
-        )
+        apply_verified(st, snapshots, payload, requested_claim_id=first)
         verification = claim_engine.latest_verifications(st)[first]
         self.assertEqual(verification["effective_verdict"], "INSUFFICIENT")
         self.assertIn("exact_quote_not_in_snapshot", verification["quality_flags"])
@@ -189,14 +220,30 @@ class ClaimVerificationEngineTests(unittest.TestCase):
         self.assertEqual(screen["claim_verification_status"], "PENDING")
         self.assertEqual(screen["promotion_packet"]["status"], "DRAFT_REQUIRES_SOURCE_VERIFICATION")
 
+    def test_verified_label_without_bound_receipt_cannot_unlock_draft(self):
+        st = screened_state()
+        snapshots = snapshot_payload(st)
+        audit = claim_engine.apply_verifier_results(
+            st,
+            snapshots,
+            verifier_payload(st, snapshots),
+            isolation_status="verified",
+        )
+        screen = st["candidate_screens"][0]
+        self.assertEqual(audit["effective_verifier_isolation"], "unverified")
+        self.assertEqual(audit["verifier_isolation_receipt_status"], "invalid")
+        self.assertEqual(screen["claim_verification_status"], "PENDING")
+        self.assertEqual(
+            screen["promotion_packet"]["status"],
+            "DRAFT_REQUIRES_SOURCE_VERIFICATION",
+        )
+
     def test_snapshot_bound_contradiction_blocks_promotion(self):
         st = screened_state()
         snapshots = snapshot_payload(st)
         first = claim_engine.collect_claim_requests(st)[0]["claim_id"]
         payload = verifier_payload(st, snapshots, overrides={first: "CONTRADICTS"})
-        claim_engine.apply_verifier_results(
-            st, snapshots, payload, isolation_status="verified"
-        )
+        apply_verified(st, snapshots, payload)
         screen = st["candidate_screens"][0]
         self.assertEqual(screen["claim_verification_status"], "CONTRADICTED")
         self.assertEqual(screen["promotion_packet"]["status"], "BLOCKED_CLAIM_CONFLICT")
@@ -226,8 +273,15 @@ class ClaimVerificationOrchestratorTests(unittest.TestCase):
         dispatch = orchestrator.cmd_verify_claims(topic, snapshots)
         self.assertEqual(dispatch["status"], "dispatch_claim_verifier")
         self.assertLessEqual(len(dispatch["claim_ids"]), claim_engine.MAX_CLAIMS_PER_BATCH)
+        stored_before_submit = orchestrator._load(topic)
+        verifier = verifier_payload(stored_before_submit, snapshots)
+        receipt = verifier_receipt(stored_before_submit, verifier)
         result = orchestrator.cmd_submit_verification(
-            topic, snapshots, verifier_payload(st, snapshots), isolation_status="verified"
+            topic,
+            snapshots,
+            verifier,
+            isolation_status="verified",
+            isolation_receipt=receipt,
         )
         stored = orchestrator._load(topic)
         self.assertEqual(result["verified_thesis_candidate_count"], 1)

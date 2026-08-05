@@ -1,4 +1,5 @@
-"""
+"""ARCHIVED provider gateway; excluded because import-time plugin execution is not release-safe.
+
 Trade Nothing v0.9.5 — Pluggable Global Data Provider Gateway
 
 Provides an Object-Oriented, Open-Closed Principle (OCP) compliant architecture

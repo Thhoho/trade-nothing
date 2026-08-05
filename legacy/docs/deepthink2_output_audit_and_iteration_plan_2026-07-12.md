@@ -1,4 +1,6 @@
-# Trade Nothing `deepthink2` 输出效果审计与下一轮迭代计划
+# ARCHIVED: Trade Nothing `deepthink2` 输出效果审计与下一轮迭代计划
+
+> 历史审计材料；不属于 v0.13 发布 skill 的现行方法契约。
 
 审计日期：2026-07-12  
 当前报告：`power_capacity_infrastructure_analysis.md` / `power_capacity_infrastructure_analysis_zh.md`  

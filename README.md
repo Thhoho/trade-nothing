@@ -83,7 +83,7 @@ Read the [v0.13.0 release note](docs/release-v0.13.0.md), the historical
 > gates, but `scripts/benchmark_current.py --check` currently returns
 > `UNBENCHMARKED_METHOD_CHANGE`. The operational method differs from the last calibrated v0.9.9
 > identity. Existing closed-packet and discovery suites remain historical controls; they are not
-> evidence that v0.11 improves opportunity recall, lead quality, alpha, return, or risk-adjusted
+> evidence that v0.13.0 improves opportunity recall, lead quality, alpha, return, or risk-adjusted
 > return. Engineering correctness, research effectiveness, and investment performance are three
 > separate claims.
 
@@ -105,8 +105,8 @@ Read the [v0.13.0 release note](docs/release-v0.13.0.md), the historical
 - Reported values are debate-support and workflow heuristics, not calibrated market probabilities.
 - An exploration execution is `typed design → plan → explicit authorization → receipt`: one exact
   query, at most three documents, no automatic retry, and no ingestion after state or as-of drift.
-- Runtime state is stored under `TRADE_NOTHING_SCRATCH_DIR`, not inside the skill source. Reminders
-  and webhooks remain off unless explicitly enabled.
+- Runtime state is stored under `TRADE_NOTHING_SCRATCH_DIR`, not inside the skill source. The
+  published skill contains no notification, webhook, portfolio, or order-execution entry point.
 
 ## Isolation is a host responsibility
 
@@ -115,23 +115,65 @@ separate contexts with no shared intermediate reasoning; CandidateScreen and cla
 have their own isolation contracts. If a host can only role-switch within one model, the run must
 be labelled `degraded` and cannot claim physical multi-agent isolation.
 
-## Quick start
+## Installation
 
-```bash
-git clone https://github.com/Thhoho/trade-nothing.git
-cd trade-nothing
-python3 -m pip install -r requirements.txt
+### Natural-language installation for an agent
+
+Paste the following into Codex, Claude Code, Gemini CLI, Antigravity, or another coding agent:
+
+```text
+Install Trade Nothing v0.13.0 from https://github.com/Thhoho/trade-nothing.git for this agent runtime.
+
+Safety and verification requirements:
+1. Do not start a research run. This request authorizes installation only.
+2. Detect the current runtime's configured skill root and target its `trade-nothing` directory. Use
+   `${CODEX_HOME:-$HOME/.codex}/skills/trade-nothing` for Codex,
+   `$HOME/.claude/skills/trade-nothing` for Claude Code, or
+   `$HOME/.gemini/skills/trade-nothing` for Gemini CLI. For any other runtime, use its documented
+   configured skill root; if that cannot be verified, stop and ask me instead of guessing.
+3. Before writing, inspect any existing checkout and target. Never reset, delete, or overwrite a
+   dirty checkout, runtime state, scratch data, personal research memory, or target metadata.
+4. Clone or fetch the repository in a new temporary or user-approved source directory, check out
+   the exact annotated tag `v0.13.0`, verify that `git cat-file -t v0.13.0` prints `tag`, and report
+   the commit from `git rev-parse 'v0.13.0^{commit}'`. Do not install from an untagged branch tip.
+5. From that checkout, run `python3 scripts/version.py` and `make test`. Do not install third-party
+   packages unless a required check fails and I explicitly approve the dependency change.
+6. Install with `python3 scripts/install_skill.py --source <checkout> --targets <target>`; do not
+   hand-copy files. Then run `python3 scripts/check_source_sync.py --source <checkout> --targets
+   <target>`.
+7. Preserve `Methodology_Evolution.md`, `scripts/.state`, `.git`, and everything under
+   `~/.trade-nothing/`. Let the installer move stale managed code to its recoverable quarantine.
+8. Request permission before network access or writes outside the current workspace when the host
+   requires it. Finish by reporting the tag, commit, install target, test result, sync result, and
+   any quarantined files.
 ```
 
-For Codex and Gemini-compatible skill directories, sync the controlled source files:
+That prompt intentionally installs only into the current runtime. To install the same verified
+checkout into the default Gemini, Codex, and Claude directories, explicitly ask the agent to run
+`make install DEV_DIR="<checkout>"` followed by `make status DEV_DIR="<checkout>"`.
+
+### Shell installation
+
+```bash
+git clone --branch v0.13.0 --depth 1 https://github.com/Thhoho/trade-nothing.git
+cd trade-nothing
+test "$(git cat-file -t v0.13.0)" = tag
+git rev-parse 'v0.13.0^{commit}'
+python3 scripts/version.py
+make test
+```
+
+Install the controlled bundle into the default Gemini, Codex, and Claude skill directories:
 
 ```bash
 make install DEV_DIR="$(pwd)"
 ```
 
-This does not copy or delete runtime JSON, state, scratch data, or personal research artifacts.
-For Claude Code, OpenHands, or another agent runtime, point the host instructions directly at the
-repository's `SKILL.md` and map its isolated roles to that runtime.
+This does not delete runtime JSON, state, scratch data, `.git`, or personal research artifacts.
+Stale files on the managed code surface are moved to a recoverable quarantine. Antigravity and
+Claude Code have bounded process adapters; Codex has manual collaboration receipt builders;
+Gemini, Hermes, and OpenHands remain manual/protocol-only integrations in this release. See
+[`references/runtime-compatibility.md`](references/runtime-compatibility.md) for the exact matrix.
 
 Then ask the agent, for example:
 
@@ -171,7 +213,7 @@ python3 scripts/deepthink_orchestrator_v2.py --submit \
   --topic "TARGET" --det '<detective_json>' \
   --inq '<inquisitor_json>' --judge '<judge_json>'
 
-# Render only when the deterministic report gate allows it.
+# Render at every terminal stop; the deterministic gate controls the grade and allowed claims.
 python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET"
 ```
 
@@ -184,14 +226,26 @@ Common terminal or continuation states include:
 
 - `dispatch_subagents`: continue only on the bounded open-crux packet.
 - `ready_for_report`: deterministic convergence and evidence gates passed.
-- `blocked_max_rounds`: the fuse fired; only a non-formal Resolution Memo is allowed.
-- `blocked_unconverged`: required cruxes remain unresolved; no formal report.
-- `blocked_evidence_gate`: source diversity or evidence maturity is insufficient.
+- `blocked_max_rounds`: the fuse fired; a downgraded report ships alongside the Resolution Memo.
+- `report_data_ready`: report data is available. It is always produced; limitations ride on
+  `report_grade` rather than suppressing output.
 - `no_edge`: no formally usable expectation gap was established; a labelled, bounded exploration
   action may still remain, but it requires separate authorization.
 
-The older `-deepthink` single-posterior/LFI pipeline remains for compatibility. Its outputs are
-uncalibrated legacy heuristics and must not be presented as real probabilities.
+Report grade and the two hard gates:
+
+- `report_grade` is `FORMAL`, `PROVISIONAL`, or `EXPLORATORY`. Unmet gates lower the grade instead
+  of deleting the research.
+- `publication_allowed` (`FORMAL` only) is the single gate on externally distributed writing.
+- `ranking_allowed` (requires a completed CandidateScreen) gates ordering or recommendation
+  language over named securities.
+- Claims carry a tier: `VERIFIED` may be asserted plainly, `SINGLE_SOURCE` must be marked as
+  uncorroborated, and `HYPOTHESIS` must be labelled but is explicitly allowed in the body.
+  Stripping the label is the violation.
+
+The older `-deepthink` single-posterior/LFI pipeline was retired in v0.13.0. Its uncalibrated
+LFI/AFI/EGI/posterior numbers, its separate `scripts/.state/` format, and its harvest path (which
+silently missed `-deepthink2` state) are gone. A `-deepthink` request is answered by `-deepthink2`.
 
 ## Evidence schema
 
@@ -219,7 +273,7 @@ invented Judge citations are rejected.
 | `TRADE_NOTHING_SCRATCH_DIR` | `~/.trade-nothing/scratch` | State and issue files |
 | `TRADE_NOTHING_OUTPUT_DIR` | `~/trade-nothing-outputs` | Generated artifacts |
 | `TRADE_NOTHING_VAULT_DIR` | `~/trade-nothing-vault` | Research vault |
-| `TRADE_NOTHING_EVOLUTION_PATH` | `<skill>/Methodology_Evolution.md` | Negative-prior memory |
+| `TRADE_NOTHING_EVOLUTION_PATH` | `<vault>/Methodology/Evolution.md` | Negative-prior memory |
 | `TRADE_NOTHING_MODEL_DEEP` | host default | Quality-critical roles and Judge |
 
 ## Verification and maintenance
@@ -237,16 +291,13 @@ python3 -B -m unittest discover -s scripts -p 'test_*.py'
 python3 scripts/version.py
 python3 scripts/benchmark_current.py --check --source-repo .
 
-# Sync controlled source files, then verify exact source hashes
+# Sync controlled source files, quarantine retired managed code, then verify exact hashes
 make install DEV_DIR="$(pwd)"
 make status DEV_DIR="$(pwd)"
 ```
 
-Live provider diagnostics are separate and non-gating:
-
-```bash
-make test-live
-```
+Installed packages run benchmark checks in explicit package mode and report that pinned Git-object
+verification is unavailable there. Run `--source-repo .` only from the canonical Git checkout.
 
 ## Repository layout
 
@@ -257,6 +308,7 @@ references/   Normative research and handoff protocols
 docs/         Architecture and design notes
 benchmarks/   Frozen evaluation packets and method bindings
 assets/       Report templates and README illustrations
+legacy/       Source-only archived v0.9 execution and historical design surfaces; never installed
 SKILL.md      Main runtime contract
 ```
 

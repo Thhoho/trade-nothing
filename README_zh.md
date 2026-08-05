@@ -77,7 +77,7 @@ v0.13.0 保留 v0.10 的假说驱动基础，并把时间、研究预算分配�
 > **校准状态：** v0.13.0 已实现，并通过确定性工程安全门；但
 > `scripts/benchmark_current.py --check` 当前返回 `UNBENCHMARKED_METHOD_CHANGE`。
 > 这表示运行方法已不同于最后校准的 v0.9.9 身份。现有 closed-packet 与 discovery
-> 套件只是历史控制，不是 v0.11 提高机会召回率、线索质量、Alpha、收益率或风险调整
+> 套件只是历史控制，不是 v0.13.0 提高机会召回率、线索质量、Alpha、收益率或风险调整
 > 收益的证据。工程正确性、研究有效性和投资收益是三层不同结论。
 
 ## 现在真正可靠的部分
@@ -97,8 +97,8 @@ v0.13.0 保留 v0.10 的假说驱动基础，并把时间、研究预算分配�
 - 报告数值只是辩论支持度和工作流启发式，不是经过校准的市场概率。
 - 探索执行严格遵循“类型化设计 → 计划 → 明确授权 → 回执”：一次精确查询、最多
   三份文档、不得自动重试；状态或 as-of 漂移后不得摄入结果。
-- 运行状态写入 `TRADE_NOTHING_SCRATCH_DIR`，不污染 Skill 源码；提醒与 webhook
-  默认关闭，只有显式启用才会触发。
+- 运行状态写入 `TRADE_NOTHING_SCRATCH_DIR`，不污染 Skill 源码；发布包不包含提醒、
+  webhook、投资组合或下单执行入口。
 
 ## 隔离是宿主能力，不是 Skill 自带能力
 
@@ -106,23 +106,64 @@ Framer 在父上下文内联运行且不浏览。Detective 和 Inquisitor 必须
 推理的独立上下文；CandidateScreen 与 claim 核验也有各自的隔离契约。如果宿主只能
 让同一个模型切换角色，运行必须标注为 `degraded`，不得声称完成了物理多智能体隔离。
 
-## 快速开始
+## 安装
 
-```bash
-git clone https://github.com/Thhoho/trade-nothing.git
-cd trade-nothing
-python3 -m pip install -r requirements.txt
+### 在 Agent 中用自然语言安装
+
+把下面整段直接发给 Codex、Claude Code、Gemini CLI、Antigravity 或其他编程 Agent：
+
+```text
+请为当前 Agent Runtime 安装 Trade Nothing v0.13.0，源码为：
+https://github.com/Thhoho/trade-nothing.git
+
+安全与验收要求：
+1. 不要启动任何研究 run；本次只授权安装。
+2. 先识别当前 Runtime 已配置的 Skill 根目录，并以其中的 `trade-nothing` 为目标。Codex
+   使用 `${CODEX_HOME:-$HOME/.codex}/skills/trade-nothing`，Claude Code 使用
+   `$HOME/.claude/skills/trade-nothing`，Gemini CLI 使用
+   `$HOME/.gemini/skills/trade-nothing`。其他 Runtime 只能使用其文档或配置明确给出的目录；
+   无法确认时停止并询问我，不要猜路径。
+3. 写入前检查已有源码目录和安装目标。不得 reset、删除或覆盖 dirty checkout、运行状态、
+   scratch、个人研究记忆或目标目录元数据。
+4. 在新的临时目录或我批准的源码目录 clone/fetch，checkout 精确的 annotated tag
+   `v0.13.0`，确认 `git cat-file -t v0.13.0` 输出 `tag`，并报告
+   `git rev-parse 'v0.13.0^{commit}'` 解析出的 commit；不得从未打 tag 的分支 tip 安装。
+5. 在该 checkout 中运行 `python3 scripts/version.py` 和 `make test`。除非必要检查因缺少
+   依赖失败且我明确批准，否则不要安装第三方依赖。
+6. 使用 `python3 scripts/install_skill.py --source <checkout> --targets <target>` 安装，
+   不要手工复制；然后运行 `python3 scripts/check_source_sync.py --source <checkout>
+   --targets <target>`。
+7. 保留 `Methodology_Evolution.md`、`scripts/.state`、`.git` 和
+   `~/.trade-nothing/` 下的全部内容；旧受控代码交给安装器移入可恢复隔离区。
+8. 宿主要求时，网络访问和工作区外写入必须先申请权限。最后报告 tag、commit、安装目标、
+   测试结果、同步结果和被隔离文件。
 ```
 
-对于 Codex 和 Gemini 兼容的 Skill 目录，可以同步受控源码：
+这段提示默认只安装到当前 Runtime。若要把同一份已验证 checkout 同步到默认的 Gemini、
+Codex 和 Claude 目录，需要明确要求 Agent 运行 `make install DEV_DIR="<checkout>"`，随后
+运行 `make status DEV_DIR="<checkout>"`。
+
+### Shell 安装
+
+```bash
+git clone --branch v0.13.0 --depth 1 https://github.com/Thhoho/trade-nothing.git
+cd trade-nothing
+test "$(git cat-file -t v0.13.0)" = tag
+git rev-parse 'v0.13.0^{commit}'
+python3 scripts/version.py
+make test
+```
+
+把受控包安装到默认的 Gemini、Codex 和 Claude Skill 目录：
 
 ```bash
 make install DEV_DIR="$(pwd)"
 ```
 
-这个命令不会复制或删除运行期 JSON、state、scratch 或个人研究文档。对于 Claude
-Code、OpenHands 等其他 Agent Runtime，只需让宿主说明直接指向仓库中的 `SKILL.md`，
-并把隔离角色映射到相应运行机制。
+这个命令不会删除运行期 JSON、state、scratch、`.git` 或个人研究文档；已退出源码的
+受控代码会被移入可恢复隔离区。Antigravity 与 Claude Code 具备有界进程适配器，Codex
+具备手工 collaboration receipt 构造器；Gemini、Hermes 与 OpenHands 在本版本仍是
+手工/协议级集成。准确矩阵见 `references/runtime-compatibility.md`。
 
 然后可以直接对 Agent 说：
 
@@ -162,7 +203,7 @@ python3 scripts/deepthink_orchestrator_v2.py --submit \
   --topic "TARGET" --det '<detective_json>' \
   --inq '<inquisitor_json>' --judge '<judge_json>'
 
-# 只有确定性报告闸门允许时才渲染。
+# 每个终态都渲染；确定性闸门控制报告等级与允许表达的结论。
 python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET"
 ```
 
@@ -175,14 +216,23 @@ Facts Box 原样放在内容驱动的 Decision Brief 顶部，并单独保存 Ev
 
 - `dispatch_subagents`：只对有界的 OPEN-crux packet 继续质证。
 - `ready_for_report`：确定性收敛与证据闸门通过。
-- `blocked_max_rounds`：达到熔断轮次，只能生成非正式 Resolution Memo。
-- `blocked_unconverged`：必要 crux 仍未解决，禁止正式报告。
-- `blocked_evidence_gate`：来源多样性或证据成熟度不足。
+- `blocked_max_rounds`：达到熔断轮次，同时交付降级报告与 Resolution Memo。
+- `report_data_ready`：报告数据已就绪。它总是产出——限制由 `report_grade` 承载。
 - `no_edge`：尚未建立可正式使用的预期差；仍可保留一个明确标注的有界探索动作，
   但必须单独授权。
 
-旧的 `-deepthink` 单后验/LFI 流程仅为兼容保留。其数值是未校准的历史启发式，不能
-包装成真实胜率。
+报告等级与两道硬闸门：
+
+- `report_grade` 为 `FORMAL` / `PROVISIONAL` / `EXPLORATORY`。未满足的闸门降低等级，
+  但不再删除研究成果。
+- `publication_allowed`（仅 `FORMAL`）：对外传播稿的唯一硬闸门。
+- `ranking_allowed`（需完成 CandidateScreen）：对具名标的排序或使用推荐语气的硬闸门。
+- 断言分三档：`VERIFIED` 可直接陈述；`SINGLE_SOURCE` 标注『单一来源·未交叉验证』；
+  `HYPOTHESIS` 标注『假说』并允许写进正文。撕掉标签才是违规。
+
+旧的 `-deepthink` 单后验/LFI 流程已于 v0.13.0 退役。它的 LFI/AFI/EGI/后验数值未经校准、
+维护独立的 `scripts/.state/` 状态格式，且其 harvest 路径对 `-deepthink2` 的状态会静默失效。
+收到 `-deepthink` 请求时改用 `-deepthink2`。
 
 ## 正式证据格式
 
@@ -210,7 +260,7 @@ Facts Box 原样放在内容驱动的 Decision Brief 顶部，并单独保存 Ev
 | `TRADE_NOTHING_SCRATCH_DIR` | `~/.trade-nothing/scratch` | 状态与 Issue 文件 |
 | `TRADE_NOTHING_OUTPUT_DIR` | `~/trade-nothing-outputs` | 生成物 |
 | `TRADE_NOTHING_VAULT_DIR` | `~/trade-nothing-vault` | 研究资料库 |
-| `TRADE_NOTHING_EVOLUTION_PATH` | `<skill>/Methodology_Evolution.md` | 负面先验记忆 |
+| `TRADE_NOTHING_EVOLUTION_PATH` | `<vault>/Methodology/Evolution.md` | 负面先验记忆 |
 | `TRADE_NOTHING_MODEL_DEEP` | 宿主默认 | 质量关键角色与 Judge |
 
 ## 验证、维护与同步
@@ -228,16 +278,13 @@ python3 -B -m unittest discover -s scripts -p 'test_*.py'
 python3 scripts/version.py
 python3 scripts/benchmark_current.py --check --source-repo .
 
-# 同步受控源码，再核对精确哈希
+# 同步受控源码、隔离退役代码，再核对精确哈希
 make install DEV_DIR="$(pwd)"
 make status DEV_DIR="$(pwd)"
 ```
 
-在线数据源诊断单独运行，不属于发布门：
-
-```bash
-make test-live
-```
+已安装包会明确以 package 模式检查 benchmark，并说明无法在包内核验固定 Git 对象；
+`--source-repo .` 只应在规范 Git 源仓库中运行。
 
 ## 目录结构
 
@@ -248,6 +295,7 @@ references/   规范性研究与交接协议
 docs/         架构与设计说明
 benchmarks/   冻结评估包与方法绑定
 assets/       报告模板与 README 插图
+legacy/       仅源码保留的 v0.9 执行面和历史设计；不会进入安装包
 SKILL.md      Agent 运行时主契约
 ```
 

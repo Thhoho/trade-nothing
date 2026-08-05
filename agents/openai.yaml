@@ -1,0 +1,4 @@
+interface:
+  display_name: "Trade Nothing"
+  short_description: "Adversarial, evidence-gated investment research"
+  default_prompt: "Use $trade-nothing to research this question with explicit evidence, adversarial checks, and no unsupported promotion."

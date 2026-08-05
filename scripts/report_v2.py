@@ -572,9 +572,11 @@ def build_report_view_model(state):
     The view model contains no raw role payloads. It keeps root-thesis truth,
     candidate maturity, and the next legal action separate so renderers cannot
     turn a valid report into an investment recommendation.
+
+    An unconverged run still projects a view model.  Its `research_grade` states
+    what the run did not establish; suppressing the projection entirely only
+    moved report writing outside the engine.
     """
-    if state.get("last_convergence", {}).get("decision") != "converge":
-        raise ValueError("formal report blocked: engine state is not converged")
     opportunity_engine.refresh_candidate_states(state)
     rd = crux_engine.report_data(state)
     verdict = rd.get("research_verdict", {})
@@ -705,12 +707,11 @@ def build_report_view_model(state):
             "unique_source_count": rd.get("n_unique_sources", 0),
             "primary_source_count": rd.get("n_primary_sources", 0),
         },
+        "research_grade": crux_engine.research_grade(state),
     }
 
 
 def _render_audit(state, include_title=True):
-    if state.get("last_convergence", {}).get("decision") != "converge":
-        raise ValueError("formal report blocked: engine state is not converged")
     opportunity_engine.refresh_candidate_states(state)
     rd = crux_engine.report_data(state)
     landscape = landscape_engine.summary(state)
@@ -1435,6 +1436,7 @@ def _render_decision_brief(view):
     verdict = view["verdict"]
     counts = view["candidate_counts"]
     root = view["root_thesis"]
+    grade = view.get("research_grade") or {}
     survived = "；".join(
         f"{item['id']} {item['label']}" for item in root["survived"][:3]
     ) or "无已确认的偏多 crux"
@@ -1628,6 +1630,10 @@ def _render_decision_brief(view):
         f"- 隔离 `{view['runtime']['isolation_status']}`；轮次 {view['runtime']['round_count']}；"
         f"可复核来源 {view['runtime']['unique_source_count']}；一级来源 "
         f"{view['runtime']['primary_source_count']}。",
+        f"- 报告等级 **{grade.get('report_grade', 'UNKNOWN')}**；"
+        f"未满足闸门 {'、'.join(grade.get('unmet_gates') or []) or '无'}；"
+        f"对外发布={grade.get('publication_allowed', False)}；"
+        f"个股排序={grade.get('ranking_allowed', False)}。",
         "- 支持度、候选状态和模拟收益均不是概率、预期收益、交易指令或仓位输入。",
     ])
 
@@ -2087,15 +2093,39 @@ def render_facts_box(view):
     ]
     if temporal_line:
         lines.append(temporal_line)
+    grade = view.get("research_grade") or {}
+    tiers = grade.get("claim_tiers") or {}
+    ev = grade.get("evidence_counts") or {}
+    py = grade.get("payload_yield") or {}
+
+    def tier_text(name):
+        return "、".join(tiers.get(name) or []) or "无"
+
     lines.extend([
         f"**结论**: Edge=**{facts_text(verdict['edge_state'])}** | "
         f"方向=**{verdict['evidence_direction']}** | "
         f"可行动性=**{verdict['actionability']}** | "
         f"依据=`{facts_text(verdict.get('reason_code'))}`",
+        f"**报告等级**: **{facts_text(grade.get('report_grade', 'UNKNOWN'))}** | "
+        f"未满足闸门={facts_text('、'.join(grade.get('unmet_gates') or []) or '无')} | "
+        f"对外发布={grade.get('publication_allowed', False)} | "
+        f"个股排序={grade.get('ranking_allowed', False)}",
+        f"**断言分档**: VERIFIED={facts_text(tier_text('VERIFIED'))} | "
+        f"SINGLE_SOURCE={facts_text(tier_text('SINGLE_SOURCE'))} | "
+        f"HYPOTHESIS={facts_text(tier_text('HYPOTHESIS'))}",
         f"**运行证据覆盖**: {runtime['round_count']} 轮辩论 | "
+        f"{ev.get('valid_citations', 0)} 条有效引用 | "
         f"{runtime['unique_source_count']} 去重来源 URL | "
+        f"{ev.get('unique_publishers', 0)} 家独立出版方 | "
         f"{runtime['primary_source_count']} 一级来源 | "
         f"隔离={facts_text(runtime['isolation_status'])}",
+        f"**载荷采纳**: 提交 {py.get('submitted', 0)} | 采纳 {py.get('accepted', 0)} | "
+        f"丢弃 {py.get('rejected', 0)}（{py.get('discard_rate', 0):.0%}）| "
+        f"应交未交 {py.get('omitted', 0)}"
+        + (
+            f" | 主因 {facts_text(py['top_rejection_reasons'][0][0])}"
+            if py.get("top_rejection_reasons") else ""
+        ),
         "",
         "| Crux | 状态 | 多头最强证据 | 空头最强证据 |",
         "|------|------|------------|------------|",

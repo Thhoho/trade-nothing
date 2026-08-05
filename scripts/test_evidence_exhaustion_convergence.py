@@ -117,15 +117,15 @@ class EvidenceExhaustionConvergenceTests(unittest.TestCase):
             flags,
         )
 
-    def test_no_evidence_remains_pending_even_after_repeated_bilateral_probes(self):
+    def test_bilateral_probe_opens_crux_but_cannot_bypass_source_minimum(self):
         st = state()
         for round_num in (1, 2, 3):
             submit(st, round_num, 0.0, [], probe(new_count=0))
         crux = st["cruxes"]["C1"]
-        self.assertEqual(crux["status"], "PENDING")
+        self.assertEqual(crux["status"], "OPEN")
         self.assertFalse(crux["retired"])
         audit = st["rounds"][-1]["evidence_exhaustion"]["C1"]
-        self.assertIn("STATUS_NOT_OPEN", audit["blocking_reasons"])
+        self.assertNotIn("STATUS_NOT_OPEN", audit["blocking_reasons"])
         self.assertIn("MINIMUM_VALID_CITATIONS_NOT_MET", audit["blocking_reasons"])
 
     def test_under_sourced_open_crux_fails_closed_after_dry_probes(self):

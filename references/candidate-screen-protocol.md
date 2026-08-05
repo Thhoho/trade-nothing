@@ -14,8 +14,9 @@ promoting a draft.
 1. Only screen a stateful `READY_FOR_SCREENING` path: seed evidence alone is insufficient;
    the origin crux must be healthy, the root thesis converged, and the structured catalyst must
    fall inside the root horizon. Default dispatch screens one representative path per exact entity.
-2. Run Candidate Analyst and Candidate Skeptic in isolated contexts. For Antigravity, use
-   `scripts/agy_candidate_screen_runner.py`; it launches two distinct OS processes concurrently.
+2. Run Candidate Analyst and Candidate Skeptic in isolated contexts. For Antigravity or Claude
+   Code, use `scripts/agy_candidate_screen_runner.py --runtime antigravity|claude-code`; it launches
+   two distinct OS processes concurrently.
    Codex hosts may use two distinct collaboration-agent contexts and emit a
    `codex_collaboration_v1` receipt containing the host-returned canonical agent IDs. After both
    payloads are sealed, use `scripts/codex_candidate_screen_receipt.py` to bind the dispatch,
@@ -49,8 +50,8 @@ The host must submit screen isolation as verified, degraded, or unverified. A cl
 `verified` is insufficient. Only verified physical isolation with a validated
 `candidate-screen-isolation.v1` receipt is eligible for THESIS_CANDIDATE. The receipt binds the
 stored dispatch and exact role prompt hashes to the exact submitted payload hashes. The
-`agy_separate_process_v1` profile additionally requires successful exits and distinct process and
-invocation IDs. The `codex_collaboration_v1` profile requires completed independent agent contexts,
+`agy_separate_process_v1` and `claude_separate_process_v1` profiles additionally require successful
+exits and distinct process and invocation IDs. The `codex_collaboration_v1` profile requires completed independent agent contexts,
 distinct host-returned agent IDs, and distinct invocation IDs. A missing, mismatched, or invented
 receipt caps the result at WATCHLIST.
 
@@ -117,7 +118,7 @@ Evidence on `example.com`, `example.org`, `example.net`, `.test`, `.invalid`, lo
 loopback hosts is synthetic and must be dropped. Independent source organizations are counted from
 publisher domains, not the submitted `source` string. A valid stage-specific receipt can establish
 physical CandidateScreen isolation even if the parent research runtime was unverified; without the
-receipt, effective isolation is the weaker of run-level attestation and the screen submission.
+receipt, effective isolation is `unverified` regardless of caller or run-level `verified` labels.
 
 Search and grounding redirect wrappers (including Vertex grounding redirects, Google `/url`, and
 Bing `/ck/`) are not publisher evidence. Resolve them to the final issuer, regulator, filing,

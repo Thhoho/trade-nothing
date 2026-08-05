@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Post-process agent JSON to align landscape_findings evidence with crux_evidence.
 
-The landscape engine requires evidence citations in landscape_findings to be
-byte-for-byte identical to the same agent's crux_evidence / crux_attacks entries.
-General-purpose sub-agents often paraphrase claims, causing citation-identity
-mismatch.  This script fuzzy-matches landscape evidence back to the parent
-evidence array by URL (which is the most stable field) and replaces the
-landscape copy with the verbatim parent citation.
+SUPERSEDED as of the URL-fallback binding in `landscape_engine._agent_evidence`:
+the engine now resolves a paraphrased landscape citation back to the agent's own
+parent citation by source URL, so this manual pre-pass is no longer required.
+It is retained only for replaying archived payloads through older tooling.
+
+The landscape engine used to require evidence citations in landscape_findings to
+be byte-for-byte identical to the same agent's crux_evidence / crux_attacks
+entries.  General-purpose sub-agents often paraphrase claims, which silently
+dropped well-formed evidence and left cruxes at zero citations.
 
 Usage:
   python3 scripts/align_landscape_evidence.py detective < agent_output.json

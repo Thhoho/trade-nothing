@@ -16,6 +16,12 @@ class AgyCandidateScreenRunnerTests(unittest.TestCase):
         enabled = runner._build_command("agy", "prompt", 60, allow_agent_tools=True)
         self.assertNotIn("--dangerously-skip-permissions", safe)
         self.assertIn("--dangerously-skip-permissions", enabled)
+        claude = runner._build_command(
+            "claude", "prompt", 60, host_runtime="claude-code"
+        )
+        self.assertIn("--output-format", claude)
+        self.assertIn("--json-schema", claude)
+        self.assertIn("--no-session-persistence", claude)
 
     def test_role_output_must_be_exact_json_without_commentary(self):
         self.assertEqual(runner._parse_json_output('{"candidate_screens": []}'), {
@@ -23,6 +29,15 @@ class AgyCandidateScreenRunnerTests(unittest.TestCase):
         })
         with self.assertRaisesRegex(ValueError, "exact JSON"):
             runner._parse_json_output('I finished.\n{"candidate_screens": []}')
+        envelope = json.dumps({
+            "type": "result",
+            "is_error": False,
+            "structured_output": {"candidate_screens": []},
+        })
+        self.assertEqual(
+            runner._parse_json_output(envelope, host_runtime="claude-code"),
+            {"candidate_screens": []},
+        )
 
     def test_separate_process_receipt_binds_dispatch_prompt_and_payload(self):
         st = fixtures.state_with_seed()
@@ -82,6 +97,17 @@ class AgyCandidateScreenRunnerTests(unittest.TestCase):
         )
         self.assertEqual(rejected["status"], "invalid")
         self.assertIn("isolation_receipt_analyst_payload_hash_mismatch", rejected["blockers"])
+
+        for result in results.values():
+            result["host_runtime"] = "claude-code"
+        claude_receipt = runner.build_receipt(dispatch, results)
+        self.assertEqual(claude_receipt["runner_kind"], "claude_separate_process_v1")
+        self.assertEqual(
+            candidate_screen_engine.validate_isolation_receipt(
+                st, claude_receipt, analyst, skeptic, fixtures.AS_OF
+            )["status"],
+            "verified",
+        )
 
 
 if __name__ == "__main__":

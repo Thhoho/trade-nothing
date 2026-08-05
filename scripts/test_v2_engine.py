@@ -53,6 +53,75 @@ def converged_state():
     return st
 
 
+class ClaimTierTests(unittest.TestCase):
+    """Tiers label a claim's support; they never suppress the claim."""
+
+    def test_tier_requires_independent_publishers_not_just_urls(self):
+        cx = {"citations": []}
+        self.assertEqual(crux_engine.crux_claim_tier(cx), "HYPOTHESIS")
+
+        # Two distinct URLs on one domain are still a single publisher.
+        cx = {"citations": [citation("a"), citation("b")]}
+        self.assertEqual(crux_engine.crux_claim_tier(cx), "SINGLE_SOURCE")
+
+        independent = {**citation("c"), "url": "https://second-publisher.org/report",
+                       "source": "Second Publisher"}
+        cx = {"citations": [citation("a"), independent]}
+        self.assertEqual(crux_engine.crux_claim_tier(cx), "VERIFIED")
+
+    def test_republication_does_not_manufacture_independence(self):
+        """Aggregators reposting one report must not reach VERIFIED."""
+        reposts = [
+            {**citation("a"), "url": "https://aggregator-one.com/a/1",
+             "source": "Guosheng Research (aggregator-one repost)"},
+            {**citation("b"), "url": "https://aggregator-two.cn/2026/x.html",
+             "source": "Guosheng Research (aggregator-two repost)"},
+            {**citation("c"), "url": "https://aggregator-three.com/a/3",
+             "source": "Guosheng Research (aggregator-three repost)"},
+        ]
+        self.assertEqual(
+            crux_engine.crux_claim_tier({"citations": reposts}), "SINGLE_SOURCE"
+        )
+        distinct = [
+            {**citation("a"), "url": "https://publisher-one.org/a", "source": "Publisher One"},
+            {**citation("b"), "url": "https://publisher-two.org/b", "source": "Publisher Two"},
+        ]
+        self.assertEqual(
+            crux_engine.crux_claim_tier({"citations": distinct}), "VERIFIED"
+        )
+
+    def test_source_labels_can_only_reduce_diversity(self):
+        """A fabricated label must never buy a higher tier."""
+        same_domain = [
+            {**citation("a"), "url": "https://one-domain.org/a", "source": "Org A"},
+            {**citation("b"), "url": "https://one-domain.org/b", "source": "Org B"},
+        ]
+        self.assertEqual(
+            crux_engine.crux_claim_tier({"citations": same_domain}), "SINGLE_SOURCE"
+        )
+
+    def test_rejected_only_screen_does_not_unlock_ranking(self):
+        """A screen that rejected everything proves there is nothing to rank."""
+        st = converged_state()
+        st["cruxes"]["C1"]["citations"] = [
+            {**citation("a"), "url": "https://publisher-one.org/a", "source": "Publisher One"},
+            {**citation("b"), "url": "https://publisher-two.org/b", "source": "Publisher Two"},
+        ]
+        st["candidate_screens"] = [{"seed_id": "OS-1", "status": "REJECTED"}]
+        self.assertFalse(crux_engine.research_grade(st)["ranking_allowed"])
+        st["candidate_screens"].append({"seed_id": "OS-2", "status": "WATCHLIST"})
+        self.assertTrue(crux_engine.research_grade(st)["ranking_allowed"])
+
+    def test_evidence_counts_are_script_filled(self):
+        st = state()
+        independent = {**citation("c"), "url": "https://second-publisher.org/report"}
+        st["cruxes"]["C1"]["citations"] = [citation("a"), citation("b"), independent]
+        counts = crux_engine.evidence_counts(st)
+        self.assertEqual(counts["valid_citations"], 3)
+        self.assertEqual(counts["unique_source_urls"], 3)
+        self.assertEqual(counts["unique_publishers"], 2)
+
+
 class QuestionAwareVerdictTests(unittest.TestCase):
     def _state(self, question_type, cruxes):
         nodes = [{"id": "Q1", "node_type": "QUESTION", "label": "root"}]
@@ -474,11 +543,54 @@ class OrchestratorTests(unittest.TestCase):
         self.assertEqual(set(audit), {"C1", "C2"})
         self.assertNotIn("C3", audit)
 
+    def test_agent_evidence_novelty_survives_judge_omission_and_resume(self):
+        st = crux_engine.new_state(
+            "resume", "resume", "3-6M", [{"id": "C1", "label": "one"}],
+        )
+        ev = citation("resume-source")
+        detective = {
+            "crux_evidence": [{"crux_id": "C1", "evidence": [ev]}]
+        }
+        inquisitor = {
+            "crux_attacks": [{"crux_id": "C1", "attacks": []}]
+        }
+        first = orchestrator._crux_probe_audit(
+            st, detective, inquisitor, dispatch_cruxes=["C1"]
+        )
+        self.assertEqual(first["C1"]["new_valid_evidence_count"], 1)
+        second = orchestrator._crux_probe_audit(
+            st, detective, inquisitor, dispatch_cruxes=["C1"]
+        )
+        self.assertEqual(second["C1"]["new_valid_evidence_count"], 0)
+
+        legacy = crux_engine.new_state(
+            "legacy", "legacy", "3-6M", [{"id": "C1", "label": "one"}],
+        )
+        legacy["rounds"] = [{
+            "round": 1,
+            "detective_raw": detective,
+            "inquisitor_raw": inquisitor,
+            "judge_raw": {"crux_signals": {"C1": {
+                "signal": 0.0, "citations": [],
+            }}},
+        }]
+        self.assertEqual(orchestrator._backfill_seen_agent_evidence_keys(legacy), 1)
+        resumed = orchestrator._crux_probe_audit(
+            legacy, detective, inquisitor, dispatch_cruxes=["C1"]
+        )
+        self.assertEqual(resumed["C1"]["new_valid_evidence_count"], 0)
+
     def test_evolution_path_falls_back_to_nonempty_configured_vault(self):
         with tempfile.TemporaryDirectory() as root:
             skill_dir = os.path.join(root, "skill")
             vault_dir = os.path.join(root, "vault")
             os.makedirs(skill_dir)
+            with open(
+                os.path.join(skill_dir, "Methodology_Evolution.md"),
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                handle.write("# stale installed memory\n")
             memory_dir = os.path.join(vault_dir, "Methodology")
             os.makedirs(memory_dir)
             memory_path = os.path.join(memory_dir, "Evolution.md")
@@ -517,9 +629,16 @@ class OrchestratorTests(unittest.TestCase):
         self.assertIn("未收敛研究备忘录", result["resolution_memo_markdown"])
         self.assertEqual(result["continuation_packet"]["dispatch_policy"]["crux_ids"], ["C1", "C2"])
         self.assertLess(research_output.assert_compact_packet(result["continuation_packet"]), 32768)
-        blocked = orchestrator.cmd_report(topic)
-        self.assertEqual(blocked["status"], "blocked_unconverged")
-        self.assertIn("未收敛研究备忘录", blocked["resolution_memo_markdown"])
+        # The run still delivers its research; the grade and the publication gate
+        # carry the limitation instead of erasing the report.
+        degraded = orchestrator.cmd_report(topic)
+        self.assertEqual(degraded["status"], "report_data_ready")
+        self.assertEqual(degraded["report_grade"], "EXPLORATORY")
+        self.assertFalse(degraded["formal_report_allowed"])
+        self.assertFalse(degraded["publication_allowed"])
+        self.assertFalse(degraded["ranking_allowed"])
+        self.assertIn("CONVERGENCE", degraded["unmet_gates"])
+        self.assertIn("未收敛研究备忘录", degraded["resolution_memo_markdown"])
         refused = orchestrator.cmd_submit(
             topic, {"crux_evidence": []}, {"crux_attacks": []},
             {"crux_signals": {}, "new_cruxes": []},
@@ -698,7 +817,7 @@ class OrchestratorTests(unittest.TestCase):
         self.assertEqual(signal["citations"], [])
         self.assertIn("dropped_judge_invented_citations:1", signal["quality_flags"])
 
-    def test_converged_legacy_state_without_sources_is_still_blocked(self):
+    def test_converged_state_without_sources_is_provisional_not_publishable(self):
         topic = "legacy-evidence-gate"
         st = state()
         st["last_convergence"] = {"decision": "converge"}
@@ -708,7 +827,12 @@ class OrchestratorTests(unittest.TestCase):
             "support_weakest": 0.6, "support_mean": 0.6, "decision": "RESEARCH_READY",
         })
         orchestrator._save(topic, st)
-        self.assertEqual(orchestrator.cmd_report(topic)["status"], "blocked_evidence_gate")
+        result = orchestrator.cmd_report(topic)
+        self.assertEqual(result["status"], "report_data_ready")
+        self.assertEqual(result["report_grade"], "PROVISIONAL")
+        self.assertIn("CRUX_SOURCE_MINIMUM", result["unmet_gates"])
+        self.assertFalse(result["publication_allowed"])
+        self.assertIn("C1", result["claim_tiers"]["HYPOTHESIS"])
 
 
 class ReportSafetyTests(unittest.TestCase):
@@ -947,9 +1071,11 @@ class ReportSafetyTests(unittest.TestCase):
         self.assertNotIn("detective_raw", md)
         self.assertNotIn("待 deep 模型写入", md)
 
-    def test_formal_renderer_rejects_unconverged_state(self):
-        with self.assertRaisesRegex(ValueError, "not converged"):
-            report_v2.render(state())
+    def test_unconverged_render_is_delivered_but_graded_exploratory(self):
+        md = report_v2.render(state())
+        self.assertIn("EXPLORATORY", md)
+        self.assertIn("对外发布=False", md)
+        self.assertIn("个股排序=False", md)
 
     def test_compact_formal_report_passes_validator_without_raw_bundle(self):
         st = converged_state()
@@ -1050,7 +1176,9 @@ class ReportSafetyTests(unittest.TestCase):
             "citations": [citation("brief-a"), citation("brief-b")],
         })
         orchestrator._save(topic, st)
-        out = orchestrator.cmd_report(topic, challenge_only=True, report_view="brief")
+        out = orchestrator.cmd_report(
+            topic, challenge_only=True, report_view="brief", include_synthesis=False
+        )
         self.assertEqual(out["status"], "report_data_ready")
         self.assertEqual(out["report_view"], "brief")
         self.assertTrue(out["report_markdown"].startswith("# Decision Brief"))
@@ -1083,14 +1211,14 @@ class ReportSafetyTests(unittest.TestCase):
         })
         orchestrator._save(topic, st)
         out = orchestrator.cmd_report(
-            topic, challenge_only=True, report_view="facts_box"
+            topic, challenge_only=True, report_view="facts_box", include_synthesis=False
         )
         self.assertEqual(out["status"], "report_data_ready")
         self.assertEqual(out["report_view"], "facts_box")
         self.assertEqual(out["report_markdown"], out["facts_box_markdown"])
         self.assertNotIn("synthesis_packet", out)
 
-    def test_synthesis_packet_requires_explicit_opt_in(self):
+    def test_synthesis_packet_ships_by_default_and_carries_the_contract(self):
         topic = "brief report synthesis opt in"
         st = converged_state()
         st["cruxes"]["C1"].update({
@@ -1102,12 +1230,18 @@ class ReportSafetyTests(unittest.TestCase):
         })
         orchestrator._save(topic, st)
         without_synthesis = orchestrator.cmd_report(
-            topic, challenge_only=True, report_view="brief"
+            topic, challenge_only=True, report_view="brief", include_synthesis=False
         )
-        out = orchestrator.cmd_report(
-            topic, challenge_only=True, report_view="brief", include_synthesis=True
-        )
+        out = orchestrator.cmd_report(topic, challenge_only=True, report_view="brief")
         self.assertIn("synthesis_packet", out)
+        packet = out["synthesis_packet"]
+        # The packet is the enforceable contract for styled artifacts, which
+        # legitimately drop the Facts Box.
+        self.assertEqual(packet["evidence_counts"]["valid_citations"], 2)
+        self.assertFalse(packet["publication_allowed"])
+        self.assertFalse(packet["ranking_allowed"])
+        self.assertIn("style_is_free", packet["assertion_contract"])
+        self.assertIn("no_new_numbers", packet["assertion_contract"])
         for field in (
             "facts_box_markdown",
             "facts_box_sha256",
@@ -1119,3 +1253,180 @@ class ReportSafetyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class StyledArtifactLintTests(unittest.TestCase):
+    """The styled lint is a provenance aid, not a correctness proof."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _write(self, text):
+        path = os.path.join(self.tmp.name, "article.md")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        return path
+
+    def _state_file(self, st):
+        path = os.path.join(self.tmp.name, "state.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(st, handle)
+        return path
+
+    def test_flags_urls_absent_from_the_ledger(self):
+        st = converged_state()
+        st["cruxes"]["C1"]["citations"] = [citation("real")]
+        article = self._write(
+            "cited https://fixture-research.org/real and "
+            "invented https://never-seen.example.org/story\n"
+        )
+        lint = validate_report_v2.lint_styled_artifact(article, self._state_file(st))
+        self.assertEqual(lint["urls_not_in_ledger"],
+                         ["https://never-seen.example.org/story"])
+
+    def test_flags_outputs_that_are_never_allowed(self):
+        st = converged_state()
+        article = self._write("目标价 78 元。\n建议配置，仓位不超过 20%。\n")
+        lint = validate_report_v2.lint_styled_artifact(article, self._state_file(st))
+        kinds = {hit["kind"] for hit in lint["forbidden_output_hits"]}
+        self.assertIn("TARGET_PRICE", kinds)
+        self.assertIn("POSITION_SIZING", kinds)
+
+    def test_describing_third_party_flows_is_not_a_sizing_instruction(self):
+        st = converged_state()
+        article = self._write("公募基金已经在 Q1 大幅减仓源杰，机构在业绩爆发前就跑了。\n")
+        lint = validate_report_v2.lint_styled_artifact(article, self._state_file(st))
+        self.assertEqual(lint["forbidden_output_hits"], [])
+
+    def test_lint_never_claims_to_be_a_proof(self):
+        st = converged_state()
+        lint = validate_report_v2.lint_styled_artifact(
+            self._write("no urls here\n"), self._state_file(st)
+        )
+        self.assertFalse(lint["is_proof"])
+        self.assertTrue(lint["unchecked"])
+
+
+class BudgetAndPayloadYieldTests(unittest.TestCase):
+    """Budget is measured in outcomes; discarded work must be visible."""
+
+    def test_round_fuse_includes_crux_settling_headroom(self):
+        # Coverage(4) + harvest-dry(2) alone is a floor a productive run overshoots.
+        self.assertEqual(crux_engine.recommended_max_rounds(7), 9)
+        self.assertEqual(crux_engine.recommended_max_rounds(5), 8)
+        self.assertEqual(crux_engine.recommended_max_rounds(0), crux_engine.MIN_ROUNDS)
+
+    def test_dry_streak_counts_only_trailing_unproductive_rounds(self):
+        st = state()
+        st["rounds"] = [
+            {"round": 1, "opportunity_harvest": {"accepted_new": 1}},
+            {"round": 2, "landscape_audit": {"accepted": 0}},
+            {"round": 3, "landscape_audit": {"accepted": 0}},
+        ]
+        self.assertEqual(crux_engine.consecutive_unproductive_rounds(st), 2)
+        st["rounds"].append({"round": 4, "landscape_audit": {"accepted": 2}})
+        self.assertEqual(crux_engine.consecutive_unproductive_rounds(st), 0)
+
+        st["rounds"] = [{
+            "round": 1,
+            "crux_probe_audit": {"C1": {"new_valid_evidence_count": 1}},
+            "signals": {"C1": {"signal": 0.0, "citations": []}},
+        }]
+        self.assertEqual(crux_engine.consecutive_unproductive_rounds(st), 0)
+
+    def test_payload_yield_separates_discards_from_omissions(self):
+        st = state()
+        st["rounds"] = [{
+            "round": 1,
+            "landscape_audit": {
+                "submitted": 4, "accepted": 2, "rejected": 2, "omitted": 3,
+                "rejected_reasons": {"detective_unknown_path": 2},
+                "repair_notes": {"detective_linked_crux_corrected": 1},
+            },
+            "opportunity_harvest": {
+                "submitted": 6, "accepted_new": 0, "rejected": 6,
+                "rejected_reasons": {"missing_causal_path": 6},
+            },
+        }]
+        yielded = crux_engine.payload_yield(st)
+        self.assertEqual(yielded["submitted"], 10)
+        self.assertEqual(yielded["accepted"], 2)
+        self.assertEqual(yielded["rejected"], 8)
+        # Never-submitted work must not inflate the discard rate past 100%.
+        self.assertEqual(yielded["omitted"], 3)
+        self.assertLessEqual(yielded["discard_rate"], 1.0)
+        self.assertEqual(yielded["top_rejection_reasons"][0], ("missing_causal_path", 6))
+        self.assertEqual(
+            yielded["repairs_applied"][0], ("detective_linked_crux_corrected", 1)
+        )
+
+    def test_payload_yield_repairs_legacy_missing_finding_overcount(self):
+        st = state()
+        st["rounds"] = [{
+            "round": 1,
+            "landscape_audit": {
+                "submitted": 2,
+                "accepted": 1,
+                "rejected": 3,
+                "rejected_reasons": {
+                    "detective_assigned_path_missing_finding": 2,
+                    "inquisitor_non_unknown_requires_agent_evidence": 1,
+                },
+            },
+        }]
+        yielded = crux_engine.payload_yield(st)
+        self.assertEqual(yielded["submitted"], 2)
+        self.assertEqual(yielded["accepted"], 1)
+        self.assertEqual(yielded["rejected"], 1)
+        self.assertEqual(yielded["omitted"], 2)
+        self.assertEqual(yielded["discard_rate"], 0.5)
+        self.assertEqual(
+            yielded["top_omission_reasons"],
+            [("detective_assigned_path_missing_finding", 2)],
+        )
+
+
+class JudgeCitationRebindingTests(unittest.TestCase):
+    """A Judge rewords claims by design; only invented sources may be dropped."""
+
+    def _payloads(self, agent_citation):
+        return (
+            {"crux_evidence": [{"crux_id": "C1", "evidence": [agent_citation]}]},
+            {"crux_attacks": []},
+        )
+
+    def test_reworded_judge_citation_is_rebound_not_dropped(self):
+        agent = citation("shared", claim="segment margin reached 18 percent")
+        detective, inquisitor = self._payloads(agent)
+        judge = {"crux_signals": {"C1": {
+            "signal": 0.5,
+            "citations": [{**agent, "claim": "margin in the segment hit 18%"}],
+        }}}
+        cleaned = orchestrator._sanitize_judge_for_agent_support(
+            judge, detective, inquisitor
+        )
+        signal = cleaned["crux_signals"]["C1"]
+        self.assertEqual(signal["signal"], 0.5)
+        self.assertEqual(len(signal["citations"]), 1)
+        # The stored copy is the agent's wording, not the Judge's paraphrase.
+        self.assertEqual(signal["citations"][0]["claim"], "segment margin reached 18 percent")
+        self.assertIn("judge_citation_rebound_by_source_url:1", signal["quality_flags"])
+
+    def test_invented_source_is_still_dropped_and_zeroes_the_signal(self):
+        agent = citation("real")
+        detective, inquisitor = self._payloads(agent)
+        judge = {"crux_signals": {"C1": {
+            "signal": 0.8,
+            "citations": [{**citation("fabricated"),
+                           "url": "https://never-cited.org/story"}],
+        }}}
+        cleaned = orchestrator._sanitize_judge_for_agent_support(
+            judge, detective, inquisitor
+        )
+        signal = cleaned["crux_signals"]["C1"]
+        self.assertEqual(signal["signal"], 0.0)
+        self.assertEqual(signal["citations"], [])
+        self.assertIn("signal_zeroed_no_agent_backed_citation", signal["quality_flags"])

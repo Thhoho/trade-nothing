@@ -23,7 +23,7 @@ try:
 except Exception:
     def clean_proxy_env(): pass
 
-UA = "TradeNothing/0.13.0 research (contact: weiqi.x12@gmail.com)"
+UA = "TradeNothing/0.13.0 research (+https://github.com/Thhoho/trade-nothing)"
 
 
 def _get(url, headers=None, timeout=12):

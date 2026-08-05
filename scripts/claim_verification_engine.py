@@ -247,6 +247,96 @@ def _manifest(snapshot):
     return {key: value for key, value in snapshot.items() if key != "text"}
 
 
+def isolation_receipt_id(receipt):
+    content = dict(receipt) if isinstance(receipt, dict) else {}
+    content.pop("receipt_id", None)
+    return "CVR-" + candidate_screen_engine.payload_sha256(content)[:12].upper()
+
+
+def verifier_dispatch_record(packet, prompt):
+    """Return the immutable surface a host receipt must bind to."""
+    packet = packet if isinstance(packet, dict) else {}
+    claim_ids = [
+        item.get("claim_id") for item in packet.get("claims", [])
+        if isinstance(item, dict) and item.get("claim_id")
+    ]
+    snapshot_ids = [
+        item.get("snapshot_id") for item in packet.get("snapshots", [])
+        if isinstance(item, dict) and item.get("snapshot_id")
+    ]
+    core = {
+        "claim_ids": claim_ids,
+        "snapshot_ids": snapshot_ids,
+        "packet_sha256": candidate_screen_engine.payload_sha256(packet),
+        "prompt_sha256": hashlib.sha256(str(prompt or "").encode("utf-8")).hexdigest(),
+    }
+    return {
+        "dispatch_id": "CVD-" + candidate_screen_engine.payload_sha256(core)[:10].upper(),
+        **core,
+    }
+
+
+def validate_isolation_receipt(state, receipt, verifier_payload):
+    """Validate one host-enforced verifier context against a stored dispatch."""
+    blockers = []
+    receipt = receipt if isinstance(receipt, dict) else {}
+    if receipt.get("schema") != "claim-verifier-isolation.v1":
+        blockers.append("verifier_isolation_receipt_schema_invalid")
+    runner_kind = _text(receipt.get("runner_kind"))
+    process_runners = {"agy_separate_process_v1", "claude_separate_process_v1"}
+    if runner_kind not in process_runners | {"codex_collaboration_v1"}:
+        blockers.append("verifier_isolation_receipt_runner_invalid")
+    if receipt.get("host_enforced") is not True:
+        blockers.append("verifier_isolation_receipt_not_host_enforced")
+
+    dispatch_id = _text(receipt.get("dispatch_id"))
+    dispatch = next((
+        item for item in state.get("claim_verifier_dispatches", [])
+        if isinstance(item, dict) and item.get("dispatch_id") == dispatch_id
+    ), None)
+    if dispatch is None:
+        blockers.append("verifier_isolation_receipt_dispatch_unknown")
+    else:
+        if receipt.get("claim_ids") != dispatch.get("claim_ids"):
+            blockers.append("verifier_isolation_receipt_claim_ids_mismatch")
+        if receipt.get("snapshot_ids") != dispatch.get("snapshot_ids"):
+            blockers.append("verifier_isolation_receipt_snapshot_ids_mismatch")
+
+    role = receipt.get("verifier") if isinstance(receipt.get("verifier"), dict) else {}
+    if not _text(role.get("invocation_id")):
+        blockers.append("verifier_isolation_receipt_invocation_missing")
+    if runner_kind in process_runners:
+        try:
+            process_id = int(role.get("process_id"))
+        except (TypeError, ValueError):
+            process_id = 0
+        if process_id <= 0:
+            blockers.append("verifier_isolation_receipt_process_missing")
+        if role.get("exit_code") != 0 or role.get("timed_out") is not False:
+            blockers.append("verifier_isolation_receipt_process_failed")
+    elif runner_kind == "codex_collaboration_v1":
+        if not _text(role.get("agent_id")):
+            blockers.append("verifier_isolation_receipt_agent_missing")
+        if role.get("context_isolation") != "independent_agent_context":
+            blockers.append("verifier_isolation_receipt_context_not_isolated")
+        if role.get("status") != "completed" or role.get("timed_out") is not False:
+            blockers.append("verifier_isolation_receipt_agent_failed")
+    expected_prompt = (dispatch or {}).get("prompt_sha256")
+    if not expected_prompt or role.get("prompt_sha256") != expected_prompt:
+        blockers.append("verifier_isolation_receipt_prompt_hash_mismatch")
+    if role.get("payload_sha256") != candidate_screen_engine.payload_sha256(verifier_payload):
+        blockers.append("verifier_isolation_receipt_payload_hash_mismatch")
+    expected_id = isolation_receipt_id(receipt)
+    if receipt.get("receipt_id") != expected_id:
+        blockers.append("verifier_isolation_receipt_id_mismatch")
+    unique = list(dict.fromkeys(blockers))
+    return {
+        "status": "verified" if not unique else "invalid",
+        "receipt_id": receipt.get("receipt_id") or "",
+        "blockers": unique,
+    }
+
+
 def latest_verifications(state):
     out = {}
     for item in state.get("claim_verifications", []):
@@ -351,10 +441,19 @@ def _recompute_screen_states(state):
 
 
 def apply_verifier_results(state, snapshots_payload, verifier_payload, seed_id=None,
-                           requested_claim_id=None, isolation_status="unverified"):
-    isolation_status = _text(isolation_status).lower()
-    if isolation_status not in {"verified", "degraded", "unverified"}:
-        isolation_status = "unverified"
+                           requested_claim_id=None, isolation_status="unverified",
+                           isolation_receipt=None):
+    claimed_isolation_status = _text(isolation_status).lower()
+    if claimed_isolation_status not in {"verified", "degraded", "unverified"}:
+        claimed_isolation_status = "unverified"
+    receipt_validation = validate_isolation_receipt(
+        state, isolation_receipt, verifier_payload
+    )
+    # A string supplied beside the verifier payload is self-attestation.  Only
+    # a validated host receipt may unlock SUPPORTS/CONTRADICTS as effective.
+    isolation_status = (
+        "verified" if receipt_validation["status"] == "verified" else "unverified"
+    )
     requests = collect_claim_requests(state, seed_id)
     if requested_claim_id:
         requests = [item for item in requests if item["claim_id"] == requested_claim_id]
@@ -383,7 +482,16 @@ def apply_verifier_results(state, snapshots_payload, verifier_payload, seed_id=N
             "claim_request": request,
             "snapshot_manifest": _manifest(snapshot),
             "verifier_result": result,
-            "isolation_status": isolation_status,
+            "claimed_isolation_status": claimed_isolation_status,
+            "effective_isolation_status": isolation_status,
+            "isolation_receipt_binding": {
+                "schema": (isolation_receipt or {}).get("schema")
+                if isinstance(isolation_receipt, dict) else "",
+                "runner_kind": (isolation_receipt or {}).get("runner_kind")
+                if isinstance(isolation_receipt, dict) else "",
+                "dispatch_id": (isolation_receipt or {}).get("dispatch_id")
+                if isinstance(isolation_receipt, dict) else "",
+            },
         })
         if key in by_key:
             existing = stored[by_key[key]]
@@ -405,6 +513,12 @@ def apply_verifier_results(state, snapshots_payload, verifier_payload, seed_id=N
         }
     for cid, request, snapshot, result, submission_sha256 in pending:
         normalized = _normalize_result(request, snapshot, result, isolation_status)
+        normalized.update({
+            "claimed_verifier_isolation": claimed_isolation_status,
+            "verifier_isolation_receipt_status": receipt_validation["status"],
+            "verifier_isolation_receipt_id": receipt_validation["receipt_id"],
+            "verifier_isolation_receipt_blockers": receipt_validation["blockers"],
+        })
         normalized["submission_sha256"] = submission_sha256
         key = (cid, snapshot["snapshot_id"])
         stored.append(normalized)
@@ -425,6 +539,11 @@ def apply_verifier_results(state, snapshots_payload, verifier_payload, seed_id=N
         "unknown_claim_ids": unknown,
         "missing_snapshot_claim_ids": missing_snapshot,
         "rejected_snapshots": rejected,
+        "claimed_verifier_isolation": claimed_isolation_status,
+        "effective_verifier_isolation": isolation_status,
+        "verifier_isolation_receipt_status": receipt_validation["status"],
+        "verifier_isolation_receipt_id": receipt_validation["receipt_id"],
+        "verifier_isolation_receipt_blockers": receipt_validation["blockers"],
         **summary(state),
     }
 

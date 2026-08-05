@@ -30,7 +30,7 @@ def _surface_contracts(version):
             "v0.10 基础设计",
         ],
         "CONTRIBUTING.md": [
-            f"The current release is `{tag}`.",
+            f"The current source version is `{tag}`.",
             "preserve explicit historical versions",
         ],
         f"docs/release-{tag}.md": [

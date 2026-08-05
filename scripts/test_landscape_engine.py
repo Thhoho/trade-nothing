@@ -31,7 +31,7 @@ def citation(path, claim="path evidence"):
     }
 
 
-def frame(path_count=5, suggested_max_rounds=5):
+def frame(path_count=5, suggested_max_rounds=8):
     archetypes = [
         "DIRECT_CAPTURE",
         "BOTTLENECK_OWNER",
@@ -149,12 +149,13 @@ class LandscapeFrameTests(unittest.TestCase):
         self.assertTrue(any(item.startswith("landscape_missing_archetypes:") for item in issues))
         self.assertIn("landscape_path_1_requires_exactly_two_search_queries", issues)
 
-    def test_round_budget_must_cover_map_plus_stability(self):
+    def test_round_budget_must_be_reachable_not_just_a_floor(self):
+        """Coverage + harvest-dry is a floor; the fuse also needs crux-settling room."""
         raw = frame(path_count=7, suggested_max_rounds=4)
-        self.assertIn("landscape_requires_at_least_6_rounds", landscape_engine.validate_frame(raw))
+        self.assertIn("landscape_requires_at_least_9_rounds", landscape_engine.validate_frame(raw))
 
         raw = frame(path_count=5, suggested_max_rounds=4)
-        self.assertIn("landscape_requires_at_least_5_rounds", landscape_engine.validate_frame(raw))
+        self.assertIn("landscape_requires_at_least_8_rounds", landscape_engine.validate_frame(raw))
 
     def test_pure_challenge_frame_does_not_require_map(self):
         raw = {"question_type": "CONJUNCTIVE", "candidate_cruxes": [
@@ -269,7 +270,109 @@ class LandscapeDispatchTests(unittest.TestCase):
         second = landscape_engine.ensure_round_plan(state, 2)
         self.assertEqual(second["assignments"]["detective"], ["L3", "L4"])
 
-    def test_invented_evidence_and_out_of_scope_path_fail_closed(self):
+    def test_rejected_findings_cannot_starve_later_paths(self):
+        """A path whose findings never bind must not re-occupy the slot forever."""
+        state = mapped_state(path_count=7)
+        assigned_rounds = []
+        # Worst case seen in production: the role returns no landscape findings at
+        # all, so no probe can be recorded from its output.
+        for round_num in range(1, 6):
+            plan = landscape_engine.ensure_round_plan(state, round_num)
+            assigned_rounds.append(plan["assignments"]["detective"])
+            landscape_engine.ingest_round(state, round_num, {}, {})
+
+        # Every path gets a first attempt before any stalled path is retried.
+        self.assertEqual(
+            assigned_rounds[:4],
+            [["L1", "L2"], ["L3", "L4"], ["L5", "L6"], ["L7", "L1"]],
+        )
+        # L1 exhausted its two attempts, so it retires instead of blocking R5.
+        paths = {item["path_id"]: item for item in state["landscape_map"]["paths"]}
+        self.assertTrue(paths["L1"]["probes"]["detective"]["exhausted"])
+        self.assertEqual(paths["L1"]["probes"]["detective"]["state"], "UNKNOWN")
+        self.assertNotIn("L1", assigned_rounds[4])
+
+    def test_legacy_round_plans_backfill_assignment_attempts_on_resume(self):
+        state = mapped_state()
+        state["landscape_map"]["round_plans"] = [
+            {"round": 1, "assignments": {
+                "detective": ["L1", "L2"], "inquisitor": ["L1", "L2"],
+            }},
+            {"round": 2, "assignments": {
+                "detective": ["L1", "L3"], "inquisitor": ["L1", "L3"],
+            }},
+        ]
+        # Legacy paths predate assign_attempts entirely.
+        for path in state["landscape_map"]["paths"]:
+            path.pop("assign_attempts", None)
+        plan = landscape_engine.ensure_round_plan(state, 3)
+        l1 = landscape_engine.path_for_seed(state, "L1")
+        self.assertEqual(l1["assign_attempts"]["detective"], 2)
+        self.assertTrue(l1["probes"]["detective"]["exhausted"])
+        self.assertNotIn("L1", plan["assignments"]["detective"])
+
+    def test_unsupported_claim_is_downgraded_not_discarded(self):
+        """A directional claim with no bound evidence becomes an honest UNKNOWN."""
+        state = mapped_state()
+        landscape_engine.ensure_round_plan(state, 1)
+        real = citation("real")
+        detective = {
+            "crux_evidence": [{"crux_id": "C1", "evidence": [real]}],
+            "landscape_findings": [
+                {"path_id": "L1", "linked_crux_id": "C1", "state": "SUPPORTED",
+                 "rationale": "asserted without binding", "evidence": [citation("ghost")]},
+            ],
+        }
+        audit = landscape_engine.ingest_round(state, 1, detective, {})
+        probe = landscape_engine.path_for_seed(state, "L1")["probes"]["detective"]
+        self.assertEqual(probe["state"], "UNKNOWN")
+        self.assertEqual(probe["downgraded_from"], "SUPPORTED")
+        self.assertEqual(probe["evidence"], [])
+        self.assertIn("detective_downgraded_unsupported_claim", audit["repair_notes"])
+
+    def test_wrong_linked_crux_is_corrected_not_discarded(self):
+        state = mapped_state()
+        landscape_engine.ensure_round_plan(state, 1)
+        real = citation("real")
+        detective = {
+            "crux_evidence": [{"crux_id": "C1", "evidence": [real]}],
+            "landscape_findings": [
+                # L1 is bound to C1; the role wrongly echoes C2.
+                {"path_id": "L1", "linked_crux_id": "C2", "state": "SUPPORTED",
+                 "rationale": "capture observed", "evidence": [real]},
+            ],
+        }
+        audit = landscape_engine.ingest_round(state, 1, detective, {})
+        probe = landscape_engine.path_for_seed(state, "L1")["probes"]["detective"]
+        self.assertEqual(probe["state"], "SUPPORTED")
+        self.assertEqual(probe["claimed_crux_id"], "C2")
+        self.assertEqual(len(probe["evidence"]), 1)
+        self.assertIn("detective_linked_crux_corrected", audit["repair_notes"])
+
+    def test_paraphrased_landscape_evidence_still_binds_by_source(self):
+        """Roles paraphrase claims between arrays; the URL must still bind."""
+        state = mapped_state()
+        landscape_engine.ensure_round_plan(state, 1)
+        parent = citation("shared", claim="capture is observable in the filing")
+        paraphrased = {**parent, "claim": "the filing shows observable capture"}
+        detective = {
+            "crux_evidence": [{"crux_id": "C1", "evidence": [parent]}],
+            "landscape_findings": [
+                {"path_id": "L1", "linked_crux_id": "C1", "state": "SUPPORTED",
+                 "rationale": "capture observed", "evidence": [paraphrased]},
+            ],
+        }
+        audit = landscape_engine.ingest_round(state, 1, detective, {})
+        self.assertEqual(audit["accepted"], 1)
+        stored = landscape_engine.path_for_seed(state, "L1")
+        # The parent citation is stored verbatim, not the paraphrase.
+        self.assertEqual(
+            stored["probes"]["detective"]["evidence"][0]["claim"],
+            "capture is observable in the filing",
+        )
+
+    def test_invented_evidence_never_becomes_support(self):
+        """Tolerance is about protocol slips, never about admitting fake evidence."""
         state = mapped_state()
         landscape_engine.ensure_round_plan(state, 1)
         real = citation("real")
@@ -279,15 +382,35 @@ class LandscapeDispatchTests(unittest.TestCase):
             "landscape_findings": [
                 {"path_id": "L1", "linked_crux_id": "C1", "state": "SUPPORTED",
                  "rationale": "invented", "evidence": [invented]},
+                # Unassigned but unprobed: real work, so it is kept.
                 {"path_id": "L3", "linked_crux_id": "C1", "state": "UNKNOWN",
                  "rationale": "outside assignment", "evidence": []},
             ],
         }
         audit = landscape_engine.ingest_round(state, 1, detective, {"landscape_findings": []})
-        path = landscape_engine.path_for_seed(state, "L1")
-        self.assertEqual(path["state"], "UNPROBED")
-        self.assertIn("detective_non_unknown_requires_agent_evidence", audit["rejected_reasons"])
-        self.assertIn("detective_finding_outside_assignment", audit["rejected_reasons"])
+        l1 = landscape_engine.path_for_seed(state, "L1")
+        self.assertEqual(l1["probes"]["detective"]["state"], "UNKNOWN")
+        self.assertEqual(l1["probes"]["detective"]["evidence"], [])
+        self.assertNotEqual(l1["state"], "SUPPORTED")
+        self.assertIn("L3", [
+            item["path_id"] for item in state["landscape_map"]["paths"]
+            if "detective" in (item.get("probes") or {})
+        ])
+        self.assertIn("detective_accepted_outside_assignment", audit["repair_notes"])
+
+    def test_summary_distinguishes_partial_role_probes_from_zero_work(self):
+        state = mapped_state()
+        first = state["landscape_map"]["paths"][0]
+        first["probes"] = {
+            "detective": {"round": 1, "state": "UNKNOWN", "evidence": []},
+        }
+        first["state"] = "UNPROBED"
+        summary = landscape_engine.summary(state)
+        self.assertEqual(summary["unprobed_count"], 5)
+        self.assertEqual(summary["partially_probed_count"], 1)
+        self.assertEqual(summary["probe_slots_completed"], 1)
+        self.assertEqual(summary["probe_slots_total"], 10)
+        self.assertEqual(summary["probe_slot_coverage_ratio"], 0.1)
 
 
 class LandscapeGateAndReportTests(unittest.TestCase):
@@ -442,13 +565,58 @@ class LandscapeGateAndReportTests(unittest.TestCase):
         }
         payload = {"crux_evidence": [{"crux_id": "C1", "evidence": [ev]}],
                    "opportunity_seeds": [raw]}
+        # SECOND_ORDER has no unambiguous archetype, so with five C1 paths the
+        # binding stays genuinely ambiguous and must not be guessed.
+        raw["relation_type"] = "SECOND_ORDER"
         rejected = opportunity_engine.harvest_round(state, 1, payload, {})
-        self.assertIn("missing_landscape_path_id", rejected["rejected_reasons"])
+        self.assertIn(
+            "ambiguous_landscape_path_for_origin_crux", rejected["rejected_reasons"]
+        )
+        raw["relation_type"] = "DIRECT_WINNER"
         raw["landscape_path_id"] = "L1"
         accepted = opportunity_engine.harvest_round(state, 1, payload, {})
         self.assertEqual(accepted["accepted_new"], 1)
         stored = state["opportunity_seeds"][0]
         self.assertIn("landscape_path_not_supported", opportunity_engine._origin_gate(state, stored))
+
+    def test_archetype_narrows_an_otherwise_ambiguous_seed_path(self):
+        """DIRECT_WINNER maps to DIRECT_CAPTURE, which is unique inside C1."""
+        state = mapped_state()
+        ev = citation("seed")
+        payload = {
+            "crux_evidence": [{"crux_id": "C1", "evidence": [ev]}],
+            "opportunity_seeds": [{
+                "candidate": "Capture Asset", "asset_type": "LISTED_EQUITY",
+                "relation_type": "DIRECT_WINNER", "origin_crux": "C1",
+                "causal_path": "shock -> capture -> earnings", "evidence": [ev],
+            }],
+        }
+        audit = opportunity_engine.harvest_round(state, 1, payload, {})
+        self.assertEqual(audit["accepted_new"], 1)
+        self.assertEqual(state["opportunity_seeds"][0]["landscape_path_id"], "L1")
+
+    def test_seed_path_is_derived_when_origin_crux_identifies_one_path(self):
+        """A seed must not be discarded over an ID the engine can derive."""
+        state = mapped_state()
+        # Give C2 exactly one path so the binding is unambiguous.
+        state["landscape_map"]["paths"][-1]["linked_crux_id"] = "C2"
+        ev = citation("seed")
+        payload = {
+            "crux_evidence": [{"crux_id": "C2", "evidence": [ev]}],
+            "opportunity_seeds": [{
+                "candidate": "Capture Asset", "asset_type": "LISTED_EQUITY",
+                "relation_type": "DIRECT_WINNER", "origin_crux": "C2",
+                "causal_path": "shock -> capture -> earnings", "evidence": [ev],
+            }],
+        }
+        audit = opportunity_engine.harvest_round(state, 1, payload, {})
+        self.assertEqual(audit["accepted_new"], 1)
+        self.assertIn(
+            "landscape_path_derived_from_origin_crux", audit["repair_notes"]
+        )
+        self.assertEqual(
+            state["opportunity_seeds"][0]["landscape_path_id"], "L5"
+        )
 
     def test_report_exposes_planned_to_probed_to_candidate_binding(self):
         state = mapped_state()

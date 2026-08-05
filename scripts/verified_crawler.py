@@ -28,6 +28,17 @@ from utils import clean_proxy_env
 clean_proxy_env()
 
 
+# SKILL.md declares this DDG-regex crawler superseded by tier1_providers.py, but two
+# runtime paths still imported it, so brittle scraped snippets kept flowing into
+# prompts and consensus fallbacks under an "official-looking" label. It is now
+# opt-in: set TRADE_NOTHING_ENABLE_LEGACY_CRAWLER=1 to re-enable.
+LEGACY_CRAWLER_ENV = "TRADE_NOTHING_ENABLE_LEGACY_CRAWLER"
+
+
+def legacy_crawler_enabled():
+    return os.environ.get(LEGACY_CRAWLER_ENV, "").strip().lower() in {"1", "true", "yes"}
+
+
 class VerifiedCrawler:
     def __init__(self):
         self.ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -238,6 +249,12 @@ class VerifiedCrawler:
         and synthesizes a high-density structured CJK facts dictionary to inject into subagents.
         Returns a dict with explicit availability flags for each data category.
         """
+        if not legacy_crawler_enabled():
+            print(
+                f"[CRAWLER] Disabled (superseded). Set {LEGACY_CRAWLER_ENV}=1 to re-enable.",
+                file=sys.stderr,
+            )
+            return {"data_availability": {}, "disabled_reason": "SUPERSEDED_BY_TIER1_PROVIDERS"}
         print(f"[CRAWLER] Initiating micro-intelligence synthesis for '{symbol}' ({technology_keyword})...", file=sys.stderr)
         
         tenders = self.crawl_tender_data(symbol)

@@ -943,11 +943,25 @@ def render_resolution_memo(state):
 
 
 def build_synthesis_packet(state):
-    """Compact formal-report input; intentionally excludes all raw agent payloads."""
+    """Compact input for the writing layer; excludes all raw agent payloads.
+
+    Style, structure, ordering, length, and audience belong to the writing layer.
+    Facts *about this run* do not: citation counts, crux states, grade, and the
+    two hard gates travel with the packet so a styled artifact never has to
+    invent them.  A styled artifact legitimately drops the Facts Box, so this
+    packet — not the box — is the enforceable contract for non-brief formats.
+    """
     rd = crux_engine.report_data(state)
+    grade = crux_engine.research_grade(state)
     return {
-        "schema_version": "trade-nothing.synthesis.v1",
+        "schema_version": "trade-nothing.synthesis.v2",
         "topic": state.get("topic", ""),
+        "research_grade": grade["report_grade"],
+        "unmet_gates": grade["unmet_gates"],
+        "publication_allowed": grade["publication_allowed"],
+        "ranking_allowed": grade["ranking_allowed"],
+        "claim_tiers": grade["claim_tiers"],
+        "evidence_counts": grade["evidence_counts"],
         "decision_question": state.get("decision_question", ""),
         "horizon": state.get("horizon", ""),
         "engine_decision": rd.get("decision"),
@@ -993,6 +1007,41 @@ def build_synthesis_packet(state):
             "Do not promote OpportunitySeeds beyond their screening_status.",
             "Do not turn hypothesis exploration priority into probability, expected return, or sizing.",
         ],
+        # Style is free; these are the facts a styled artifact may not restate in
+        # its own numbers or soften into an assertion.
+        "assertion_contract": {
+            "style_is_free": (
+                "Structure, tone, length, ordering, and audience are the writing "
+                "layer's choice. The constraints below are about provenance only."
+            ),
+            "run_self_description": (
+                "Any statement about this run's own evidence base — citation "
+                "count, round count, independent publishers, coverage, "
+                "convergence — must be copied from evidence_counts / "
+                "research_grade. Never estimate or round these."
+            ),
+            "per_claim_strength": (
+                "claim_tiers is binding. VERIFIED cruxes may be asserted plainly. "
+                "SINGLE_SOURCE must be marked as uncorroborated. HYPOTHESIS must "
+                "be marked as a hypothesis; it may appear in the body, but "
+                "removing the label is hypothesis laundering."
+            ),
+            "publication_gate": (
+                f"publication_allowed={grade['publication_allowed']}. When false, "
+                "do not produce an externally distributed artifact (public post, "
+                "newsletter, shared document) from this packet."
+            ),
+            "ranking_gate": (
+                f"ranking_allowed={grade['ranking_allowed']}. When false, do not "
+                "order, score, or rank named securities and do not use "
+                "recommendation phrasing about them."
+            ),
+            "no_new_numbers": (
+                "A number that appears in neither this packet nor a cited source "
+                "must not enter the artifact, including forward multiples and "
+                "target prices."
+            ),
+        },
     }
 
 

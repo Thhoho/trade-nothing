@@ -19,25 +19,28 @@ pip install -r requirements.txt
 3. Always output structured JSON to stdout.
 4. Add error handling with multi-source fallback.
 5. Update `references/data-sources.md` with the new source.
-6. Add usage examples to `SKILL.md` Section 3 (Toolbox Quick Reference).
+6. Add detailed usage to the relevant protocol under `references/`; keep `SKILL.md` concise.
 
 ### Extending Agent Runtime Compatibility
 
-1. Add a new row to the **Agent Runtime Compatibility** table in `SKILL.md`.
-2. Document the specific dispatch mechanism for your runtime.
-3. Ensure both `agents/detective.md` and `agents/inquisitor.md` persona files work with your runtime.
+1. Add or update the row in `references/runtime-compatibility.md`.
+2. Document the exact dispatch, timeout, process cleanup, output parsing, and receipt profile.
+3. Add deterministic failure-injection tests before marking an adapter implemented. A persona-file
+   mapping alone is documentation-only support.
 
 ### Improving the DeepThink Engine
 
-1. Convergence logic lives in `scripts/deepthink_engine.py`.
-2. The LFI formula and Bayesian update rules are documented in `SKILL.md` Phase 3.
-3. Test with: `python3 scripts/deepthink_engine.py --start --topic "Test" --no-timer`
+1. Orchestration and report routing live in `scripts/deepthink_orchestrator_v2.py`.
+2. Crux support scoring and deterministic convergence live in `scripts/crux_engine.py`; the
+   legacy LFI/Bayesian pipeline was retired in v0.13.0.
+3. Test with `make test`; use `deepthink_orchestrator_v2.py --selftest` only as the bounded wiring
+   fixture, not as effectiveness evidence.
 
 ## Pull Request Standards
 
 - **No hardcoded personal paths**. All paths must use `utils.py` helpers or environment variables.
 - **No secrets or credentials** in code or commit history.
-- **Version semantics**: The current release is `v0.13.0`. Use it on active runtime, agent,
+- **Version semantics**: The current source version is `v0.13.0`. Use it on active runtime, agent,
   CLI, and README surfaces; preserve explicit historical versions in design notes, compatibility
   branches, frozen benchmarks, and old tags. Run `python3 scripts/version.py` before submitting.
 - **Bilingual support**: Keep Chinese comments/terms where they add domain-specific clarity.

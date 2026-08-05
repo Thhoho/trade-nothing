@@ -415,6 +415,128 @@ def validate_report(path, state_path=""):
     return errors, warnings
 
 
+URL_IN_TEXT_RE = re.compile(r"https?://[^\s)>\]\"'，。；]+")
+
+# Outputs the skill forbids unconditionally, at any grade: target prices, expected
+# returns, and position sizing (Core Safety Guardrail 1).  Unlike ranking, these are
+# never unlocked by a gate, so a text scan cannot be "wrong about context" — it can
+# only surface a line a human must look at.
+FORBIDDEN_OUTPUT_PATTERNS = (
+    ("TARGET_PRICE", re.compile(r"目标价|target\s+price|price\s+target", re.I)),
+    # Bare 加仓/减仓 is usually descriptive ("公募Q1减仓"), so sizing must look
+    # like an instruction or an explicit size, not a report of someone's action.
+    ("POSITION_SIZING", re.compile(
+        r"仓位|建议配置|建议[加减重轻]仓|position\s+siz|kelly", re.I)),
+    ("EXPECTED_RETURN", re.compile(r"预期收益率|期望收益|expected\s+return|upside\s+of\s+\d", re.I)),
+    ("TRADE_INSTRUCTION", re.compile(r"建议买入|建议卖出|逢低(买|配|吸)|止损|buy\s+rating|sell\s+rating", re.I)),
+)
+
+
+def _forbidden_output_hits(text):
+    """Locate lines containing outputs that are never permitted at any grade."""
+    hits = []
+    for number, line in enumerate(text.splitlines(), 1):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        for name, pattern in FORBIDDEN_OUTPUT_PATTERNS:
+            if pattern.search(stripped):
+                hits.append({
+                    "kind": name, "line": number, "text": stripped[:160],
+                })
+    return hits
+
+
+def _ledger_source_urls(state):
+    """Every source URL the run actually admitted, across all evidence objects."""
+    urls = set()
+
+    def add(citation):
+        if isinstance(citation, dict):
+            identity = crux_engine.citation_source_identity(citation)
+            if identity:
+                urls.add(identity)
+
+    for crux in state.get("cruxes", {}).values():
+        for citation in crux.get("citations", []) or []:
+            add(citation)
+    for seed in state.get("opportunity_seeds", []) or []:
+        if not isinstance(seed, dict):
+            continue
+        for citation in seed.get("evidence", []) or []:
+            add(citation)
+        anchor = seed.get("pricing_anchor")
+        if isinstance(anchor, dict) and anchor.get("source_url"):
+            add({
+                "claim": anchor.get("source_claim") or "pricing anchor",
+                "source": anchor.get("source") or "pricing anchor",
+                "date": anchor.get("as_of_date") or "1970-01-01",
+                "url": anchor.get("source_url"),
+            })
+    for path in state.get("landscape_map", {}).get("paths", []) or []:
+        if not isinstance(path, dict):
+            continue
+        for probe in (path.get("probes") or {}).values():
+            for citation in (probe or {}).get("evidence", []) or []:
+                add(citation)
+    for record in state.get("source_snapshots", []) or []:
+        if isinstance(record, dict) and record.get("url"):
+            add({"claim": "snapshot", "source": "snapshot",
+                 "date": "1970-01-01", "url": record["url"]})
+    return urls
+
+
+def lint_styled_artifact(path, state_path):
+    """Provenance lint for a styled artifact that carries no Facts Box.
+
+    This is a lint, not a proof. It verifies that every URL a styled piece cites
+    was actually admitted by the run, and echoes the two hard gates. It cannot
+    check bare numbers, ranking tone, or claim-tier labelling.
+    """
+    with open(path, encoding="utf-8") as handle:
+        text = handle.read()
+    with open(state_path, encoding="utf-8") as handle:
+        state = json.load(handle)
+
+    ledger = _ledger_source_urls(state)
+    cited, unknown = set(), []
+    for raw in URL_IN_TEXT_RE.findall(text):
+        url = raw.rstrip(".,;)")
+        identity = crux_engine.citation_source_identity({
+            "claim": "cited", "source": "cited", "date": "1970-01-01", "url": url,
+        })
+        if not identity:
+            # Placeholder, loopback, or bare-domain URLs can never be backed by the
+            # ledger, so they are reported rather than silently skipped.
+            cited.add(url)
+            unknown.append(url)
+            continue
+        cited.add(identity)
+        if identity not in ledger:
+            unknown.append(identity)
+
+    grade = crux_engine.research_grade(state)
+    return {
+        "mode": "STYLED_ARTIFACT_LINT",
+        "is_proof": False,
+        "report_grade": grade["report_grade"],
+        "publication_allowed": grade["publication_allowed"],
+        "ranking_allowed": grade["ranking_allowed"],
+        "claim_tiers": grade["claim_tiers"],
+        "urls_cited": len(cited),
+        "urls_in_ledger": len(cited) - len(set(unknown)),
+        "urls_not_in_ledger": sorted(set(unknown)),
+        "forbidden_output_hits": _forbidden_output_hits(text),
+        "unchecked": [
+            "bare numbers with no URL (a styled piece that cites nothing gets no "
+            "provenance coverage at all)",
+            "ranking or recommendation tone over named securities",
+            "claim-tier labelling of individual assertions",
+            "whether the artifact is actually intended for external distribution",
+        ],
+    }
+
+
 def validate_report_outcomes(path, state_path=""):
     """Separate Markdown validity, state consistency, and candidate promotion eligibility."""
     render_errors, warnings = validate_report(path, state_path)
@@ -424,6 +546,7 @@ def validate_report_outcomes(path, state_path=""):
         "research_state_valid": None,
         "state_errors": [],
         "promotion_eligibility": [],
+        "publication_eligibility": None,
         "warnings": warnings,
     }
     if not state_path:
@@ -435,6 +558,17 @@ def validate_report_outcomes(path, state_path=""):
         result["research_state_valid"] = False
         result["state_errors"].append(f"Cannot load state: {exc}")
         return result
+
+    # The two remaining hard gates are reported as their own claim so an operator
+    # can see them without inferring anything from prose.
+    grade = crux_engine.research_grade(state)
+    result["publication_eligibility"] = {
+        "report_grade": grade["report_grade"],
+        "unmet_gates": grade["unmet_gates"],
+        "publication_allowed": grade["publication_allowed"],
+        "ranking_allowed": grade["ranking_allowed"],
+        "claim_tiers": grade["claim_tiers"],
+    }
 
     if state.get("last_convergence", {}).get("decision") != "converge":
         result["state_errors"].append("Formal report state is not converged.")
@@ -479,7 +613,49 @@ def main():
     ap = argparse.ArgumentParser(description="Validate Trade Nothing v2 report quality gates.")
     ap.add_argument("--report", required=True)
     ap.add_argument("--state", default="")
+    ap.add_argument(
+        "--styled", action="store_true",
+        help="Lint a styled artifact that carries no Facts Box (requires --state). "
+             "Checks URL provenance and echoes the hard gates; not a proof.",
+    )
     args = ap.parse_args()
+
+    if args.styled:
+        if not args.state:
+            print("--styled requires --state")
+            raise SystemExit(2)
+        lint = lint_styled_artifact(args.report, args.state)
+        print("STYLED_ARTIFACT_LINT (provenance only — not a correctness proof)")
+        print(
+            f"GATES: grade={lint['report_grade']} | "
+            f"publication_allowed={lint['publication_allowed']} | "
+            f"ranking_allowed={lint['ranking_allowed']}"
+        )
+        tiers = lint["claim_tiers"]
+        print(
+            "CLAIM_TIERS: "
+            f"VERIFIED={','.join(tiers['VERIFIED']) or 'none'} | "
+            f"SINGLE_SOURCE={','.join(tiers['SINGLE_SOURCE']) or 'none'} | "
+            f"HYPOTHESIS={','.join(tiers['HYPOTHESIS']) or 'none'}"
+        )
+        print(
+            f"SOURCE_PROVENANCE: {lint['urls_cited']} cited | "
+            f"{lint['urls_in_ledger']} in ledger | "
+            f"{len(lint['urls_not_in_ledger'])} not in ledger"
+        )
+        for url in lint["urls_not_in_ledger"]:
+            print(f"- NOT_IN_LEDGER {url}")
+        hits = lint["forbidden_output_hits"]
+        print(f"FORBIDDEN_OUTPUTS: {len(hits)} line(s) matched (never allowed at any grade)")
+        for hit in hits:
+            print(f"- {hit['kind']} line {hit['line']}: {hit['text']}")
+        print("UNCHECKED (a human must still review):")
+        for item in lint["unchecked"]:
+            print(f"- {item}")
+        if (lint["urls_not_in_ledger"] or lint["forbidden_output_hits"]
+                or not lint["publication_allowed"]):
+            raise SystemExit(2)
+        return
 
     outcome = validate_report_outcomes(args.report, args.state)
     for w in outcome["warnings"]:
@@ -489,6 +665,21 @@ def main():
         print("RESEARCH_STATE_VALID: NOT_EVALUATED (pass --state)")
     else:
         print("RESEARCH_STATE_VALID: " + ("PASS" if outcome["research_state_valid"] else "FAIL"))
+    pub = outcome["publication_eligibility"]
+    if pub:
+        print(
+            f"PUBLICATION_ELIGIBILITY: grade={pub['report_grade']} | "
+            f"publication_allowed={pub['publication_allowed']} | "
+            f"ranking_allowed={pub['ranking_allowed']} | "
+            f"unmet_gates={','.join(pub['unmet_gates']) or 'none'}"
+        )
+        tiers = pub["claim_tiers"]
+        print(
+            "CLAIM_TIERS: "
+            f"VERIFIED={','.join(tiers['VERIFIED']) or 'none'} | "
+            f"SINGLE_SOURCE={','.join(tiers['SINGLE_SOURCE']) or 'none'} | "
+            f"HYPOTHESIS={','.join(tiers['HYPOTHESIS']) or 'none'}"
+        )
     if outcome["promotion_eligibility"]:
         for item in outcome["promotion_eligibility"]:
             blockers = ",".join(item["blocking_reasons"]) or "none"

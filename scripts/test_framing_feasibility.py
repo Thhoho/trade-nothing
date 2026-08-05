@@ -3,6 +3,7 @@
 import unittest
 
 import crux_engine
+import deepthink_orchestrator_v2 as orchestrator
 import framing_feasibility
 import landscape_engine
 
@@ -100,7 +101,19 @@ class FramingFeasibilityTests(unittest.TestCase):
         )
         self.assertEqual(landscape_engine.MAX_PATHS_PER_ROLE_ROUND, 2)
 
+    def test_init_returns_exact_round_repair_without_silent_budget_expansion(self):
+        raw = frame(
+            crux_count=4,
+            paths_per_crux=["C1", "C2", "C3", "C4", "C1", "C2", "C3"],
+            suggested_max_rounds=8,
+        )
+        result = orchestrator.cmd_init("round-repair-hint", raw)
+        self.assertEqual(result["status"], "frame_rejected")
+        self.assertEqual(result["frame_repair"]["field"], "suggested_max_rounds")
+        self.assertEqual(result["frame_repair"]["submitted"], 8)
+        self.assertEqual(result["frame_repair"]["minimum_required"], 9)
+        self.assertFalse(result["frame_repair"]["automatic_repair_applied"])
+
 
 if __name__ == "__main__":
     unittest.main()
-

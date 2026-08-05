@@ -11,7 +11,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 class BenchmarkCurrentTests(unittest.TestCase):
     def test_pointer_binds_current_method_and_both_suites(self):
-        result = benchmark_current.check_current(source_repo=REPO_ROOT)
+        source_repo = (
+            None
+            if (REPO_ROOT / benchmark_current.INSTALL_MANIFEST.name).is_file()
+            else REPO_ROOT
+        )
+        result = benchmark_current.check_current(source_repo=source_repo)
         self.assertEqual(
             result["status"], "UNBENCHMARKED_METHOD_CHANGE"
         )
@@ -37,6 +42,19 @@ class BenchmarkCurrentTests(unittest.TestCase):
         )
         self.assertEqual(result["closed_packet"]["current_variant"], "386d8df")
         self.assertEqual(result["discovery"]["current_variant"], "386d8df")
+        self.assertEqual(
+            result["source_variant_verification"],
+            "NOT_AVAILABLE_IN_INSTALLED_PACKAGE"
+            if source_repo is None else "VERIFIED_FROM_GIT",
+        )
+
+    def test_package_check_is_explicitly_not_git_verified(self):
+        result = benchmark_current.check_current(source_repo=None)
+        self.assertEqual(
+            result["source_variant_verification"],
+            "NOT_AVAILABLE_IN_INSTALLED_PACKAGE",
+        )
+        self.assertFalse(result["current_method_calibrated"])
 
     def test_pointer_rejects_method_drift(self):
         pointer = json.loads(

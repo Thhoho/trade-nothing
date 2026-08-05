@@ -66,6 +66,39 @@ class VersionSemanticTests(unittest.TestCase):
             "UNBENCHMARKED_METHOD_CHANGE",
         )
 
+    def test_readmes_publish_safe_agent_install_contract(self):
+        english = (ROOT / "README.md").read_text(encoding="utf-8")
+        chinese = (ROOT / "README_zh.md").read_text(encoding="utf-8")
+
+        for fragment in (
+            "Natural-language installation for an agent",
+            "Do not start a research run",
+            "git clone --branch v0.13.0 --depth 1",
+            "git cat-file -t v0.13.0",
+            "git rev-parse 'v0.13.0^{commit}'",
+            "scripts/install_skill.py --source <checkout> --targets <target>",
+            'make install DEV_DIR="<checkout>"',
+        ):
+            self.assertIn(fragment, english)
+
+        for fragment in (
+            "在 Agent 中用自然语言安装",
+            "不要启动任何研究 run",
+            "git clone --branch v0.13.0 --depth 1",
+            "git cat-file -t v0.13.0",
+            "git rev-parse 'v0.13.0^{commit}'",
+            "scripts/install_skill.py --source <checkout> --targets <target>",
+            'make install DEV_DIR="<checkout>"',
+        ):
+            self.assertIn(fragment, chinese)
+
+        for stale_command in (
+            "make test-live",
+            "python3 -m pip install -r requirements.txt",
+        ):
+            self.assertNotIn(stale_command, english)
+            self.assertNotIn(stale_command, chinese)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

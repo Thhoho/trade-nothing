@@ -1,4 +1,6 @@
-# Trade Nothing v0.12 全链路流程审计
+# ARCHIVED: Trade Nothing v0.12 全链路流程审计
+
+> 历史审计材料；不属于 v0.13 发布 skill 的现行方法契约。
 
 > 审计日期: 2026-08-04 | 审计范围: `~/.claude/skills/trade-nothing/` | 基于"中国AI算力中心"6轮实战产出
 

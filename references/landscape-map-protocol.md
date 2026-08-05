@@ -54,10 +54,17 @@ returns exactly one `landscape_findings` item per assignment:
 }
 ```
 
-`SUPPORTED` and `REJECTED` require an exact citation object already present in the same role's,
-same-round, same-crux structured evidence. `UNKNOWN` may have no evidence. The engine rejects
-unassigned paths, changed crux links, duplicated findings, invented citations, and findings beyond
-the two-path role budget.
+`SUPPORTED` and `REJECTED` require evidence that binds to the same role's, same-round structured
+evidence for the path's engine-owned crux. Exact citation identity is preferred; when a role
+paraphrases the claim between arrays, the engine may rebind it to the stored parent citation by
+normalized publisher URL and stores the parent verbatim. `UNKNOWN` may have no evidence.
+
+Assignment is a scheduling budget, not a model-authored correctness field. A finding on an
+unassigned but still role-unprobed path is retained and logged in `repair_notes`; an already-probed
+path, duplicate finding, unknown path, or invented citation is rejected. A wrong echoed
+`linked_crux_id` is corrected from the immutable map and audited. An unreadable state or a
+directional finding with no bound evidence is retained as an honest `UNKNOWN`, not discarded back
+to `UNPROBED`. These repairs never create evidence, support, or extra search budget.
 
 Each assigned role may additionally emit `hypothesis_sparks` and `proxy_trails`. These do not alter
 the finding state. If a search reveals only an indirect clue, return `UNKNOWN` for the formal
@@ -76,6 +83,12 @@ Any `UNPROBED` path blocks opportunity-run convergence, formal reporting, and an
 claim. `UNKNOWN` is completed coverage, not positive evidence. It must remain visible in the report.
 Neither `REJECTED` nor `UNKNOWN` deletes its underlying wild hypothesis; the exploration ledger
 retains the path, counter-explanation, trace, and stop condition without treating it as a candidate.
+
+Coverage reporting distinguishes completed paths from completed role slots. A path with only one
+accepted role probe remains `UNPROBED`, but `partially_probed_count` and
+`probe_slots_completed/probe_slots_total` must show that work rather than describing it as zero
+probing. On resume, missing legacy `assign_attempts` are derived from immutable `round_plans`; this
+bookkeeping repair cannot create evidence or support.
 
 For `UNIVERSE_SEARCH`, completed coverage is the root stopping unit. After two consecutive rounds
 with no new seed or seed-evidence growth and the normal crux/source dry gates, the engine may close

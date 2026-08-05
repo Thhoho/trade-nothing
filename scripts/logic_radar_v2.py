@@ -123,8 +123,8 @@ def calibrate_assertions(content: str, current_data: dict) -> tuple:
     return content, new_log_entries
 
 
-def run_radar(evolution_path: str = None):
-    """Main flow: fetch data → update hooks → calibrate assertions"""
+def run_radar(evolution_path: str = None, *, write_evolution: bool = False):
+    """Fetch and evaluate radar hooks; persist only after explicit opt-in."""
     path = evolution_path or get_evolution_path()
 
     if not os.path.exists(path):
@@ -143,8 +143,9 @@ def run_radar(evolution_path: str = None):
     content = update_radar_hooks(content, current_data)
     content, calibrations = calibrate_assertions(content, current_data)
 
-    with open(path, 'w', encoding='utf-8') as f:
-        f.write(content)
+    if write_evolution:
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(content)
 
     result = {
         "status": "success",
@@ -153,7 +154,14 @@ def run_radar(evolution_path: str = None):
         "indicators": {k: v["value"] for k, v in current_data.items()},
         "triggered_hooks": [k for k, v in current_data.items() if v["threshold_status"] == "🔥 TRIGGERED"],
         "calibrations_performed": len(calibrations),
+        "calibration_preview": calibrations,
         "evolution_path": path,
+        "write_performed": bool(write_evolution),
+        "persistence_note": (
+            "Evolution.md updated by explicit --write-evolution opt-in."
+            if write_evolution
+            else "Read-only preview; pass --write-evolution only after explicit authorization."
+        ),
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
@@ -162,5 +170,10 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Logic Radar v2 — Hook Monitor & Calibrator")
     parser.add_argument("--evolution-path", help="Path to Evolution.md")
+    parser.add_argument(
+        "--write-evolution",
+        action="store_true",
+        help="persist evaluated hooks/calibrations; default is a read-only preview",
+    )
     args = parser.parse_args()
-    run_radar(args.evolution_path)
+    run_radar(args.evolution_path, write_evolution=args.write_evolution)

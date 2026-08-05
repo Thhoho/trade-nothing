@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""
+"""ARCHIVED v0.9 daemon; excluded from the published research skill.
+
 Trade Nothing v0.9 — Logic Radar Daemon (逻辑雷达常驻守护进程)
 
 Checks all registered macro indicators at N-minute intervals.

@@ -128,7 +128,12 @@ def _agent_evidence(payload, agent_name):
     return out
 
 
-def _reason(audit, reason, amount=1):
+def _reason(audit, reason, amount=1, repair=False):
+    """Record a rejection, or a tolerated deviation that did not drop the seed."""
+    if repair:
+        notes = audit.setdefault("repair_notes", {})
+        notes[reason] = notes.get(reason, 0) + amount
+        return
     audit["rejected"] += amount
     reasons = audit.setdefault("rejected_reasons", {})
     reasons[reason] = reasons.get(reason, 0) + amount
@@ -259,13 +264,15 @@ def _normalize_seed(raw, state, agent_name, round_num, allowed, audit):
         for reason in hypothesis_issues:
             _reason(audit, reason)
         return None
-    binding_issues = landscape_engine.seed_binding_issues(
-        state, landscape_path_id, origin
+    landscape_path_id, binding_issues, path_repaired = (
+        landscape_engine.resolve_seed_path(state, landscape_path_id, origin, relation)
     )
     if binding_issues:
         for reason in binding_issues:
             _reason(audit, reason)
         return None
+    if path_repaired:
+        _reason(audit, "landscape_path_derived_from_origin_crux", repair=True)
     if asset_type not in ASSET_TYPES:
         _reason(audit, "invalid_asset_type")
         return None
@@ -278,16 +285,17 @@ def _normalize_seed(raw, state, agent_name, round_num, allowed, audit):
     allowed_for_crux = allowed.get(origin, {})
     accepted, seen = [], set()
     for citation in submitted:
-        key = crux_engine.citation_identity(citation)
-        if not key or key not in allowed_for_crux:
+        matched = crux_engine.match_agent_citation(allowed_for_crux, citation)
+        if matched is None:
             audit["dropped_citations"] += 1
             continue
-        if key in seen:
+        key = crux_engine.citation_identity(matched)
+        if not key or key in seen:
             audit["dropped_citations"] += 1
             continue
         seen.add(key)
         # Store the agent's original evidence object, not a seed-side rewrite.
-        accepted.append(dict(allowed_for_crux[key]))
+        accepted.append(dict(matched))
     if not accepted:
         _reason(audit, "no_agent_backed_citation")
         return None

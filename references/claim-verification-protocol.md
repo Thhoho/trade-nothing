@@ -23,6 +23,32 @@ Snapshot content must come from the host fetcher or evidence_snapshot.py, not
 from the Claim Verifier. Run the verifier in a context isolated from Candidate
 Analyst and Candidate Skeptic.
 
+## Isolation receipt
+
+A `--verifier-isolation verified` string is only caller attestation and cannot unlock a decisive
+verdict. SUPPORTS and CONTRADICTS become effective only with a validated
+`claim-verifier-isolation.v1` receipt binding the stored dispatch, exact verifier prompt, exact
+submitted payload, claim IDs, and snapshot IDs. Missing, mismatched, or invented receipts reduce
+the effective verdict to INSUFFICIENT.
+
+- Antigravity and Claude Code: run `scripts/claim_verifier_runner.py --runtime ...`; it launches one
+  bounded, non-persistent process and submits the process receipt.
+- Codex collaboration: after one independent agent context completes, use
+  `scripts/codex_claim_verifier_receipt.py` with the host-returned canonical agent ID. The helper
+  binds host facts supplied by the caller; it does not launch an agent or prove a UI event.
+- Other/manual runtimes remain `unverified` until they implement and test a supported receipt
+  profile.
+
+```bash
+python3 scripts/claim_verifier_runner.py --topic "TARGET" \
+  --snapshots snapshots.json --runtime claude-code
+
+python3 scripts/deepthink_orchestrator_v2.py --submit-verification \
+  --topic "TARGET" --snapshots snapshots.json --verifier verifier.json \
+  --verifier-isolation verified \
+  --verifier-isolation-receipt claim-verifier-receipt.json
+```
+
 ## Snapshot schema
 
 ~~~json

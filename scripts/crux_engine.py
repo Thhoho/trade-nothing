@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Trade Nothing v0.13.0 — Crux Engine  (parallel to deepthink_engine.py; -deepthink2)
+Trade Nothing v0.13.0 — Crux Engine  (-deepthink2; replaced the retired v1 LFI engine)
 
 Replaces the degenerate single-posterior + LFI layer with a per-CRUX ledger:
 
@@ -163,6 +163,32 @@ def citation_identity(c):
     return f"{normalized_url}|{claim}|{number}"
 
 
+def match_agent_citation(bucket, citation):
+    """Resolve a citation to the agent's own copy, tolerating reworded claims.
+
+    The back-check exists to stop a Judge or seed from inventing sources. Exact
+    `citation_identity` matching also rejected *real* citations whenever a role
+    reworded the claim between arrays — and a Judge rewords by design, since it
+    writes its own rationale. Falling back to the source URL keeps the security
+    property (the URL must still appear in that agent's payload for that crux)
+    while ending the silent loss of genuine evidence.
+
+    `bucket` maps citation identity -> original citation object.
+    """
+    if not isinstance(bucket, dict) or not bucket:
+        return None
+    key = citation_identity(citation)
+    if key and key in bucket:
+        return bucket[key]
+    source_key = citation_source_identity(citation)
+    if not source_key:
+        return None
+    for stored in bucket.values():
+        if citation_source_identity(stored) == source_key:
+            return stored
+    return None
+
+
 def _numbered_citation(c):
     return valid_citation(c) and bool(str(c.get("number", "")).strip())
 
@@ -297,12 +323,13 @@ def _apply_evidence_exhaustion(state, round_num, round_context, accepted_citatio
             after = 0
         cx["evidence_exhaustion_dry_streak"] = after
 
-        # A zero-signal evidence wash is still an examined OPEN question once
-        # both isolated roles have probed it and valid evidence exists.
+        # PENDING means "never examined", not "no Judge-selected citation".
+        # A bilateral host-scoped probe therefore opens the crux even when the
+        # Judge returns a zero-signal wash or omits citations. Source minimums
+        # below still prevent retirement or formal evidence claims.
         if (
             cx.get("status") == "PENDING"
             and both_probed
-            and _valid_citation_count(cx) > 0
         ):
             cx["status"] = "OPEN"
 
@@ -445,6 +472,7 @@ def new_state(topic, decision_question, horizon, cruxes,
             "introduced": 0,
             "best_bull": None, "best_bear": None, "citations": [],
             "seen_evidence_keys": [],
+            "seen_agent_evidence_keys": [],
             "first_bilateral_probe_round": None,
             "evidence_exhaustion_dry_streak": 0,
         } for c in cruxes},
@@ -476,6 +504,7 @@ def add_crux(state, crux, round_num):
         "introduced": round_num,
         "best_bull": None, "best_bear": None, "citations": [],
         "seen_evidence_keys": [],
+        "seen_agent_evidence_keys": [],
         "first_bilateral_probe_round": None,
         "evidence_exhaustion_dry_streak": 0,
     }
@@ -799,25 +828,16 @@ def _discovery_convergence_issue(state):
     ]
     if not paths:
         return "机会发现意图缺少 Landscape Map，不能声明搜索完成。"
-    unprobed = [
-        item.get("path_id")
-        for item in paths
-        if item.get("state", "UNPROBED") == "UNPROBED"
-    ]
-    if unprobed:
-        return f"Landscape Map 仍有未质证路径: {unprobed}；机会型研究不得收敛。"
-    missing_roles = []
-    for item in paths:
-        probes = (
-            item.get("probes", {})
-            if isinstance(item.get("probes"), dict)
-            else {}
+    # Coverage blocks convergence only while probing budget remains.  A path that
+    # has spent its budget retires as UNKNOWN and is reported as an unestablished
+    # path, because demanding unreachable coverage deadlocks the whole run.
+    import landscape_engine
+    remaining = landscape_engine.coverage_work_remaining(state)
+    if remaining:
+        return (
+            f"Landscape Map 仍有可执行的质证预算: {remaining}；"
+            "先用完覆盖预算再判定收敛。"
         )
-        for role in ("detective", "inquisitor"):
-            if role not in probes:
-                missing_roles.append(f"{item.get('path_id')}:{role}")
-    if missing_roles:
-        return f"Landscape Map 缺少双边探测记录: {missing_roles}。"
     coverage_round = _universe_coverage_round(state)
     if coverage_round is None:
         return "Landscape Map 双边探测缺少有效轮次，不能建立覆盖完成时间。"
@@ -926,16 +946,12 @@ def convergence(state, round_num):
         if discovery_issue:
             return not_ready(discovery_issue)
     else:
-        unprobed_paths = [
-            item.get("path_id")
-            for item in state.get("landscape_map", {}).get("paths", [])
-            if isinstance(item, dict)
-            and item.get("state", "UNPROBED") == "UNPROBED"
-        ]
-        if unprobed_paths:
+        import landscape_engine
+        remaining_probes = landscape_engine.coverage_work_remaining(state)
+        if remaining_probes:
             return not_ready(
-                f"Landscape Map 仍有未质证路径: {unprobed_paths}；"
-                "机会型研究不得收敛或声明 EDGE。"
+                f"Landscape Map 仍有可执行的质证预算: {remaining_probes}；"
+                "先用完覆盖预算再判定收敛。"
             )
     # completeness guard: adversary must have gone "dry" (no new crux for DRY_ROUNDS)
     if round_num - state["max_introduced_round"] < DRY_ROUNDS:
@@ -958,6 +974,294 @@ def convergence(state, round_num):
                 return not_ready("多路径逻辑图的三维 verdict 尚未稳定。")
     return {"decision": "converge", "round": round_num,
             "reason": "每条 crux 已 RESOLVED 或转为可监控，且决策稳定。逻辑就绪。"}
+
+
+REPORT_GRADES = ("FORMAL", "PROVISIONAL", "EXPLORATORY")
+CLAIM_TIERS = ("VERIFIED", "SINGLE_SOURCE", "HYPOTHESIS")
+
+
+def _origination_label(citation):
+    """Normalized originating-organization hint from the agent's source label.
+
+    Aggregators republish one report under many domains, which makes pure
+    domain counting overstate independence.  A label may only ever *reduce* the
+    counted diversity, never inflate it, so a fabricated label cannot buy a
+    higher tier.
+    """
+    label = " ".join(str(citation.get("source", "")).split())
+    if not label:
+        return ""
+    # Drop a trailing "(…转载)" / "[via …]" style attribution suffix.
+    label = re.split(r"[（(\[]", label, maxsplit=1)[0]
+    return label.strip().lower()
+
+
+def independent_publisher_count(citations):
+    """Count distinct publishers, collapsing republications of one origin."""
+    valid = [c for c in citations if valid_citation(c)]
+    domains = {citation_publisher_identity(c) for c in valid}
+    domains.discard("")
+    labels = {_origination_label(c) for c in valid}
+    labels.discard("")
+    if not labels:
+        return len(domains)
+    # Conservative: never let labels raise the count above distinct domains.
+    return min(len(domains), max(len(labels), 1))
+
+
+def crux_claim_tier(cx):
+    """Evidence tier for one crux, used to label claims rather than suppress them.
+
+    VERIFIED      - two or more independent publishers; may be asserted plainly.
+    SINGLE_SOURCE - real citation(s) but no independent corroboration.
+    HYPOTHESIS    - no valid citation; may still be reported, but only labelled.
+    """
+    citations = [c for c in cx.get("citations", []) if valid_citation(c)]
+    if not citations:
+        return "HYPOTHESIS"
+    if independent_publisher_count(citations) >= MIN_VALID_CITATIONS:
+        return "VERIFIED"
+    return "SINGLE_SOURCE"
+
+
+def evidence_counts(state):
+    """Deterministic self-description of the run.
+
+    The narrative layer must read these numbers instead of writing its own; a
+    hand-written evidence count is exactly how a report ends up claiming more
+    support than the ledger holds.
+    """
+    citations, publishers = [], set()
+    for cx in state.get("cruxes", {}).values():
+        for c in cx.get("citations", []):
+            if valid_citation(c):
+                citations.append(citation_source_identity(c))
+                publishers.add(citation_publisher_identity(c))
+    publishers.discard("")
+    seeds = state.get("opportunity_seeds") or []
+    return {
+        "rounds_completed": len(state.get("rounds") or []),
+        "valid_citations": len(citations),
+        "unique_source_urls": len(set(citations)),
+        "unique_publishers": len(publishers),
+        "cruxes": len(state.get("cruxes") or {}),
+        "opportunity_seeds": len(seeds),
+        "candidate_screens": len(state.get("candidate_screens") or []),
+        "claim_verifications": len(state.get("claim_verifications") or []),
+        "source_snapshots": len(state.get("source_snapshots") or []),
+    }
+
+
+def recommended_max_rounds(path_count):
+    """Round fuse that is actually reachable, not just a theoretical floor.
+
+    Coverage plus the harvest-dry window is a lower bound that assumes harvesting
+    goes quiet the instant the last path is probed. A productive Detective keeps
+    resetting that window, so a fuse set to the bare floor guarantees the run dies
+    before any crux settles. `DRY_ROUNDS` of headroom makes the floor attainable.
+    """
+    try:
+        paths = max(0, int(path_count))
+    except (TypeError, ValueError):
+        paths = 0
+    if not paths:
+        return MIN_ROUNDS
+    coverage = math.ceil(paths / 2)
+    return max(MIN_ROUNDS, coverage + UNIVERSE_HARVEST_DRY_ROUNDS + DRY_ROUNDS)
+
+
+def _round_was_productive(round_record):
+    """A round is productive if it added evidence, a probe, or seed progress."""
+    if not isinstance(round_record, dict):
+        return False
+    harvest = round_record.get("opportunity_harvest") or {}
+    if int(harvest.get("accepted_new") or 0) or int(harvest.get("merged_existing") or 0):
+        return True
+    if int((round_record.get("landscape_audit") or {}).get("accepted") or 0):
+        return True
+    for audit in (round_record.get("evidence_exhaustion") or {}).values():
+        if isinstance(audit, dict) and int(
+            audit.get("accepted_new_citation_count")
+            or audit.get("accepted_citations")
+            or 0
+        ):
+            return True
+    for audit in (round_record.get("crux_probe_audit") or {}).values():
+        if isinstance(audit, dict) and int(audit.get("new_valid_evidence_count") or 0):
+            return True
+    for signal in (round_record.get("signals") or {}).values():
+        if isinstance(signal, dict) and signal.get("citations"):
+            return True
+    return False
+
+
+def consecutive_unproductive_rounds(state):
+    """Trailing rounds that added no evidence, probe, or seed progress."""
+    streak = 0
+    for round_record in reversed(state.get("rounds") or []):
+        if _round_was_productive(round_record):
+            break
+        streak += 1
+    return streak
+
+
+def payload_yield(state):
+    """How much agent work the engine kept versus discarded, and why.
+
+    Silent discard was the most expensive failure mode in practice: six fully
+    written OpportunitySeeds were dropped over one derivable field and nobody
+    could tell without reading nested per-round audit objects. Surfacing the
+    rate makes a payload-contract regression visible in the report itself.
+    """
+    totals = {"submitted": 0, "accepted": 0, "rejected": 0, "omitted": 0}
+    reasons, omissions, repairs = {}, {}, {}
+    for round_record in state.get("rounds") or []:
+        for key in ("landscape_audit", "opportunity_harvest", "hypothesis_audit"):
+            audit = round_record.get(key)
+            if not isinstance(audit, dict):
+                continue
+            if key == "hypothesis_audit":
+                submitted = sum(int(audit.get(name) or 0) for name in (
+                    "submitted_sparks", "submitted_proxy_trails", "submitted_evidence",
+                ))
+                accepted = sum(int(audit.get(name) or 0) for name in (
+                    "accepted_new_hypotheses", "merged_hypotheses",
+                    "accepted_new_proxy_trails", "duplicate_proxy_trails",
+                    "accepted_evidence", "merged_proxy_evidence", "duplicate_evidence",
+                ))
+            else:
+                submitted = int(audit.get("submitted") or 0)
+                accepted = int(
+                    audit.get("accepted")
+                    or (int(audit.get("accepted_new") or 0)
+                        + int(audit.get("merged_existing") or 0))
+                )
+            raw_rejected = int(audit.get("rejected") or 0)
+            omitted = int(audit.get("omitted") or 0)
+            rejected_reasons = dict(audit.get("rejected_reasons") or {})
+
+            # Pre-v0.13 Landscape audits counted an assigned-but-omitted
+            # finding as a rejection, so `rejected / submitted` could exceed
+            # 100%. Reclassify this deterministic legacy shape at projection
+            # time; the immutable historical round record is not rewritten.
+            legacy_missing = 0
+            if key == "landscape_audit" and "omitted" not in audit:
+                for name, count in rejected_reasons.items():
+                    if str(name).endswith("_assigned_path_missing_finding"):
+                        legacy_missing += int(count or 0)
+                if legacy_missing:
+                    omitted += legacy_missing
+                    raw_rejected = max(0, raw_rejected - legacy_missing)
+                    repairs["legacy_missing_findings_reclassified_as_omitted"] = (
+                        repairs.get("legacy_missing_findings_reclassified_as_omitted", 0)
+                        + legacy_missing
+                    )
+
+            # Some legacy validators attached more than one rejection reason
+            # to one submitted object. Item-level yield cannot exceed the
+            # number of submitted objects left after accepted objects.
+            rejected = min(raw_rejected, max(0, submitted - accepted))
+            if rejected < raw_rejected:
+                repairs["legacy_multi_reason_rejection_overcount_normalized"] = (
+                    repairs.get("legacy_multi_reason_rejection_overcount_normalized", 0)
+                    + raw_rejected - rejected
+                )
+
+            totals["submitted"] += submitted
+            totals["accepted"] += min(accepted, submitted)
+            totals["rejected"] += rejected
+            totals["omitted"] += omitted
+            for name, count in rejected_reasons.items():
+                if (key == "landscape_audit" and "omitted" not in audit
+                        and str(name).endswith("_assigned_path_missing_finding")):
+                    omissions[name] = omissions.get(name, 0) + int(count or 0)
+                    continue
+                reasons[name] = reasons.get(name, 0) + int(count or 0)
+            for name, count in (audit.get("omitted_reasons") or {}).items():
+                omissions[name] = omissions.get(name, 0) + int(count or 0)
+            for name, count in (audit.get("repair_notes") or {}).items():
+                repairs[name] = repairs.get(name, 0) + int(count or 0)
+    submitted = totals["submitted"]
+    totals["discard_rate"] = (
+        round(totals["rejected"] / submitted, 3) if submitted else 0.0
+    )
+    totals["top_rejection_reasons"] = sorted(
+        reasons.items(), key=lambda item: (-item[1], item[0])
+    )[:5]
+    totals["top_omission_reasons"] = sorted(
+        omissions.items(), key=lambda item: (-item[1], item[0])
+    )[:5]
+    totals["repairs_applied"] = sorted(
+        repairs.items(), key=lambda item: (-item[1], item[0])
+    )[:5]
+    return totals
+
+
+def research_grade(state):
+    """Grade the run instead of deciding whether it may exist.
+
+    Every run yields a report.  Unmet gates lower the grade and constrain what
+    the report is allowed to do (publish externally, rank named securities);
+    they no longer erase the research.
+    """
+    import landscape_engine
+
+    converged = (state.get("last_convergence") or {}).get("decision") == "converge"
+    unmet = []
+    if not converged:
+        unmet.append("CONVERGENCE")
+
+    landscape = landscape_engine.summary(state)
+    if landscape["required"] and not landscape["coverage_complete"]:
+        unmet.append("LANDSCAPE_COVERAGE")
+
+    tiers = {name: [] for name in CLAIM_TIERS}
+    for cid, cx in sorted((state.get("cruxes") or {}).items()):
+        tiers[crux_claim_tier(cx)].append(cid)
+    if tiers["SINGLE_SOURCE"] or tiers["HYPOTHESIS"]:
+        unmet.append("CRUX_SOURCE_MINIMUM")
+
+    opportunity = landscape_engine.is_required(state)
+    if opportunity and not state.get("candidate_screens"):
+        unmet.append("CANDIDATE_SCREEN")
+    if not state.get("claim_verifications"):
+        unmet.append("CLAIM_VERIFICATION")
+
+    if not converged:
+        grade = "EXPLORATORY"
+    elif unmet:
+        grade = "PROVISIONAL"
+    else:
+        grade = "FORMAL"
+
+    # A screen that rejected everything establishes that there is nothing to
+    # rank; only a surviving candidate unlocks ordering named securities.
+    surviving_screens = [
+        screen for screen in (state.get("candidate_screens") or [])
+        if isinstance(screen, dict)
+        and str(screen.get("status") or "").upper() in {"WATCHLIST", "THESIS_CANDIDATE"}
+    ]
+
+    return {
+        "report_grade": grade,
+        "unmet_gates": unmet,
+        # The two remaining hard gates.  Everything else is a label.
+        "publication_allowed": grade == "FORMAL",
+        "ranking_allowed": bool(surviving_screens),
+        "claim_tiers": tiers,
+        "coverage": {
+            "required": landscape["required"],
+            "path_count": landscape["path_count"],
+            "established_count": landscape["established_count"],
+            "unprobed_count": landscape["unprobed_count"],
+            "partially_probed_count": landscape.get("partially_probed_count", 0),
+            "probe_slots_completed": landscape.get("probe_slots_completed", 0),
+            "probe_slots_total": landscape.get("probe_slots_total", 0),
+            "exhausted_path_ids": landscape["exhausted_path_ids"],
+        },
+        "evidence_counts": evidence_counts(state),
+        "payload_yield": payload_yield(state),
+    }
 
 
 def report_data(state):

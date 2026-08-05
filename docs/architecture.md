@@ -25,7 +25,7 @@ flowchart TD
     J --> V[Agent-backed citation validation]
     V --> E[Crux support engine]
     E -->|OPEN cruxes| O
-    E -->|continue or fuse| B[Formal report blocked]
+    E -->|continue or fuse| B[Exploratory report + Resolution Memo]
     E -->|converged| G[Independent-source gate]
     G -->|fail| B
     G -->|pass| R[Fixed evidence ledger]
@@ -49,8 +49,10 @@ flowchart TD
 - Uses readable topic slugs plus a hash suffix to prevent collisions.
 - Dispatches only OPEN cruxes after each round.
 - Rejects Judge citations that cannot be matched to agent JSON.
-- Enforces configured maximum rounds and blocks reports after a fuse.
-- Uses locked, atomic JSON writes and supports read-only migration from legacy state paths.
+- Enforces configured maximum rounds and blocks only the FORMAL grade after a fuse; an exploratory
+  report remains available.
+- Uses locked, atomic JSON writes. Legacy state is never auto-loaded; adoption requires an exact
+  explicit state path.
 
 ### Detective and Inquisitor
 
@@ -83,9 +85,10 @@ clamps are control parameters, not estimates learned from market outcomes.
 - Generates no target price, expected return, scenario probability, Kelly allocation, or size.
 - Gives the synthesis model a citation whitelist for the qualitative layer.
 
-## Formal report gates
+## Formal-grade gates
 
-A formal v2 report is allowed only when all are true:
+A report is always deliverable. It receives the FORMAL grade and external-publication permission
+only when all are true:
 
 1. Every crux is resolved or monitorable.
 2. The research status is stable and no new crux has appeared for the dry-round window.
@@ -101,12 +104,26 @@ The report remains a research artifact requiring human judgment.
 - Research vault: `TRADE_NOTHING_VAULT_DIR`.
 - Evolution memory: `TRADE_NOTHING_EVOLUTION_PATH`.
 - Local issue harvesting is allowed by `--harvest`.
-- OS reminders require `--notify`; webhooks require `--webhook`.
+- The published skill exposes no notification, webhook, portfolio, or order-execution entry point.
 
 Source installation never deletes runtime JSON, scratch files, or personal research artifacts.
+It recoverably quarantines stale files on the managed code surface and treats installed
+`Methodology_Evolution.md`, `scripts/.state`, and target `.git` as inert extras. Active memory
+defaults to the external vault, and state defaults to scratch.
 
-## Legacy v1
+Runtime capability is stage-specific. Antigravity and Claude Code have bounded OS-process adapters;
+Codex has manual collaboration receipt builders; Gemini, Hermes, and OpenHands are protocol-only in
+this release. See `references/runtime-compatibility.md`.
 
-`deepthink_engine.py` and `deepthink_orchestrator.py` remain for compatibility. Their LFI,
-Bayesian posterior, and sizing-related utilities are uncalibrated legacy heuristics. They are not
-the recommended workflow and must not be represented as real market probabilities or safe sizing.
+## Retired v1
+
+`deepthink_engine.py`, `deepthink_orchestrator.py`, and `dungs_argumentation.py` were removed in
+v0.13.0. Their LFI, Bayesian posterior, and sizing utilities were uncalibrated heuristics, they
+maintained a second state format under `scripts/.state/`, and their harvest path silently missed
+`-deepthink2` state. `crux_engine.py` plus `deepthink_orchestrator_v2.py` are now the only research
+pipeline. Historical v1 artifacts are readable through Git history and must not be presented as
+real market probabilities or safe sizing.
+
+Older portfolio, target-price, scenario-sizing, spreadsheet-model, and unbounded notification-daemon
+implementations live only under `legacy/`. The installer treats any copy of those files on a managed
+skill surface as stale code and moves it to the recoverable quarantine.

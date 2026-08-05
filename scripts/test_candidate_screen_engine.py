@@ -348,6 +348,29 @@ class CandidateScreenEngineTests(unittest.TestCase):
         self.assertIn("screen_isolation_claim_exceeds_runtime", screen["gaps"])
         self.assertEqual(audit["effective_isolation_status"], "unverified")
 
+    def test_verified_labels_cannot_replace_a_valid_isolation_receipt(self):
+        st = state_with_seed()
+        analyst = payload("Analyst")
+        skeptic = payload("Skeptic")
+        receipt = install_test_dispatch(st, analyst, skeptic)
+        receipt["roles"]["analyst"]["payload_sha256"] = "0" * 64
+        receipt["receipt_id"] = screen_engine.isolation_receipt_id(receipt)
+
+        audit = screen_engine.evaluate_batch(
+            st, analyst, skeptic, AS_OF,
+            isolation_status="verified",
+            isolation_receipt=receipt,
+        )
+
+        screen = st["candidate_screens"][0]
+        self.assertEqual(audit["effective_isolation_status"], "unverified")
+        self.assertEqual(screen["status"], "WATCHLIST")
+        self.assertIn("screen_isolation_receipt_invalid", screen["gaps"])
+        self.assertIn(
+            "isolation_receipt_analyst_payload_hash_mismatch",
+            screen["isolation_receipt_blockers"],
+        )
+
     def test_unverified_runtime_is_worse_than_degraded_screen_claim(self):
         st = state_with_seed()
         st["runtime_contract"]["isolation_status"] = "unverified"
@@ -539,16 +562,20 @@ class CandidateScreenOrchestratorTests(unittest.TestCase):
         orchestrator._save(topic, st)
         self.assertEqual(orchestrator.cmd_screen(topic, AS_OF)["status"], "blocked_unconverged")
 
-    def test_opportunity_report_physically_defers_to_default_screen_batch(self):
+    def test_opportunity_report_gates_ranking_but_still_delivers_report(self):
         topic = "candidate screen default continuation"
         st = state_with_seed()
         st["question_type"] = "UNIVERSE_SEARCH"
         orchestrator._save(topic, st)
         result = orchestrator.cmd_report(topic)
-        self.assertEqual(result["status"], "dispatch_candidate_screeners")
-        self.assertFalse(result["formal_report_allowed"])
-        self.assertTrue(result["formal_report_deferred"])
-        self.assertEqual(result["report_deferred_reason"], "default_candidate_screen_pending")
+        self.assertEqual(result["status"], "report_data_ready")
+        # Ranking named securities stays hard-gated until the screen completes,
+        # but the research itself is delivered.
+        self.assertFalse(result["ranking_allowed"])
+        self.assertIn("CANDIDATE_SCREEN", result["unmet_gates"])
+        self.assertEqual(
+            result["candidate_screen_dispatch"]["status"], "dispatch_candidate_screeners"
+        )
         stored = orchestrator._load(topic)
         self.assertEqual(stored["candidate_screen_dispatches"][0]["max_batch"], 3)
 

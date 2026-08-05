@@ -73,6 +73,12 @@ class RunRegistryTests(unittest.TestCase):
         save_json(path, stored)
         with self.assertRaisesRegex(ValueError, "method_contract_drift"):
             run_registry.load_manifest(manifest["run_id"])
+        inspected = run_registry.inspect_manifest(manifest["run_id"])
+        self.assertEqual(inspected["method_identity_check"]["status"], "drift")
+        self.assertEqual(
+            inspected["method_identity_check"]["pinned"]["contract_sha256"],
+            "0" * 64,
+        )
 
     def test_adopt_existing_state_without_renaming_it(self):
         path = os.path.join(self.tmp.name, "v2-state", "legacy.json")

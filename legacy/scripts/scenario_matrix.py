@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""
+"""ARCHIVED v0.9 implementation; excluded from the published research skill.
+
 Trade Nothing v0.9 — Scenario Matrix Generator (情景矩阵生成器)
 
 Transforms qualitative Bull/Bear analysis into structured probability-weighted

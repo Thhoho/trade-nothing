@@ -8,9 +8,7 @@ All paths resolved via environment variables or OS-agnostic defaults.
 
 import os
 import re
-import sys
 import json
-import platform
 import math
 import uuid
 import tempfile
@@ -46,12 +44,11 @@ def get_vault_dir() -> str:
 
 
 def get_evolution_path() -> str:
-    """Resolve the first non-empty active-memory file without copying runtime memory into the skill."""
+    """Resolve active memory outside the installed, immutable skill bundle."""
     explicit = os.environ.get("TRADE_NOTHING_EVOLUTION_PATH")
     if explicit:
         return os.path.expanduser(explicit)
     candidates = [
-        os.path.join(get_skill_dir(), "Methodology_Evolution.md"),
         os.path.join(get_vault_dir(), "Methodology", "Evolution.md"),
         os.path.expanduser("~/Documents/Trade_Nothing_Vault/Methodology/Evolution.md"),
     ]
@@ -105,67 +102,18 @@ def generate_topic_slug(topic: str) -> str:
     return code_prefix + slug
 
 
-# ─── Cross-Platform Notifications ───────────────────────────────────────────
-
-def send_notification(title: str, message: str) -> bool:
-    """Send a system notification. Cross-platform with graceful fallback.
-    
-    Supports:
-    - macOS: osascript
-    - Linux: notify-send
-    - Windows: PowerShell toast (basic)
-    - Fallback: stderr print
-    
-    Returns True if notification was sent, False if fell back to stderr.
-    """
-    system = platform.system()
-    
-    # Strip potential command injection or escaping delimiters (double quotes, backticks, dollar signs, semicolons, backslashes)
-    clean_title = re.sub(r'["`$;\\]', '', title).replace('\n', ' ').replace('\r', '')
-    clean_message = re.sub(r'["`$;\\]', '', message).replace('\n', ' ').replace('\r', '')
-    
-    try:
-        if system == "Darwin":
-            import subprocess
-            cmd = f'display notification "{clean_message}" with title "{clean_title}"'
-            subprocess.call(["osascript", "-e", cmd], timeout=5)
-            return True
-        elif system == "Linux":
-            import subprocess
-            subprocess.call(["notify-send", clean_title, clean_message], timeout=5)
-            return True
-        elif system == "Windows":
-            import subprocess
-            ps_cmd = (
-                f'[System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null; '
-                f'$notify = New-Object System.Windows.Forms.NotifyIcon; '
-                f'$notify.Icon = [System.Drawing.SystemIcons]::Information; '
-                f'$notify.Visible = $true; '
-                f'$notify.ShowBalloonTip(5000, "{clean_title}", "{clean_message}", '
-                f'[System.Windows.Forms.ToolTipIcon]::Info)'
-            )
-            subprocess.call(["powershell", "-Command", ps_cmd], timeout=5)
-            return True
-    except Exception:
-        pass
-    
-    # Fallback: print to stderr
-    print(f"🔔 [{title}] {message}", file=sys.stderr)
-    return False
-
-
 # ─── Proxy Cleanup ──────────────────────────────────────────────────────────
 
 def clean_proxy_env():
-    """Remove proxy environment variables that interfere with domestic API calls.
-    
-    Many China financial data APIs (EastMoney, Tencent HQ) fail through 
-    corporate/VPN proxies. Call this before making API requests.
-    """
+    """Disable proxies only after explicit ``TRADE_NOTHING_DISABLE_PROXY=1`` opt-in."""
+    enabled = os.environ.get("TRADE_NOTHING_DISABLE_PROXY", "").strip().lower()
+    if enabled not in {"1", "true", "yes"}:
+        return False
     os.environ['no_proxy'] = '*'
     for env_var in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']:
         if env_var in os.environ:
             del os.environ[env_var]
+    return True
 
 
 # ─── JSON I/O ────────────────────────────────────────────────────────────────

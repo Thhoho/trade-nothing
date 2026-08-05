@@ -2,7 +2,8 @@
 """
 Trade Nothing v0.9 — Verified Data Fetcher (验证式数据获取器)
 
-Ensures every data point has a source, confidence score, and fallback.
+Returns time-stamped observations with an explicit source class and fallback.
+These observations are context only until admitted by the citation gates.
 Priority: AkShare → YahooFinance → Tencent HQ → WebSearch (manual annotation)
 
 Usage:
@@ -18,9 +19,6 @@ import argparse
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from utils import clean_proxy_env
-
-clean_proxy_env()
 
 INDICATORS = {
     "US_10Y": {
@@ -74,10 +72,10 @@ class VerifiedFetcher:
             hist = t.history(period="5d")
             if not hist.empty:
                 val = float(hist['Close'].iloc[-1])
-                return val, "YahooFinance", 0.95
+                return val, "YahooFinance", "SECONDARY_MARKET_DATA"
         except Exception as e:
             print(f"[YF] {ticker} failed: {e}", file=sys.stderr)
-        return None, "YahooFinance", 0.0
+        return None, "YahooFinance", "UNAVAILABLE"
 
     def _try_akshare_bond(self) -> tuple:
         try:
@@ -87,10 +85,10 @@ class VerifiedFetcher:
             if not df.empty:
                 val = float(df.iloc[-1]['美国国债收益率10年'])
                 if not math.isnan(val):
-                    return val, "AkShare", 0.90
+                    return val, "AkShare", "SECONDARY_AGGREGATOR"
         except Exception as e:
             print(f"[AK] Bond fetch failed: {e}", file=sys.stderr)
-        return None, "AkShare", 0.0
+        return None, "AkShare", "UNAVAILABLE"
 
     def _try_akshare_oil(self) -> tuple:
         try:
@@ -100,38 +98,38 @@ class VerifiedFetcher:
             if not df.empty:
                 val = float(df['last'].values[0])
                 if not math.isnan(val):
-                    return val, "AkShare", 0.90
+                    return val, "AkShare", "SECONDARY_AGGREGATOR"
         except Exception as e:
             print(f"[AK] Oil fetch failed: {e}", file=sys.stderr)
-        return None, "AkShare", 0.0
+        return None, "AkShare", "UNAVAILABLE"
 
     def fetch(self, indicator: str) -> dict:
         meta = INDICATORS.get(indicator)
         if not meta:
             return {"indicator": indicator, "error": f"Unknown indicator. Available: {list(INDICATORS.keys())}"}
 
-        value, source, confidence = None, "None", 0.0
+        value, source, source_class = None, "None", "UNAVAILABLE"
 
         if indicator == "US_10Y":
-            value, source, confidence = self._try_akshare_bond()
+            value, source, source_class = self._try_akshare_bond()
             if value is None:
-                value, source, confidence = self._try_yfinance("^TNX")
+                value, source, source_class = self._try_yfinance("^TNX")
 
         elif indicator == "BRENT_OIL":
-            value, source, confidence = self._try_akshare_oil()
+            value, source, source_class = self._try_akshare_oil()
             if value is None:
-                value, source, confidence = self._try_yfinance("BZ=F")
+                value, source, source_class = self._try_yfinance("BZ=F")
 
         elif indicator == "VIX":
-            value, source, confidence = self._try_yfinance("^VIX")
+            value, source, source_class = self._try_yfinance("^VIX")
 
         elif indicator == "USDCNY":
-            value, source, confidence = self._try_yfinance("CNY=X")
+            value, source, source_class = self._try_yfinance("CNY=X")
             if value and value < 1:
                 value = 1 / value
 
         elif indicator == "GOLD":
-            value, source, confidence = self._try_yfinance("GC=F")
+            value, source, source_class = self._try_yfinance("GC=F")
 
         threshold_status = None
         if value is not None and meta["threshold"] is not None:
@@ -148,9 +146,9 @@ class VerifiedFetcher:
             "value": value,
             "unit": meta["unit"],
             "source": source,
-            "confidence": confidence,
+            "source_class": source_class,
             "timestamp": datetime.now().isoformat(),
-            "status": "Verified" if value is not None else "Failed",
+            "status": "OBSERVED" if value is not None else "UNAVAILABLE",
             "radar_hook": meta["radar_hook"],
             "threshold": meta["threshold"],
             "threshold_status": threshold_status,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 from pathlib import Path, PurePosixPath
 
 import benchmark_harness
@@ -16,6 +17,7 @@ CALIBRATED = "CALIBRATED_CURRENT_METHOD"
 UNBENCHMARKED = "UNBENCHMARKED_METHOD_CHANGE"
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_POINTER = ROOT / "benchmarks" / "current.json"
+INSTALL_MANIFEST = ROOT / ".trade-nothing-install-manifest.json"
 
 
 def _load_json(path):
@@ -119,6 +121,11 @@ def check_current(pointer_path=DEFAULT_POINTER, source_repo=None):
         "operational_method_identity": actual_identity,
         "last_calibrated_method_identity": calibrated_identity,
         "current_method_calibrated": calibration_status == CALIBRATED,
+        "source_variant_verification": (
+            "VERIFIED_FROM_GIT"
+            if source_repo is not None
+            else "NOT_AVAILABLE_IN_INSTALLED_PACKAGE"
+        ),
         "benchmark_semantics": (
             "Historical suites remain valid controls for the last calibrated "
             "method; they are not effectiveness evidence for the current "
@@ -134,12 +141,28 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="verify the current benchmark pointer")
     parser.add_argument("--pointer", default=str(DEFAULT_POINTER))
-    parser.add_argument("--source-repo", help="optional Git repo for pinned snapshot verification")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--source-repo", help="Git repo for pinned snapshot verification")
+    mode.add_argument(
+        "--package-check", action="store_true",
+        help="validate installed files while explicitly skipping unavailable Git-object checks",
+    )
     args = parser.parse_args()
     if not args.check:
         parser.error("--check is required")
+    source_repo = args.source_repo
+    if not source_repo and not args.package_check and not INSTALL_MANIFEST.is_file():
+        probe = subprocess.run(
+            ["git", "-C", str(ROOT), "rev-parse", "--is-inside-work-tree"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        if probe.returncode == 0 and probe.stdout.strip() == "true":
+            source_repo = str(ROOT)
     print(json.dumps(
-        check_current(args.pointer, args.source_repo),
+        check_current(args.pointer, source_repo),
         ensure_ascii=False,
         indent=2,
     ))

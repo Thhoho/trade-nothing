@@ -15,6 +15,7 @@ SUITE_PATH = REPO_ROOT / "benchmarks" / "v014-discovery-pilot" / "suite.json"
 ANSWER_KEY_PATH = SUITE_PATH.parent / "assessor" / "answer-key.json"
 CURRENT_SUITE_PATH = SUITE_PATH.parent / "suite-48e0366.json"
 CURRENT_ANSWER_KEY_PATH = SUITE_PATH.parent / "assessor" / "answer-key-48e0366.json"
+INSTALLED_PACKAGE = (REPO_ROOT / ".trade-nothing-install-manifest.json").is_file()
 
 
 def load_suite(candidate_variant=None):
@@ -156,9 +157,10 @@ class DiscoveryBenchmarkHarnessTests(unittest.TestCase):
             suite["variant_manifest"]["48e0366"]["method_contract_sha256"],
             "1d68e4ace893ad8e91541af12a8f5da32a9c6b4ac003855dab0395697568107e",
         )
-        self.assertEqual(
-            harness.verify_git_variants(suite, REPO_ROOT), ["v0_14", "48e0366"]
-        )
+        if not INSTALLED_PACKAGE:
+            self.assertEqual(
+                harness.verify_git_variants(suite, REPO_ROOT), ["v0_14", "48e0366"]
+            )
         answer_key = harness._load_json(CURRENT_ANSWER_KEY_PATH)
         self.assertEqual(answer_key["suite_id"], suite["suite_id"])
         self.assertEqual(

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Trade Nothing v0.13.0 — Crux Orchestrator  (-deepthink2; parallel to deepthink_orchestrator.py)
+Trade Nothing v0.13.0 — Crux Orchestrator  (-deepthink2; the only research pipeline)
 
 Deterministic state machine. Control flow lives in code; the LLM only produces content.
 
@@ -66,7 +66,6 @@ try:
 except Exception:
     def model_for(t): return "deep"
 
-LEGACY_STATE_DIR = os.path.join(SCRIPT_DIR, ".state")
 
 
 def _frame_artifact_policy():
@@ -432,9 +431,6 @@ def _path(topic):
     return os.path.join(_state_dir(), f"{_slug(topic)}_v2_state.json")
 
 
-def _legacy_path(topic):
-    return os.path.join(LEGACY_STATE_DIR, f"{_legacy_slug(topic)}_v2_state.json")
-
 def _load(topic):
     p = _path(topic)
     if os.path.exists(p):
@@ -442,15 +438,6 @@ def _load(topic):
         if isinstance(state, dict) and state.get("method_identity"):
             method_identity.validate_method_identity(state["method_identity"])
         if isinstance(state, dict):
-            state.setdefault("runtime", {}).setdefault("state_revision", 0)
-        return state
-    old = _legacy_path(topic)
-    if os.path.exists(old):
-        state = load_json_safe(old, default=None)
-        if state:
-            if state.get("method_identity"):
-                method_identity.validate_method_identity(state["method_identity"])
-            state.setdefault("migration", {})["loaded_from_legacy_state"] = old
             state.setdefault("runtime", {}).setdefault("state_revision", 0)
         return state
     return None
@@ -541,6 +528,38 @@ def _agent_evidence_by_crux(detective, inquisitor):
     return out
 
 
+def _backfill_seen_agent_evidence_keys(state):
+    """Rebuild the role-evidence novelty ledger for resumable legacy states.
+
+    Older states only remembered citations selected by the Judge. If a Judge
+    omitted its citation array, the same role evidence looked "new" forever and
+    evidence exhaustion could never advance. Raw role payloads already stored in
+    each immutable round are sufficient to derive this bookkeeping field.
+    """
+    by_crux = {cid: set() for cid in state.get("cruxes", {})}
+    for record in state.get("rounds") or []:
+        if not isinstance(record, dict):
+            continue
+        evidence = _agent_evidence_by_crux(
+            record.get("detective_raw"), record.get("inquisitor_raw")
+        ) or {}
+        for cid, bucket in evidence.items():
+            if cid not in by_crux or not isinstance(bucket, dict):
+                continue
+            by_crux[cid].update(
+                key for key, citation in bucket.items()
+                if key and crux_engine.valid_citation(citation)
+            )
+    added = 0
+    for cid, cx in state.get("cruxes", {}).items():
+        existing = set(cx.get("seen_agent_evidence_keys") or [])
+        existing.update(cx.get("seen_evidence_keys") or [])
+        rebuilt = existing | by_crux.get(cid, set())
+        added += len(rebuilt - existing)
+        cx["seen_agent_evidence_keys"] = sorted(rebuilt)
+    return added
+
+
 def _role_probe_ids(payload, groups_field):
     """Return crux ids explicitly probed by one isolated role."""
     payload = payload if isinstance(payload, dict) else {}
@@ -574,15 +593,19 @@ def _crux_probe_audit(state, detective, inquisitor, dispatch_cruxes):
             continue
         if cid not in detective_ids and cid not in inquisitor_ids:
             continue
-        seen = set(cx.get("seen_evidence_keys", []))
-        new_keys = {
+        seen = set(cx.get("seen_agent_evidence_keys") or [])
+        seen.update(cx.get("seen_evidence_keys") or [])
+        valid_keys = {
             key for key, citation in evidence_by_crux.get(cid, {}).items()
-            if key and crux_engine.valid_citation(citation) and key not in seen
+            if key and crux_engine.valid_citation(citation)
         }
+        new_keys = valid_keys - seen
+        cx["seen_agent_evidence_keys"] = sorted(seen | valid_keys)
         audit[cid] = {
             "detective_probed": cid in detective_ids,
             "inquisitor_probed": cid in inquisitor_ids,
             "new_valid_evidence_count": len(new_keys),
+            "valid_agent_evidence_count": len(valid_keys),
         }
     return audit
 
@@ -606,12 +629,18 @@ def _sanitize_judge_for_agent_support(judge, detective, inquisitor):
         if evidence_by_crux is not None:
             submitted = sig.get("citations", []) if isinstance(sig.get("citations", []), list) else []
             allowed = evidence_by_crux.get(cid, {})
-            accepted = [
-                json.loads(json.dumps(allowed[crux_engine.citation_identity(c)], ensure_ascii=False))
-                for c in submitted if crux_engine.citation_identity(c) in allowed
-            ]
+            accepted, reworded = [], 0
+            for candidate in submitted:
+                matched = crux_engine.match_agent_citation(allowed, candidate)
+                if matched is None:
+                    continue
+                if crux_engine.citation_identity(candidate) != crux_engine.citation_identity(matched):
+                    reworded += 1
+                accepted.append(json.loads(json.dumps(matched, ensure_ascii=False)))
             if len(accepted) < len(submitted):
                 flags.append(f"dropped_judge_invented_citations:{len(submitted) - len(accepted)}")
+            if reworded:
+                flags.append(f"judge_citation_rebound_by_source_url:{reworded}")
             sig["citations"] = accepted
         try:
             nonzero = float(sig.get("signal", 0.0)) != 0.0
@@ -1267,13 +1296,32 @@ def cmd_init(topic, frame, runtime_isolation="unverified", start_packet=None):
         topic = start_context["question"]["topic"]
     issues = _validate_frame(frame)
     if issues:
-        return {
+        rejected = {
             "status": "frame_rejected",
             "topic": topic,
             "issues": issues,
             "artifact_policy": _frame_artifact_policy(),
             "instruction": "修正 framer JSON 后重新调用 --init；禁止绕过立题质量闸。",
         }
+        round_issue = any("requires_at_least_" in str(issue) for issue in issues)
+        if round_issue and isinstance(frame, dict):
+            path_count = len(landscape_engine.frame_paths(frame))
+            minimum = max(
+                framing_feasibility.minimum_rounds(frame),
+                crux_engine.recommended_max_rounds(path_count) if path_count else 0,
+            )
+            rejected["frame_repair"] = {
+                "field": "suggested_max_rounds",
+                "submitted": frame.get("suggested_max_rounds"),
+                "minimum_required": minimum,
+                "automatic_repair_applied": False,
+                "reason": "ROUND_FUSE_IS_A_FROZEN_FRAMER_CHOICE",
+            }
+            rejected["instruction"] = (
+                f"将 suggested_max_rounds 明确改为至少 {minimum}，或缩小 crux/Landscape；"
+                "然后重新调用 --init。引擎不会静默扩展研究预算。"
+            )
+        return rejected
     pre = frame.get("no_edge_precheck", {})
     if pre and pre.get("is_researchable") is False:
         return {"status": "no_edge", "topic": topic, "reason": pre.get("reason", ""),
@@ -1347,6 +1395,7 @@ def cmd_submit(topic, detective, inquisitor, judge):
     state = _load(topic)
     if not state:
         return {"status": "error", "reason": "状态不存在，请先 --init。"}
+    historical_agent_evidence_backfilled = _backfill_seen_agent_evidence_keys(state)
     try:
         configured_max = int(state.get("config", {}).get("MAX_ROUNDS", crux_engine.MAX_ROUNDS))
     except (TypeError, ValueError):
@@ -1420,6 +1469,12 @@ def cmd_submit(topic, detective, inquisitor, judge):
     state["rounds"][-1]["hypothesis_audit"] = hypothesis_audit
     state["rounds"][-1]["scenario_path_audit"] = scenario_path_audit
     state["rounds"][-1]["hypothesis_escalation"] = hypothesis_escalation
+    state["rounds"][-1]["payload_repair_audit"] = {
+        "historical_agent_evidence_keys_backfilled": (
+            historical_agent_evidence_backfilled
+        ),
+        "semantics": "DERIVED_BOOKKEEPING_ONLY_NO_SUPPORT_SCORE_EFFECT",
+    }
     # Root convergence can change screening eligibility; refresh only deterministic
     # projections, never the underlying seed evidence.
     opportunity_engine.refresh_candidate_states(state)
@@ -1448,6 +1503,7 @@ def cmd_submit(topic, detective, inquisitor, judge):
             "exploration_action": hypothesis_engine.exploration_action(state),
             "scenario_path_audit": scenario_path_audit,
             "crux_probe_audit": crux_probe_audit,
+            "payload_repair_audit": state["rounds"][-1]["payload_repair_audit"],
             "round_policy": policy,
             "admitted_new_cruxes": admitted_new_cruxes,
             "deferred_new_cruxes": deferred_new_cruxes}
@@ -1496,7 +1552,9 @@ def cmd_submit(topic, detective, inquisitor, judge):
         base["resolution_memo_markdown"] = research_output.render_resolution_memo(state)
         base["continuation_packet"] = research_output.build_continuation_packet(state)
         base["instruction"] = (
-            "达到最大轮次但仍未收敛。正式报告继续阻断；保存 resolution_memo_markdown。"
+            f"达到最大轮次但仍未收敛。FORMAL 等级被阻断，但报告本身不阻断："
+            f"调用 --report --topic \"{topic}\" 交付 EXPLORATORY 等级报告，"
+            "并保存 resolution_memo_markdown。"
             "只有用户显式授权后，才可按 continuation_packet 调用 --resume-blocked。"
         )
     else:
@@ -1505,6 +1563,14 @@ def cmd_submit(topic, detective, inquisitor, judge):
         _save(topic, state)
         base["instruction"] = (f"继续 (Round {round_num+1})，仅对 OPEN crux 派 Detective+Inquisitor，"
                                "再用 Judge 评分后调用 --submit。")
+    # `continue` is not a terminal block. Whenever the loop stops for any reason
+    # (budget, user, runtime), a graded report must still be delivered.
+    base.setdefault("report_always_available", True)
+    base.setdefault(
+        "if_you_stop_here",
+        f"调用 --report --topic \"{topic}\"，交付带 report_grade 的报告；"
+        "不要因为 status 不是 ready_for_report 就不出报告。",
+    )
     return base
 
 
@@ -2874,12 +2940,30 @@ def cmd_verify_claims(topic, snapshots, seed_id="", requested_claim_id=""):
         + json.dumps(packet, ensure_ascii=False, indent=2)
         + "\n严格按 claim-verification-protocol.md 输出 JSON。"
     )
+    dispatch = claim_verification_engine.verifier_dispatch_record(packet, prompt)
+    history = state.setdefault("claim_verifier_dispatches", [])
+    if not isinstance(history, list):
+        history = state["claim_verifier_dispatches"] = []
+    existing = next((
+        item for item in history
+        if isinstance(item, dict) and item.get("dispatch_id") == dispatch["dispatch_id"]
+    ), None)
+    if existing is not None and existing != dispatch:
+        return {
+            "status": "blocked_claim_verifier_dispatch_conflict",
+            "topic": topic,
+            "dispatch_id": dispatch["dispatch_id"],
+            "instruction": "同一 verifier dispatch identity 已绑定不同内容；保留原记录并停止。",
+        }
+    if existing is None:
+        history.append(dispatch)
+        _save(topic, state)
     return {
         "status": "dispatch_claim_verifier",
         "topic": topic,
         "model": model_for("claim_verifier"),
         "verifier_isolation_required": True,
-        "claim_ids": [item["claim_id"] for item in packet["claims"]],
+        **dispatch,
         "verifier_prompt": prompt,
         "missing_snapshot_claim_ids": packet["missing_snapshot_claim_ids"],
         "rejected_snapshots": packet["rejected_snapshots"],
@@ -2888,13 +2972,14 @@ def cmd_verify_claims(topic, snapshots, seed_id="", requested_claim_id=""):
 
 
 def cmd_submit_verification(topic, snapshots, verifier, seed_id="", requested_claim_id="",
-                            isolation_status="unverified"):
+                            isolation_status="unverified", isolation_receipt=None):
     state = _load(topic)
     if not state:
         return {"status": "error", "reason": "状态不存在。"}
     audit = claim_verification_engine.apply_verifier_results(
         state, snapshots, verifier, seed_id or None, requested_claim_id or None,
         isolation_status=isolation_status,
+        isolation_receipt=isolation_receipt,
     )
     if audit.get("conflicting_claim_ids"):
         return {
@@ -3011,68 +3096,52 @@ def cmd_resume_blocked(topic, extra_rounds=0):
     )
     return out
 
-def cmd_report(topic, challenge_only=False, report_view="full", include_synthesis=False, allow_non_formal=False):
+def cmd_report(topic, challenge_only=False, report_view="full", include_synthesis=True, allow_non_formal=False):
     state = _load(topic)
     if not state:
         return {"status": "error", "reason": "状态不存在。"}
     conv = state.get("last_convergence", {})
-    if conv.get("decision") != "converge":
-        if allow_non_formal:
-            import report_v2
-            ledger_md = report_v2.render_non_formal_ledger(state)
-            return {"status": "non_formal_ledger_ready", "topic": topic,
-                    "formal_report_allowed": False,
-                    "convergence": conv,
-                    "evidence_ledger_markdown": ledger_md,
-                    "instruction": "非正式证据账本已生成（研究未收敛）。"}
-        unresolved = [cid for cid, cx in state.get("cruxes", {}).items()
-                      if cx.get("status") in ("PENDING", "OPEN")]
-        resolution = cmd_resolution_memo(topic)
-        return {"status": "blocked_unconverged", "topic": topic,
+    converged = conv.get("decision") == "converge"
+    # Close out exhausted probe slots first so the grade reflects the honest
+    # coverage outcome rather than a stale UNPROBED.
+    landscape = landscape_engine.finalize_coverage(state, len(state.get("rounds", [])))
+    grade = crux_engine.research_grade(state)
+
+    if allow_non_formal and not converged:
+        import report_v2
+        ledger_md = report_v2.render_non_formal_ledger(state)
+        return {"status": "non_formal_ledger_ready", "topic": topic,
                 "formal_report_allowed": False,
-                "convergence": conv, "unresolved_cruxes": unresolved,
-                "resolution_memo_markdown": resolution.get("resolution_memo_markdown"),
-                "continuation_packet": resolution.get("continuation_packet"),
-                "audit_state_path": _path(topic),
-                "instruction": "正式报告已物理阻断；改为交付非正式 Resolution Memo。"}
-    landscape = landscape_engine.summary(state)
-    if not allow_non_formal and landscape["required"] and not landscape["coverage_complete"]:
-        return {
-            "status": "blocked_landscape_coverage",
-            "topic": topic,
-            "formal_report_allowed": False,
-            "unprobed_path_ids": [
-                item["path_id"] for item in landscape["paths"]
-                if item.get("state") == "UNPROBED"
+                "convergence": conv,
+                **grade,
+                "evidence_ledger_markdown": ledger_md,
+                "instruction": "非正式证据账本已生成（研究未收敛）。"}
+
+    # An unconverged run still delivers its research.  The grade and the two hard
+    # gates carry the limitation; withholding the report only pushed operators
+    # into hand-writing one outside the engine.
+    degraded_extras = {}
+    if not converged:
+        resolution = cmd_resolution_memo(topic)
+        degraded_extras = {
+            "unresolved_cruxes": [
+                cid for cid, cx in state.get("cruxes", {}).items()
+                if cx.get("status") in ("PENDING", "OPEN")
             ],
-            "instruction": "机会型研究仍有未质证路径；禁止正式报告或 EDGE 声明。",
+            "resolution_memo_markdown": resolution.get("resolution_memo_markdown"),
+            "continuation_packet": resolution.get("continuation_packet"),
         }
+
     rd = crux_engine.report_data(state)
-    weak_evidence = [c["id"] for c in rd["cruxes"]
-                     if len(c.get("unique_source_urls", [])) < crux_engine.MIN_VALID_CITATIONS]
-    if weak_evidence:
-        return {"status": "blocked_evidence_gate", "topic": topic,
-                "cruxes_below_source_minimum": weak_evidence,
-                "minimum_unique_sources_per_crux": crux_engine.MIN_VALID_CITATIONS,
-                "instruction": "禁止生成正式报告：至少一条 crux 缺少两个独立、可复核的具体来源。"}
     opportunity_question = landscape_engine.is_required(state)
-    if opportunity_question and not challenge_only and not state.get("candidate_screens"):
+    if (converged and opportunity_question and not challenge_only
+            and not state.get("candidate_screens")):
         dispatch = cmd_screen(
             topic,
             state.get("frame_contract", {}).get("as_of_date", ""),
         )
         if dispatch.get("status") == "dispatch_candidate_screeners":
-            dispatch.update({
-                "formal_report_allowed": False,
-                "formal_report_deferred": True,
-                "report_deferred_reason": "default_candidate_screen_pending",
-                "instruction": (
-                    "机会型研究存在 READY_FOR_SCREENING 候选，正式报告默认延后。"
-                    "隔离运行 Analyst/Skeptic 后调用 --submit-screen；"
-                    "若用户只要求原命题质证，可显式重试 --report --challenge-only。"
-                ),
-            })
-            return dispatch
+            degraded_extras["candidate_screen_dispatch"] = dispatch
     # Refresh tracking ledger to reflect any post-submit state transitions before
     # the report view model captures tracking_rows.
     tracking_engine.sync_tracking_ledger(state, len(state.get("rounds", [])))
@@ -3086,6 +3155,10 @@ def cmd_report(topic, challenge_only=False, report_view="full", include_synthesi
     evidence_ledger_markdown = report_v2.render(state, view="audit")
     candidate_cards_markdown = report_v2.render(state, view="cards")
     out = {"status": "report_data_ready", "topic": topic,
+            "convergence": conv,
+            "formal_report_allowed": grade["report_grade"] == "FORMAL",
+            **grade,
+            **degraded_extras,
             "decision": rd["decision"], "binding_crux": rd["binding_crux"],
             "focus_crux": rd["focus_crux"], "aggregation_rule": rd["aggregation_rule"],
             "research_verdict": rd["research_verdict"],
@@ -3124,11 +3197,21 @@ def cmd_report(topic, challenge_only=False, report_view="full", include_synthesi
                 "候选计数或正式动作；引用只能来自结构化输入并以内联链接标注。"
                 "formal_action 与 exploration_action 必须分开解释，且不得读取 "
                 "transcript、扩展候选、执行探索动作或改变 engine 状态。"
+                "3. 断言分档：VERIFIED 档可直接陈述；SINGLE_SOURCE 档必须标注"
+                "『单一来源·未交叉验证』；HYPOTHESIS 档必须标注『假说』，"
+                "但允许写进正文——假说是洞见来源，撕掉标签才是违规。"
+                "4. 证据条数、轮次、收敛状态一律读取 evidence_counts，严禁自行撰写。"
+                f"5. 本次 report_grade={grade['report_grade']}；"
+                f"publication_allowed={grade['publication_allowed']}（对外发布闸），"
+                f"ranking_allowed={grade['ranking_allowed']}（个股排序闸）。"
+                "这两道闸为 false 时，禁止产出对外传播稿或对具名标的排序/推荐。"
             )}
     if include_synthesis:
         out["synthesis_packet"] = research_output.build_synthesis_packet(state)
         out["instruction"] += (
-            " 已显式包含 synthesis_packet；它只允许增强叙事，不得改变状态词。"
+            " synthesis_packet 是写作层的交接契约：风格自由，但其中的 "
+            "evidence_counts / claim_tiers / 两道闸门为约束。风格化产物"
+            "（不含 Facts Box）用 `validate_report_v2.py --styled` 做出处 lint。"
         )
     return out
 
@@ -3195,8 +3278,9 @@ def main():
     ap.add_argument("--report-view", default="full",
                     choices=["facts_box", "brief", "cards", "audit", "full"],
                     help="select one deterministic report view")
-    ap.add_argument("--include-synthesis", action="store_true",
-                    help="include optional compact synthesis input; off by default to save context")
+    ap.add_argument("--no-synthesis", action="store_true",
+                    help="omit the writing-layer synthesis packet (it is included by default "
+                         "because it carries the assertion contract)")
     ap.add_argument("--extra-rounds", type=int, default=0)
     ap.add_argument("--action-id", default="")
     ap.add_argument("--exploration-design", default="")
@@ -3206,6 +3290,7 @@ def main():
     ap.add_argument("--reason", default="")
     ap.add_argument("--verifier-isolation", default="unverified",
                     choices=["verified", "degraded", "unverified"])
+    ap.add_argument("--verifier-isolation-receipt", default="")
     a = ap.parse_args()
     if a.selftest:
         return selftest()
@@ -3269,7 +3354,7 @@ def main():
         a.topic,
         challenge_only=a.challenge_only,
         report_view=a.report_view,
-        include_synthesis=a.include_synthesis,
+        include_synthesis=not a.no_synthesis,
         allow_non_formal=a.allow_non_formal,
     )
     elif a.resolution_memo: out = cmd_resolution_memo(a.topic)
@@ -3305,7 +3390,7 @@ def main():
     )
     elif a.submit_verification: out = cmd_submit_verification(
         a.topic, _jload(a.snapshots), _jload(a.verifier), a.seed_id, a.claim_id,
-        a.verifier_isolation
+        a.verifier_isolation, _jload(a.verifier_isolation_receipt)
     )
     elif a.runtime_failure: out = cmd_runtime_failure(a.topic, a.stage, a.reason)
     if context:

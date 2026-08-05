@@ -339,7 +339,8 @@ def validate_isolation_receipt(state, receipt, analyst_payload, skeptic_payload,
     if receipt.get("schema") != "candidate-screen-isolation.v1":
         blockers.append("isolation_receipt_schema_invalid")
     runner_kind = _text(receipt.get("runner_kind"))
-    if runner_kind not in {"agy_separate_process_v1", "codex_collaboration_v1"}:
+    process_runners = {"agy_separate_process_v1", "claude_separate_process_v1"}
+    if runner_kind not in process_runners | {"codex_collaboration_v1"}:
         blockers.append("isolation_receipt_runner_invalid")
     if receipt.get("host_enforced") is not True:
         blockers.append("isolation_receipt_not_host_enforced")
@@ -365,7 +366,7 @@ def validate_isolation_receipt(state, receipt, analyst_payload, skeptic_payload,
         invocation_id = _text(item.get("invocation_id"))
         if not invocation_id:
             blockers.append(f"isolation_receipt_{role}_invocation_missing")
-        if runner_kind == "agy_separate_process_v1":
+        if runner_kind in process_runners:
             try:
                 process_id = int(item.get("process_id"))
             except (TypeError, ValueError):
@@ -393,7 +394,7 @@ def validate_isolation_receipt(state, receipt, analyst_payload, skeptic_payload,
     if len(set(isolation_ids)) != 2:
         blocker = (
             "isolation_receipt_processes_not_distinct"
-            if runner_kind == "agy_separate_process_v1"
+            if runner_kind in process_runners
             else "isolation_receipt_agents_not_distinct"
         )
         blockers.append(blocker)
@@ -463,14 +464,14 @@ def evaluate_batch(
     receipt_validation = validate_isolation_receipt(
         state, isolation_receipt, analyst_payload, skeptic_payload, as_of_date
     )
+    # A caller/runtime label is only a claim about the surrounding host.  The
+    # promotion gate requires the separately validated, dispatch-bound receipt;
+    # otherwise two payloads submitted from one context could self-attest as
+    # ``verified`` and fail the isolation gate open.
     if receipt_validation["status"] == "verified":
         isolation_status = "verified"
-    elif "unverified" in {claimed_isolation_status, runtime_isolation_status}:
-        isolation_status = "unverified"
-    elif "degraded" in {claimed_isolation_status, runtime_isolation_status}:
-        isolation_status = "degraded"
     else:
-        isolation_status = "verified"
+        isolation_status = "unverified"
     analyst_map = _screen_map(analyst_payload)
     skeptic_map = _screen_map(skeptic_payload)
     eligible = {

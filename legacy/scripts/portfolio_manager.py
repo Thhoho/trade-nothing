@@ -1,4 +1,5 @@
-"""
+"""ARCHIVED v0.9 implementation; excluded from the published research skill.
+
 Trade Nothing v0.9.5 — Quantitative Portfolio & Trade Gateway
 
 Provides a thread-safe, process-safe portfolio ledger ('portfolio_state.json'),

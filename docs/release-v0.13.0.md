@@ -1,8 +1,10 @@
 # Trade Nothing v0.13.0
 
-Release date: 2026-07-31
+Release-candidate audit date: 2026-08-05
 
-v0.13.0 is the current operational release of Trade Nothing. It retains the hypothesis-led
+v0.13.0 is the current operational source version of Trade Nothing. It is not a published release
+until the verification checklist below passes on the exact release commit and an authorized
+maintainer creates the annotated tag. It retains the hypothesis-led
 exploration architecture introduced in v0.10 and adds explicit temporal contracts, bounded
 research-allocation semantics, and a facts-locked human reporting bundle.
 
@@ -44,6 +46,24 @@ persist the three layers as separate content-addressed artifacts.
 - No report, heuristic score, release tag, or passing test authorizes a Thesis, Decision, order,
   position, or research retry.
 
+### Release-candidate hardening
+
+- CandidateScreen and Claim Verifier now fail closed unless a dispatch/prompt/payload-bound
+  isolation receipt validates; `verified` strings cannot self-attest promotion.
+- Antigravity and Claude Code have bounded core, CandidateScreen, and Claim Verifier process
+  adapters. Codex has manual canonical-agent receipt builders. Other named runtimes are explicitly
+  protocol-only rather than advertised as verified adapters.
+- Host Runner always materializes the graded report on convergence, fuse/max-round stop,
+  round-budget exhaustion, and screen/gap handoff. Timeouts terminate process groups.
+- Method-drifted runs expose a structured read-only status and remain non-resumable.
+- Installation is path-safe, quarantines stale managed code, preserves runtime/user state, and
+  makes installed-package benchmark limitations explicit.
+- Legacy portfolio/order, target-price, Kelly/scenario sizing, spreadsheet-model, import-time plugin,
+  and unbounded notification-daemon surfaces are excluded from the published skill. Source copies
+  live under `legacy/`; an upgrade moves old installed copies into recoverable quarantine.
+- Macro radar evaluation is read-only by default. `Evolution.md` persistence requires the explicit
+  `--write-evolution` flag.
+
 ## Compatibility and history
 
 - [`hypothesis-led-research-v0.10.md`](hypothesis-led-research-v0.10.md) remains the historical
@@ -52,7 +72,8 @@ persist the three layers as separate content-addressed artifacts.
   their original versions.
 - The deterministic `brief` and `full` report views remain compatibility fallbacks. New hosts
   should use the Facts Box, Evidence Ledger, Candidate Cards, and structured view model.
-- The legacy `-deepthink` v0.9 pipeline remains available but uncalibrated.
+- The legacy `-deepthink` v0.9 pipeline is retired. Its removed scripts and historical state are
+  available only from Git history; new requests route to `-deepthink2`.
 
 ## Calibration boundary
 
@@ -69,13 +90,22 @@ Run from the repository root:
 python3 scripts/version.py
 python3 scripts/benchmark_current.py --check --source-repo .
 make test
+make status DEV_DIR="$(pwd)"
 ```
 
+Also install into a fresh temporary target with `scripts/install_skill.py`, run `make test` from
+that installed copy, and confirm its benchmark result explicitly says
+`NOT_AVAILABLE_IN_INSTALLED_PACKAGE` rather than pretending Git variants were verified.
+
 The annotated Git tag `v0.13.0` must point to the exact commit that passes these checks.
+Do not create or push that tag from an audit run without explicit release authorization. A live
+model smoke test is environment-dependent and separate from deterministic release gates; record it
+per runtime rather than inferring it from installed files.
 
 ## 中文摘要
 
-v0.13.0 是当前运行版本：它保留 v0.10 的假说驱动探索基础，并新增失败关闭的时间契约、
+v0.13.0 是当前源码版本；只有精确发布提交通过清单并由维护者明确授权创建 tag 后，才算
+正式发布。它保留 v0.10 的假说驱动探索基础，并新增失败关闭的时间契约、
 有界研究预算语义，以及由 Facts Box、Evidence Ledger、Candidate Cards 组成的三层报告
 产物。历史设计、冻结基准和旧标签继续保留原版本号；当前版本通过工程门不代表研究有效性
 或投资收益已经得到证明。

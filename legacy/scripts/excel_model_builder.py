@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""
+"""ARCHIVED v0.9 implementation; excluded from the published research skill.
+
 Trade Nothing v0.9 — DCF Financial Model Excel Builder
 
 Generates professional, institutional-grade, formula-driven Excel models.
