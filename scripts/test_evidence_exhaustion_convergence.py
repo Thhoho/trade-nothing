@@ -85,7 +85,7 @@ class EvidenceExhaustionConvergenceTests(unittest.TestCase):
         self.assertEqual(audit["dry_streak_after"], 2)
         self.assertEqual(audit["blocking_reasons"], [])
 
-    def test_zero_signal_wash_is_ledgered_and_resets_dry_without_moving_support(self):
+    def test_zero_signal_wash_is_ledgered_and_advances_decision_dry_without_moving_support(self):
         st = state()
         submit(st, 1, 1.0, [citation("directional")], probe(new_count=1))
         support_before_wash = st["cruxes"]["C1"]["p_history"][-1]
@@ -97,12 +97,17 @@ class EvidenceExhaustionConvergenceTests(unittest.TestCase):
         self.assertEqual(crux["L"], log_odds_before_wash)
         self.assertEqual(len(crux["citations"]), 2)
         self.assertEqual(crux["citations"][-1]["support_effect"], "NONE_ZERO_SIGNAL_WASH")
-        self.assertEqual(crux["evidence_exhaustion_dry_streak"], 0)
+        self.assertEqual(crux["evidence_exhaustion_dry_streak"], 1)
+        self.assertEqual(
+            crux["decision_evidence_history"][-1]["disposition"],
+            "NEW_NON_DISCRIMINATING_EVIDENCE",
+        )
 
         submit(st, 3, 0.0, [citation("wash")], probe(new_count=0))
         crux = st["cruxes"]["C1"]
         self.assertEqual(len(crux["citations"]), 2)
-        self.assertEqual(crux["evidence_exhaustion_dry_streak"], 1)
+        self.assertEqual(crux["evidence_exhaustion_dry_streak"], 2)
+        self.assertEqual(crux["status"], "MONITORABLE")
         flags = st["rounds"][-1]["signals"]["C1"]["quality_flags"]
         self.assertIn("dropped_duplicate_evidence:1", flags)
 

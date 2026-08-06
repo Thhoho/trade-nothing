@@ -11,12 +11,13 @@ description: >
   mappings and may not claim verified isolation without a supported receipt.
 ---
 
-# Trade Nothing v0.13.1 — The Sovereign Alpha Hunter
+# Trade Nothing v0.14.0 — The Sovereign Alpha Hunter
 
-> **"Propose boldly where consensus may be wrong; follow faint proxy trails before the answer is
-> obvious; promote nothing until evidence survives adversarial checks. Seek upside actively without
-> hiding failure paths, invalidation, or the price already paid. Excess caution is not edge, and
-> imaginative prose is not evidence."**
+> **"Seek asymmetric, non-consensus opportunities before they are obvious. State the payoff shape
+> boldly, then search for asymmetric evidence: the cheapest observation whose outcomes separate the
+> variant mechanism from consensus and its strongest alternative. Promote nothing until that path,
+> economic capture, price, catalyst, and failure case survive adversarial checks. New URLs are not
+> progress by themselves; imaginative prose is not evidence."**
 
 **Skill Root:** `./` (relative to this file)  
 **Scripts:** `./scripts/`  
@@ -36,6 +37,12 @@ and optional `forecast_target_date` (an exact future target). A question that na
 without the explicit target field is invalid rather than silently treated as future evidence.
 The skill itself cannot guarantee physical isolation; the host must record how agents were
 dispatched. Single-model role switching is allowed only as an explicitly labelled `degraded` run.
+
+The architecture deliberately separates three things that are often collapsed: **opportunity
+asymmetry** decides where scarce research attention goes; **decision-discriminating evidence**
+decides whether a crux moved; and **promotion gates** decide what may be screened, ranked, or handed
+to a human. A high-upside hypothesis may be researched first without receiving one atom of extra
+truth or promotion credit.
 
 ```mermaid
 graph TD
@@ -132,7 +139,7 @@ bottom price, target price, or path probability.
 
 ---
 
-### Mode F: `-deepthink2` — Crux-Based Adversarial Pipeline (v0.13.1, recommended)
+### Mode F: `-deepthink2` — Crux-Based Adversarial Pipeline (v0.14.0, recommended)
 
 > Replaces the single-posterior + LFI layer (which railroaded every run to 0%/100% and always
 > burned 12 rounds) with two separate ledgers: a non-promotable **exploration ledger** for wild
@@ -140,6 +147,13 @@ bottom price, target price, or path probability.
 > **per-crux evidence ledger** for bounded debate-support, decision-readiness convergence,
 > de-duplicated citations, OpportunitySeed admission, and formal reporting. The score is a workflow heuristic, not
 > a probability, return forecast, target price, trade signal, or sizing input.
+
+The operative research unit is not “another source”; it is a **discriminating observation**. A new
+citation that leaves the variant and strongest alternative equally plausible is retained in the
+ledger with zero signal, does not move support, and does not reset evidence-exhaustion. Two bounded,
+bilateral decision-dry probes can close a sufficiently sourced crux as `MONITORABLE`; this is a
+research-stop result, never a truth verdict. Framing budgets capacity for every crux to reach either
+directional settlement or this bounded exhaustion route.
 
 **Model tiering** (`scripts/model_tiers.py`): Detective / Inquisitor / Candidate Analyst /
 Candidate Skeptic / Claim Verifier / Framer / Judge / battle-log synthesis use the **DEEP** model by default.
@@ -221,8 +235,10 @@ python3 scripts/deepthink_orchestrator_v2.py --submit --topic "TARGET" \
 #    stopping early — run step 4 before finishing. A run that never calls --report delivers
 #    nothing, which is strictly worse than delivering a graded EXPLORATORY report.
 
-# 3a. Candidate maturation: after convergence, execute the bounded task rather than rewriting
-#     an OpportunitySeed or lowering the independent-source gate. Every attempt is appended.
+# 3a. Candidate maturation may run in parallel once an OpportunitySeed is admitted. It may fill
+#     only seed-local evidence, pricing, catalyst, exposure, or falsifier gaps; it cannot edit root
+#     convergence, origin-crux status, Landscape state, or CandidateScreen eligibility. Every
+#     attempt is appended, and screening remains blocked until all original gates pass.
 python3 scripts/deepthink_orchestrator_v2.py --plan-candidate-gaps --topic "TARGET"
 python3 scripts/deepthink_orchestrator_v2.py --submit-gap-evidence --topic "TARGET" \
     --task-id "CGT-..." --supplement '<candidate-evidence-supplement JSON>'
@@ -414,7 +430,7 @@ copied into, or auto-loaded from the skill directory.
 
 ---
 
-*Trade Nothing v0.13.1 — Hunt Alpha, Not Consensus.*
+*Trade Nothing v0.14.0 — Hunt Alpha, Not Consensus.*
 *Adversarial multi-agent architecture with full lifecycle negative feedback loops.*
 
 
@@ -424,6 +440,7 @@ copied into, or auto-loaded from the skill directory.
 > **【逻辑诚实与数学一致性公理】**：
 > 1. **v2 支持度只能读取 `crux_engine.py` 生成的状态；它不是统计概率，不得用于 Kelly、目标价、收益率或仓位。**
 > 2. **没有具体 URL、来源与日期的数字不得进入评分；重复的 URL+claim+number 不得重复计分。**
+>    **新的 URL 只有在能区分非共识机制与最强替代解释时才算决策推进；zero-signal 材料保留但不重置枯竭。**
 > 3. **报告永远产出。`continue` / `fuse_break` 不再抹掉研究成果，而是把 `report_grade` 降为
 >    `EXPLORATORY`，并如实呈报未收敛 crux。只有 `FORMAL` 等级才允许自称正式报告。**
 > 4. **当前发布包不包含提醒、webhook、投资组合或下单执行入口；任何外部副作用都必须由宿主另行集成并取得用户明确授权。**

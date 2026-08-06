@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Trade Nothing v0.13.1 — Crux Orchestrator  (-deepthink2; the only research pipeline)
+Trade Nothing v0.14.0 — Crux Orchestrator  (-deepthink2; the only research pipeline)
 
 Deterministic state machine. Control flow lives in code; the LLM only produces content.
 
@@ -206,6 +206,22 @@ def _bind_hypotheses_to_landscape(state):
         if not hypothesis:
             continue
         path["hypothesis_id"] = hypothesis["hypothesis_id"]
+        priority = (
+            hypothesis.get("exploration_priority")
+            if isinstance(hypothesis.get("exploration_priority"), dict)
+            else {}
+        )
+        path["research_attention"] = {
+            "score": int(priority.get("score") or 0),
+            "band": priority.get("band", "PARK"),
+            "semantics": (
+                "RESEARCH_QUEUE_ONLY_NOT_INVESTMENT_RANKING_OR_PROBABILITY"
+            ),
+        }
+        path["cheap_discriminating_test"] = hypothesis.get(
+            "cheap_discriminating_test"
+        )
+        path["why_nonconsensus"] = hypothesis.get("why_nonconsensus")
         context = hypothesis.setdefault("context", {})
         context.setdefault("landscape_path_id", path.get("path_id"))
         context.setdefault("origin_crux", path.get("linked_crux_id"))
@@ -671,6 +687,23 @@ def _last_scored_round(state, crux_id):
     return 0
 
 
+def _crux_research_attention(state, crux_id):
+    """Highest unprobed path priority linked to a crux; queue order only."""
+    scores = []
+    for path in state.get("landscape_map", {}).get("paths", []):
+        if (
+            not isinstance(path, dict)
+            or path.get("linked_crux_id") != crux_id
+            or path.get("state", "UNPROBED") != "UNPROBED"
+        ):
+            continue
+        try:
+            scores.append(int((path.get("research_attention") or {}).get("score") or 0))
+        except (TypeError, ValueError):
+            continue
+    return max(scores or [0])
+
+
 def _dispatch_cruxes(state, open_ids, limit=2):
     """Bound each round while preventing untested or stale crux starvation."""
     try:
@@ -691,6 +724,7 @@ def _dispatch_cruxes(state, open_ids, limit=2):
             0 if cid in pending_landscape_cruxes else 1,
             0 if state["cruxes"][cid].get("first_contested") is None else 1,
             _last_scored_round(state, cid),
+            -_crux_research_attention(state, cid),
             abs(float(state["cruxes"][cid].get("p_history", [0.5])[-1]) - 0.5),
             cid,
         ),
@@ -1050,6 +1084,8 @@ def dispatch_prompts(state, round_num):
         f"本轮处理: {policy['dispatch_cruxes']}；延后: "
         f"{policy['deferred_open_cruxes']}。\n"
         "未检验 crux 永远优先。"
+        "同等新鲜度下，先查非对称更强、信号更近且最低成本判别更清楚的路径；"
+        "这是研究资源排序，不是候选或投资排序。"
     )
     # ── Assemble the common dynamic section ──
     common = (
@@ -1072,7 +1108,8 @@ def dispatch_prompts(state, round_num):
         f"[Detective · detective.md · model={model_for('detective')}] Round {round_num}\n"
         f"{common}\n"
         f"{landscape_directive('detective')}\n"
-        "任务: 对每个 OPEN crux 用带URL的硬数据加固多头/反驳空头。\n"
+        "任务: 对每个 OPEN crux 优先寻找能区分非共识机制与最强替代解释的证据；"
+        "新 URL 若不改变判别，只能作为 zero-signal 记录。\n"
         "输出 detective.md 的 JSON（含 supply_chain_map）。"
     )
     free_roam_text = (
@@ -1089,7 +1126,8 @@ def dispatch_prompts(state, round_num):
         f"[Inquisitor · inquisitor.md · model={model_for('inquisitor')}] Round {round_num}\n"
         f"{common}\n"
         f"{landscape_directive('inquisitor')}\n"
-        f"任务: 对每个 OPEN crux 发起带数据的致命攻击。{new_crux_text}\n"
+        f"任务: 对每个 OPEN crux 优先寻找能推翻非共识机制或验证替代解释的判别证据。"
+        f"新 URL 若不改变判别，只能作为 zero-signal 记录。{new_crux_text}\n"
         f"{free_roam_text}\n"
         "输出 inquisitor.md 的 JSON（含 scenario_paths 和 odds_calibration）。"
     )
@@ -1098,7 +1136,9 @@ def dispatch_prompts(state, round_num):
         f"读 Detective/Inquisitor 两份 JSON，对 OPEN crux {open_ids} 各打一个 "
         f"signal∈[-1,1]+引用，free-roam={policy['free_roam_allowed']}，"
         f"new_cruxes={policy['new_cruxes_allowed']}。"
-        "完全忽略 hypothesis_sparks、proxy_trails 与所有 HYPOTHESIS_ONLY 内容；"
+        "新引用只有在能改变方向判断时才是 decision-relevant；新但平衡、背景性或"
+        "无法区分两种机制的材料必须 signal=0。完全忽略 hypothesis_sparks、"
+        "proxy_trails 与所有 HYPOTHESIS_ONLY 内容；"
         "它们不得进入 signal、citations 或 new_cruxes。"
         "严格按 judge.md 的 JSON 输出。"
     )
@@ -3218,7 +3258,7 @@ def _jload(s):
     return json.loads(s) if s else {}
 
 def main():
-    ap = argparse.ArgumentParser(description="Trade Nothing v0.13.1 Crux Orchestrator")
+    ap = argparse.ArgumentParser(description="Trade Nothing v0.14.0 Crux Orchestrator")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--frame", action="store_true")
     g.add_argument("--init", action="store_true")

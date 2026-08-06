@@ -615,6 +615,29 @@ class OrchestratorTests(unittest.TestCase):
         self.assertEqual(second["dispatch_cruxes"][0], "C3")
         self.assertEqual(len(second["dispatch_cruxes"]), 2)
 
+    def test_equal_fairness_cruxes_use_research_attention_as_tie_break(self):
+        st = crux_engine.new_state(
+            "attention", "attention", "3-6M",
+            [
+                {"id": "C1", "label": "one"},
+                {"id": "C2", "label": "two"},
+                {"id": "C3", "label": "three"},
+            ],
+        )
+        st["landscape_map"] = {"paths": [
+            {"path_id": "L1", "linked_crux_id": "C1", "state": "UNPROBED",
+             "research_attention": {"score": 1}},
+            {"path_id": "L2", "linked_crux_id": "C2", "state": "UNPROBED",
+             "research_attention": {"score": 9}},
+            {"path_id": "L3", "linked_crux_id": "C3", "state": "UNPROBED",
+             "research_attention": {"score": 5}},
+        ]}
+
+        self.assertEqual(
+            orchestrator._dispatch_cruxes(st, ["C1", "C2", "C3"]),
+            ["C2", "C3"],
+        )
+
     def test_probe_audit_rejects_role_claims_outside_host_dispatch(self):
         st = crux_engine.new_state(
             "scope",
@@ -1460,6 +1483,11 @@ class BudgetAndPayloadYieldTests(unittest.TestCase):
             "crux_probe_audit": {"C1": {"new_valid_evidence_count": 1}},
             "signals": {"C1": {"signal": 0.0, "citations": []}},
         }]
+        self.assertEqual(crux_engine.consecutive_unproductive_rounds(st), 1)
+        st["rounds"][0]["signals"]["C1"] = {
+            "signal": 0.5,
+            "citations": [citation("decision-relevant")],
+        }
         self.assertEqual(crux_engine.consecutive_unproductive_rounds(st), 0)
 
     def test_payload_yield_separates_discards_from_omissions(self):

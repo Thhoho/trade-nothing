@@ -78,6 +78,28 @@ class ResearchOutputTests(unittest.TestCase):
         self.assertFalse(packet["dispatch_policy"]["free_roam_allowed"])
         self.assertLess(research_output.assert_compact_packet(packet), 32768)
 
+    def test_extra_rounds_use_aggregate_dispatch_demand_not_largest_single_gap(self):
+        st = crux_engine.new_state(
+            "aggregate gaps", "Can five cruxes settle?", "3-6M",
+            [{"id": f"C{i}", "label": f"crux {i}"} for i in range(1, 6)],
+        )
+        st["rounds"] = [{"round": i} for i in range(1, 9)]
+        for index, cx in enumerate(st["cruxes"].values()):
+            touches = [2, 2, 1, 1, 2][index]
+            cx["first_contested"] = 1
+            cx["status"] = "OPEN"
+            cx["contested_history"] = [0.55] * touches
+            cx["citations"] = [
+                citation(f"aggregate-{index}-a"),
+                citation(f"aggregate-{index}-b"),
+            ]
+        views = [
+            research_output._crux_view(cid, cx)
+            for cid, cx in st["cruxes"].items()
+        ]
+
+        self.assertEqual(research_output.recommended_extra_rounds(st, views), 4)
+
     def test_unhealthy_origin_downgrades_stored_ready_seed(self):
         st = blocked_state()
         seed = {

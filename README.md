@@ -9,7 +9,7 @@
 <p align="center">
   <a href="README_zh.md">中文</a> ·
   <a href="SKILL.md">Runtime contract</a> ·
-  <a href="docs/release-v0.13.1.md">v0.13.1 release</a> ·
+  <a href="docs/release-v0.14.0.md">v0.14.0 release</a> ·
   <a href="docs/hypothesis-led-research-v0.10.md">v0.10 foundation design</a>
 </p>
 
@@ -25,7 +25,7 @@ hide.
 It is a research workflow, not an automated trading system. It does not produce an automatic
 buy/sell instruction, target price, expected return, Kelly allocation, or position size.
 
-## v0.13.1: hypothesis-led, time-bounded research
+## v0.14.0: hypothesis-led, time-bounded research
 
 > **Imagination proposes. Evidence promotes. Risk control governs execution.**
 
@@ -45,8 +45,9 @@ citation. It cannot change a crux score, root verdict, CandidateScreen result, T
 order, or position. To cross into the formal track, a newly drafted `OpportunitySeed` must
 independently pass the existing same-agent, same-round, same-crux evidence gate.
 
-v0.13.1 retains the v0.10 hypothesis-led foundation and makes time, research allocation, and
-human-facing report outputs explicit contracts. The current method includes:
+v0.14.0 retains the v0.10 hypothesis-led foundation and makes asymmetric opportunity discovery,
+decision-discriminating evidence, research allocation, and bounded stopping explicit contracts.
+The current method includes:
 
 - **Time semantics are fail-closed.** `as_of_date` is the evidence cutoff, `horizon` is the
   relative decision window, and `forecast_target_date` is an optional exact future target. A
@@ -67,8 +68,19 @@ human-facing report outputs explicit contracts. The current method includes:
   direction, causal link, alternative explanation, source lineage, bounded query, and stop
   condition. The system does not jump from an interesting clue to an investable claim.
 - **Asymmetry directs attention, not capital.** Qualitative upside shape, convexity, downside
-  friction, and time-to-signal may prioritize the next research task. They are not probability,
-  expected return, target price, direction, or sizing inputs.
+  friction, time-to-signal, and the cheapest discriminating test prioritize the next research
+  task. They are not probability, expected return, target price, direction, or sizing inputs.
+- **A new source is not automatically new decision evidence.** A citation resets evidence
+  exhaustion only when the Judge accepts it with a non-zero directional signal that separates the
+  non-consensus mechanism from its strongest alternative. New background, balanced, or duplicated
+  information remains auditable but counts as a decision-dry probe.
+- **Round feasibility models settlement work.** Framing budgets the actual number of crux touches
+  needed for directional settlement or sourced bilateral exhaustion under the two-crux dispatch
+  capacity. Source collection and dry probing may overlap; only a frame that cannot fit a complete
+  route is rejected before a run starts.
+- **Candidate-local research may start before root convergence.** Evidence-backed seeds may receive
+  bounded pricing, catalyst, falsifier, and snapshot gap tasks in parallel. This cannot repair a
+  root crux, satisfy Landscape coverage, unlock ranking, or bypass CandidateScreen.
 - **A formal stop no longer erases exploratory value.** Every report has exactly one deterministic
   `formal_action` and at most one separately authorized `exploration_action`. The latter can
   gather information; it cannot override a stop or promote a candidate.
@@ -77,17 +89,17 @@ human-facing report outputs explicit contracts. The current method includes:
   bounded research adds no new evidence. Never-probed, one-sided, source-thin, or newly introduced
   cruxes remain fail-closed.
 
-Read the [v0.13.1 release note](docs/release-v0.13.1.md), the historical
+Read the [v0.14.0 release note](docs/release-v0.14.0.md), the historical
 [v0.10 foundation design](docs/hypothesis-led-research-v0.10.md),
 [hypothesis protocol](references/hypothesis-protocol.md), and
 [report contract](references/report-contract.md).
 
 > [!IMPORTANT]
-> **Calibration status:** v0.13.1 is implemented and passes the deterministic engineering safety
+> **Calibration status:** v0.14.0 is implemented and passes the deterministic engineering safety
 > gates, but `scripts/benchmark_current.py --check` currently returns
 > `UNBENCHMARKED_METHOD_CHANGE`. The operational method differs from the last calibrated v0.9.9
 > identity. Existing closed-packet and discovery suites remain historical controls; they are not
-> evidence that v0.13.1 improves opportunity recall, lead quality, alpha, return, or risk-adjusted
+> evidence that v0.14.0 improves opportunity recall, lead quality, alpha, return, or risk-adjusted
 > return. Engineering correctness, research effectiveness, and investment performance are three
 > separate claims.
 
@@ -126,7 +138,7 @@ be labelled `degraded` and cannot claim physical multi-agent isolation.
 Paste the following into Codex, Claude Code, Gemini CLI, Antigravity, or another coding agent:
 
 ```text
-Install Trade Nothing v0.13.1 from https://github.com/Thhoho/trade-nothing.git for this agent runtime.
+Install Trade Nothing v0.14.0 from https://github.com/Thhoho/trade-nothing.git for this agent runtime.
 
 Safety and verification requirements:
 1. Do not start a research run. This request authorizes installation only.
@@ -138,8 +150,8 @@ Safety and verification requirements:
 3. Before writing, inspect any existing checkout and target. Never reset, delete, or overwrite a
    dirty checkout, runtime state, scratch data, personal research memory, or target metadata.
 4. Clone or fetch the repository in a new temporary or user-approved source directory, check out
-   the exact annotated tag `v0.13.1`, verify that `git cat-file -t v0.13.1` prints `tag`, and report
-   the commit from `git rev-parse 'v0.13.1^{commit}'`. Do not install from an untagged branch tip.
+   the exact annotated tag `v0.14.0`, verify that `git cat-file -t v0.14.0` prints `tag`, and report
+   the commit from `git rev-parse 'v0.14.0^{commit}'`. Do not install from an untagged branch tip.
 5. From that checkout, run `python3 scripts/version.py` and `make test`. Do not install third-party
    packages unless a required check fails and I explicitly approve the dependency change.
 6. Install with `python3 scripts/install_skill.py --source <checkout> --targets <target>`; do not
@@ -159,10 +171,10 @@ checkout into the default Gemini, Codex, and Claude directories, explicitly ask 
 ### Shell installation
 
 ```bash
-git clone --branch v0.13.1 --depth 1 https://github.com/Thhoho/trade-nothing.git
+git clone --branch v0.14.0 --depth 1 https://github.com/Thhoho/trade-nothing.git
 cd trade-nothing
-test "$(git cat-file -t v0.13.1)" = tag
-git rev-parse 'v0.13.1^{commit}'
+test "$(git cat-file -t v0.14.0)" = tag
+git rev-parse 'v0.14.0^{commit}'
 python3 scripts/version.py
 make test
 ```

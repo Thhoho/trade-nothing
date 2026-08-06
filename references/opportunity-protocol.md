@@ -147,9 +147,13 @@ Failing any seed-admission or readiness condition does not authorize copying an 
 inference into formal evidence. Keep the spark and its next test visible in the exploration ledger,
 with the exact maturity boundary that failed.
 
-After root convergence, an `EVIDENCE_BACKED` seed may enter the bounded Candidate Maturation loop.
-The planner converts its first deterministic blocker into a content-addressed `CandidateGapTask`;
-new evidence is appended as supplements and never edits the original seed contract. Read
+Once an `EVIDENCE_BACKED` seed is admitted, it may enter the bounded Candidate Maturation loop in
+parallel with unfinished root research. The planner may target only seed-local fields and evidence:
+economic exposure, expectation gap, pricing anchor, independent source, catalyst/window, or
+falsifier. It cannot edit or bypass root convergence, origin-crux settlement, Landscape support, or
+CandidateScreen eligibility. The planner converts its first deterministic seed-local blocker into a
+content-addressed `CandidateGapTask`; new evidence is appended as supplements and never edits the
+original seed contract. Read
 `references/candidate-maturation-protocol.md` before planning or submitting gap evidence.
 
 `READY_FOR_SCREENING` means “eligible for the two-sided CandidateScreen,” not

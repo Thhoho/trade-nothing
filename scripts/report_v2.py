@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Trade Nothing v0.13.1 — Compact Formal Report Renderer
+Trade Nothing v0.14.0 — Compact Formal Report Renderer
 
 Architecture:
   FIXED LAYER (脚本物理生成，数值勿改):
@@ -1147,6 +1147,20 @@ def _render_audit(state, include_title=True):
             for citation in c.get("valid_citations", [])
             if isinstance(citation, dict)
         )
+        decision_history = [
+            item for item in c.get("decision_evidence_history", [])
+            if isinstance(item, dict)
+        ]
+        directional_touches = sum(
+            bool(item.get("decision_relevant")) for item in decision_history
+        )
+        nondiscriminating_touches = sum(
+            item.get("disposition") in {
+                "NEW_NON_DISCRIMINATING_EVIDENCE",
+                "NEW_AGENT_EVIDENCE_NOT_JUDGE_ACCEPTED",
+            }
+            for item in decision_history
+        )
         status_detail = _STATUS.get(c["status"], c["status"])
         if c.get("transition_reason"):
             status_detail += (
@@ -1158,8 +1172,13 @@ def _render_audit(state, include_title=True):
             )
         if zero_signal_receipts:
             status_detail += (
-                f"<br>zero-signal receipts={zero_signal_receipts}"
-                "（不移动支持度）"
+                f"<br>non-discriminating citations={zero_signal_receipts}"
+                "（记录但不移动支持度或重置枯竭）"
+            )
+        if decision_history:
+            status_detail += (
+                f"<br>decision touches={directional_touches} directional / "
+                f"{nondiscriminating_touches} non-discriminating"
             )
         catalyst = c.get("catalyst_window", {})
         catalyst_text = (f"{catalyst.get('event', '—')} @ {catalyst.get('expected_by', '—')} "

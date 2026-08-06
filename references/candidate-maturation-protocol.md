@@ -1,8 +1,9 @@
 # Candidate Maturation Protocol
 
-Use this protocol only after the root research has converged and an admitted
-`OpportunitySeed` remains `EVIDENCE_BACKED`. It closes the gap between discovery and
-CandidateScreen without rewriting the seed or weakening its evidence gate.
+Use this protocol after an `OpportunitySeed` is admitted and remains `EVIDENCE_BACKED`. Seed-local
+gap work may run in parallel with root research so a short-lived opportunity window is not wasted.
+It closes the gap between discovery and CandidateScreen without rewriting the seed, changing root
+state, or weakening any evidence or promotion gate.
 
 ## State model
 
@@ -31,6 +32,11 @@ freezes:
 - a four-attempt search budget;
 - explicit success and failure conditions;
 - the origin seed, crux, causal path, as-of date, and state hash.
+
+The planner ignores root-only blockers it cannot legally change. A pre-convergence task may fill a
+pricing anchor or collect an independent source, but the seed remains non-screenable until the root,
+origin, Landscape, horizon, and all other original readiness gates pass. Research order may use the
+linked hypothesis's asymmetry/testability score as a tie-break; this is research attention only.
 
 Task, supplement, and resolution identities derive from canonical SHA-256 payloads. Editing any
 historical record invalidates the v4 project handoff.

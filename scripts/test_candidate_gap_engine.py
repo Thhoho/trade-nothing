@@ -106,6 +106,49 @@ def supplement(task, source_domain, alignment="SUPPORTED", field_additions=None)
 
 
 class CandidateGapEngineTests(unittest.TestCase):
+    def test_asymmetry_orders_equal_gap_work_but_does_not_beat_nearer_readiness(self):
+        state = fixture_state(missing_expectation=True)
+        high = state["opportunity_seeds"][0]
+        high["origin_hypothesis_id"] = "WH-HIGH"
+        high["seed_id"] = "OS-HIGH"
+        low = copy.deepcopy(high)
+        low["origin_hypothesis_id"] = "WH-LOW"
+        low["seed_id"] = "OS-LOW"
+        state["hypothesis_ledger"] = {"hypotheses": [
+            {"hypothesis_id": "WH-HIGH", "exploration_priority": {"score": 9}},
+            {"hypothesis_id": "WH-LOW", "exploration_priority": {"score": 1}},
+        ]}
+
+        self.assertLess(
+            candidate_gap_engine._candidate_rank(state, high),
+            candidate_gap_engine._candidate_rank(state, low),
+        )
+        low["why_market_may_miss"] = "one fewer local blocker"
+        self.assertLess(
+            candidate_gap_engine._candidate_rank(state, low),
+            candidate_gap_engine._candidate_rank(state, high),
+        )
+
+    def test_seed_local_gap_research_can_run_before_root_convergence(self):
+        state = fixture_state(missing_expectation=True)
+        state["last_convergence"] = {"decision": "continue"}
+        state["cruxes"]["C1"]["status"] = "OPEN"
+        state["landscape_map"]["paths"][0]["state"] = "UNKNOWN"
+        opportunity_engine.refresh_candidate_states(state)
+
+        result = candidate_gap_engine.plan_tasks(state)
+
+        self.assertEqual(result["status"], "candidate_gap_tasks_planned")
+        self.assertEqual(result["planning_phase"], "PARALLEL_PRE_SCREEN_RESEARCH")
+        self.assertTrue(result["candidate_screen_gate_unchanged"])
+        self.assertEqual(result["tasks"][0]["blocker_code"], "missing_expectation_gap")
+        self.assertEqual(
+            opportunity_engine.candidate_state(
+                state, state["opportunity_seeds"][0]
+            ),
+            opportunity_engine.EVIDENCE_BACKED,
+        )
+
     def test_plan_creates_bounded_task_without_mutating_seed(self):
         state = fixture_state()
         before = copy.deepcopy(state["opportunity_seeds"])

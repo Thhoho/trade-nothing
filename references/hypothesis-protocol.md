@@ -231,6 +231,14 @@ and contributes zero. None of these fields is evidence, a calibrated
 probability, expected return, recommendation, trade instruction, or sizing
 input.
 
+“Asymmetric evidence” means **discriminating evidence**, not evidence selected because it is bullish.
+The cheapest test should state two incompatible or materially different expected observations: one
+under the variant mechanism and one under consensus or the strongest alternative explanation.
+Evidence that both mechanisms predict is background context. It may mature a ProxyTrail when it is
+a real observation, but it does not deserve directional crux credit merely because the page is new.
+The formal Judge and evidence-exhaustion engine enforce that distinction separately from this
+exploration queue.
+
 When comparable upside and downside magnitudes are explicitly supplied,
 `break_even_threshold` computes:
 

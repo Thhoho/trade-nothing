@@ -26,7 +26,27 @@ PUBLISHER_CLASSES = {
 }
 MIN_EVIDENCE_ROUTES = crux_engine.MIN_VALID_CITATIONS
 MAX_EVIDENCE_ROUTES = 3
-MAX_CRUXES_PER_ROUND = 2
+MAX_CRUXES_PER_ROUND = crux_engine.MAX_CRUXES_PER_ROUND
+
+
+def settlement_touches_per_crux(frame: dict[str, Any]) -> int:
+    """Minimum scheduled touches that make a complete settlement route possible.
+
+    A directional root crux needs three evidence-bearing contested touches. An
+    unresolved crux may settle sooner because source acquisition and bilateral
+    decision-dry probing can occur in the same touch; they must not be summed as
+    if the engine required two serial phases. UNIVERSE_SEARCH has separate
+    coverage semantics, but still needs one directional touch and the source
+    minimum.
+    """
+    question_type = _text(frame.get("question_type")).upper()
+    if question_type == "UNIVERSE_SEARCH":
+        return max(1, crux_engine.MIN_VALID_CITATIONS)
+    return max(
+        crux_engine.MIN_CONTESTED,
+        crux_engine.MIN_VALID_CITATIONS,
+        crux_engine.EVIDENCE_EXHAUSTION_DRY_ROUNDS,
+    )
 
 
 def _text(value: Any) -> str:
@@ -90,48 +110,32 @@ def validate_evidence_plans(frame: dict[str, Any]) -> list[str]:
 
 
 def _simulated_active_rounds(frame: dict[str, Any]) -> int:
-    """Simulate the bounded scheduler until all cruxes and paths get one slot."""
+    """Simulate fair crux rotation until every crux gets settlement capacity."""
     crux_ids = sorted(
         _text(item.get("id"))
         for item in frame.get("candidate_cruxes") or []
         if isinstance(item, dict) and _text(item.get("id"))
     )
-    paths = [
-        {
-            "path_id": _text(item.get("path_id")),
-            "linked_crux_id": _text(item.get("linked_crux_id")),
-        }
-        for item in landscape_engine.frame_paths(frame)
-        if isinstance(item, dict) and _text(item.get("path_id"))
-    ]
-    pending = sorted(paths, key=lambda item: item["path_id"])
-    untested = set(crux_ids)
+    remaining = {
+        crux_id: settlement_touches_per_crux(frame) for crux_id in crux_ids
+    }
     last_scored = {crux_id: 0 for crux_id in crux_ids}
     round_num = 0
     hard_limit = crux_engine.MAX_ROUNDS * 2
-    while (pending or untested) and round_num < hard_limit:
+    while any(value > 0 for value in remaining.values()) and round_num < hard_limit:
         round_num += 1
-        pending_links = {item["linked_crux_id"] for item in pending}
         ranked = sorted(
-            crux_ids,
+            (crux_id for crux_id in crux_ids if remaining[crux_id] > 0),
             key=lambda crux_id: (
-                0 if crux_id in pending_links else 1,
-                0 if crux_id in untested else 1,
+                -remaining[crux_id],
                 last_scored[crux_id],
                 crux_id,
             ),
         )
         dispatched = ranked[:MAX_CRUXES_PER_ROUND]
         for crux_id in dispatched:
-            untested.discard(crux_id)
+            remaining[crux_id] -= 1
             last_scored[crux_id] = round_num
-        pending.sort(
-            key=lambda item: (
-                0 if item["linked_crux_id"] in dispatched else 1,
-                item["path_id"],
-            )
-        )
-        pending = pending[landscape_engine.MAX_PATHS_PER_ROLE_ROUND :]
     return round_num
 
 
@@ -141,16 +145,17 @@ def minimum_rounds(frame: dict[str, Any]) -> int:
         return crux_engine.MIN_ROUNDS
     active_rounds = _simulated_active_rounds(frame)
     if landscape_engine.is_required(frame):
-        active_rounds = max(
-            active_rounds,
-            math.ceil(
-                len(landscape_engine.frame_paths(frame))
-                / landscape_engine.MAX_PATHS_PER_ROLE_ROUND
-            ),
+        coverage_rounds = math.ceil(
+            len(landscape_engine.frame_paths(frame))
+            / landscape_engine.MAX_PATHS_PER_ROLE_ROUND
         )
+        # Harvest-dry rounds may overlap later crux rotation. Adding them after
+        # every crux settles would over-budget the frame; adding them only after
+        # bilateral Landscape coverage preserves the actual convergence rule.
         return max(
             crux_engine.MIN_ROUNDS,
-            active_rounds + crux_engine.UNIVERSE_HARVEST_DRY_ROUNDS,
+            active_rounds,
+            coverage_rounds + crux_engine.UNIVERSE_HARVEST_DRY_ROUNDS,
         )
     return max(crux_engine.MIN_ROUNDS, active_rounds)
 

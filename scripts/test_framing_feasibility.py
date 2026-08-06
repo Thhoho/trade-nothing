@@ -70,13 +70,16 @@ class FramingFeasibilityTests(unittest.TestCase):
         self.assertIn("crux_C1_evidence_plan_search_queries_must_be_distinct", issues)
         self.assertIn("crux_C1_evidence_plan_2_invalid_publisher_class", issues)
 
-    def test_concentrated_landscape_and_five_cruxes_require_six_rounds(self):
+    def test_universe_coverage_and_source_semantics_fit_five_rounds(self):
         raw = frame(crux_count=5, suggested_max_rounds=5)
-        self.assertEqual(framing_feasibility.minimum_rounds(raw), 6)
-        self.assertEqual(
-            framing_feasibility.validate_round_budget(raw),
-            ["framing_feasibility_requires_at_least_6_rounds"],
-        )
+        self.assertEqual(framing_feasibility.minimum_rounds(raw), 5)
+        self.assertEqual(framing_feasibility.validate_round_budget(raw), [])
+
+    def test_five_root_cruxes_require_eight_rounds_for_directional_capacity(self):
+        raw = frame(crux_count=5, suggested_max_rounds=8)
+        raw["question_type"] = "CONJUNCTIVE"
+        self.assertEqual(framing_feasibility.minimum_rounds(raw), 8)
+        self.assertEqual(framing_feasibility.validate_round_budget(raw), [])
 
     def test_distributed_paths_fit_existing_five_round_window(self):
         raw = frame(
@@ -95,6 +98,10 @@ class FramingFeasibilityTests(unittest.TestCase):
 
     def test_runtime_constants_match_scheduler_and_convergence(self):
         self.assertEqual(framing_feasibility.MAX_CRUXES_PER_ROUND, 2)
+        self.assertEqual(
+            framing_feasibility.MAX_CRUXES_PER_ROUND,
+            crux_engine.MAX_CRUXES_PER_ROUND,
+        )
         self.assertEqual(
             framing_feasibility.MIN_EVIDENCE_ROUTES,
             crux_engine.MIN_VALID_CITATIONS,

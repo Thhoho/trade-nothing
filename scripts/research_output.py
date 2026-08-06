@@ -5,6 +5,7 @@
 Raw agent payloads stay in state for audit and never enter these user views.
 """
 import json
+import math
 
 import crux_engine
 import hypothesis_engine
@@ -460,6 +461,10 @@ def _research_status(state):
 def _crux_view(cid, cx):
     sources = _valid_sources(cx)
     catalyst = cx.get("catalyst_window") if isinstance(cx.get("catalyst_window"), dict) else {}
+    decision_history = [
+        item for item in cx.get("decision_evidence_history", [])
+        if isinstance(item, dict)
+    ]
     return {
         "id": cid,
         "label": cx.get("label", ""),
@@ -483,6 +488,27 @@ def _crux_view(cid, cx):
             for item in cx.get("citations", [])
             if isinstance(item, dict)
         ),
+        "decision_evidence": {
+            "touch_count": len(decision_history),
+            "directional_touch_count": sum(
+                bool(item.get("decision_relevant")) for item in decision_history
+            ),
+            "non_discriminating_touch_count": sum(
+                item.get("disposition") in {
+                    "NEW_NON_DISCRIMINATING_EVIDENCE",
+                    "NEW_AGENT_EVIDENCE_NOT_JUDGE_ACCEPTED",
+                }
+                for item in decision_history
+            ),
+            "no_new_evidence_touch_count": sum(
+                item.get("disposition") == "NO_NEW_ADMISSIBLE_EVIDENCE"
+                for item in decision_history
+            ),
+            "current_exhaustion_streak": int(
+                cx.get("evidence_exhaustion_dry_streak", 0) or 0
+            ),
+            "semantics": crux_engine.DECISION_EVIDENCE_SEMANTICS,
+        },
         "seen_source_urls": sources[:5],
     }
 
@@ -501,11 +527,37 @@ def recommended_extra_rounds(state, open_views=None):
     current = len(state.get("rounds", []))
     max_introduced = int(state.get("max_introduced_round", 0) or 0)
     dry_gap = max(0, crux_engine.DRY_ROUNDS - (current - max_introduced))
-    contested_gap = max(
-        [max(0, crux_engine.MIN_CONTESTED - item["contested_rounds"]) for item in open_views]
-        or [0]
-    )
-    desired = max(2, dry_gap, contested_gap)
+    try:
+        capacity = int(
+            state.get("config", {}).get(
+                "MAX_CRUXES_PER_ROUND", crux_engine.MAX_CRUXES_PER_ROUND
+            )
+        )
+    except (TypeError, ValueError):
+        capacity = crux_engine.MAX_CRUXES_PER_ROUND
+    capacity = max(1, min(3, capacity))
+    required_dry = crux_engine._configured_exhaustion_dry_rounds(state)
+    settlement_slots = 0
+    for item in open_views:
+        source_gap = max(
+            0,
+            crux_engine.MIN_VALID_CITATIONS - int(item.get("unique_source_count") or 0),
+        )
+        directional_gap = max(
+            0,
+            crux_engine.MIN_CONTESTED - int(item.get("contested_rounds") or 0),
+        )
+        directional_route = max(directional_gap, source_gap)
+        current_exhaustion = int(
+            (item.get("decision_evidence") or {}).get(
+                "current_exhaustion_streak", 0
+            )
+            or 0
+        )
+        exhaustion_route = source_gap + max(0, required_dry - current_exhaustion)
+        settlement_slots += min(directional_route, exhaustion_route)
+    settlement_rounds = math.ceil(settlement_slots / capacity) if settlement_slots else 0
+    desired = max(2, dry_gap, settlement_rounds)
     remaining = max(0, crux_engine.MAX_ROUNDS - current)
     return min(desired, remaining)
 
@@ -699,8 +751,8 @@ def render_resolution_memo(state):
             f"- 监控 / 反证: {_text(item['monitor_anchor']) or '—'} / {_text(item['falsifier']) or '—'}",
             f"- 转换原因: `{item.get('transition_reason') or '—'}`；"
             f"{_text(item.get('monitorable_semantics')) or '非耗尽型转换'}",
-            f"- 零信号事实回执: {item.get('zero_signal_receipt_count', 0)} 条；"
-            "`NONE_ZERO_SIGNAL_WASH` 只扩充账本，不移动支持度。",
+            f"- 非判别性事实回执: {item.get('zero_signal_receipt_count', 0)} 条；"
+            "`NONE_ZERO_SIGNAL_WASH` 不移动支持度，但在双边有效探测下计入决策枯竭。",
             f"- 账本来源: {item['unique_source_count']} 个具体 URL；尚未等同于 snapshot verification。",
             "",
         ])
@@ -708,8 +760,8 @@ def render_resolution_memo(state):
     if not view["blocking_cruxes"]:
         L.append("- 无开放 crux；若仍阻塞，检查稳定性与 adversary-dry 条件。")
     else:
-        L.append("| 优先 | crux | 状态 | 缺口代码 | 下一步只查什么 |")
-        L.append("|:---:|:---|:---|:---|:---|")
+        L.append("| 优先 | crux | 状态 | 判别触达 | 缺口代码 | 下一步只查什么 |")
+        L.append("|:---:|:---|:---|:---|:---|:---|")
         for index, item in enumerate(view["blocking_cruxes"], 1):
             planned = [
                 f"{route.get('publisher_class')}: {route.get('target_claim')}"
@@ -724,6 +776,9 @@ def render_resolution_memo(state):
             )
             L.append(
                 f"| {index} | **{item['id']} {item['label']}** | {_status_label(item['status'])} | "
+                f"{item.get('decision_evidence', {}).get('directional_touch_count', 0)} directional / "
+                f"{item.get('decision_evidence', {}).get('non_discriminating_touch_count', 0)} "
+                f"non-discriminating / dry={item.get('decision_evidence', {}).get('current_exhaustion_streak', 0)} | "
                 f"{', '.join(item['gap_codes']) or 'UNSTABLE'} | {_text(next_check)} |"
             )
     exploration = view.get("hypothesis_exploration", {})

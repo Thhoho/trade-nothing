@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic candidate-evidence maturation after root convergence.
+"""Deterministic candidate-evidence maturation alongside root research.
 
 The gap loop converts a blocked OpportunitySeed into a bounded research task.
 Original seeds are immutable. New evidence, including failed alignment attempts,
@@ -161,6 +161,29 @@ def _blocker(seed_assessment: dict[str, Any]) -> str:
     return blockers[0] if blockers else "seed_evidence_incomplete"
 
 
+def _addressable_blockers(
+    state: dict[str, Any], seed: dict[str, Any]
+) -> list[str]:
+    """Return only seed-local gaps a supplement can legally change.
+
+    Root convergence, origin-crux settlement, and Landscape support remain hard
+    CandidateScreen gates, but waiting for them before collecting pricing,
+    catalyst, economic-capture, or independent-source evidence wastes the
+    opportunity window. A gap task cannot edit any of those root-level states.
+    """
+    effective = opportunity_engine.effective_seed(state, seed)
+    blockers = list(opportunity_engine.seed_contract_blockers(effective))
+    sources = {
+        crux_engine.citation_publisher_identity(item)
+        for item in effective.get("evidence", [])
+        if crux_engine.valid_citation(item)
+        and crux_engine.citation_publisher_identity(item)
+    }
+    if len(sources) < 2:
+        blockers.append("insufficient_independent_seed_sources")
+    return list(dict.fromkeys(blockers))
+
+
 def _target_claim(seed: dict[str, Any], blocker: str) -> str:
     causal = _text(seed.get("causal_path"))
     candidate = _text(seed.get("candidate"))
@@ -217,8 +240,7 @@ def _required_source_types(seed: dict[str, Any], blocker: str) -> list[str]:
 
 def _candidate_rank(state: dict[str, Any], seed: dict[str, Any]) -> tuple[Any, ...]:
     effective = opportunity_engine.effective_seed(state, seed)
-    assessment = opportunity_engine.assess_seed(state, seed)
-    blockers = assessment.get("blockers", [])
+    blockers = _addressable_blockers(state, seed)
     sources = {
         crux_engine.citation_publisher_identity(item)
         for item in effective.get("evidence", [])
@@ -226,8 +248,21 @@ def _candidate_rank(state: dict[str, Any], seed: dict[str, Any]) -> tuple[Any, .
     }
     window = effective.get("catalyst_window")
     expected_by = str((window or {}).get("expected_by") or "9999-12-31")
+    hypothesis = opportunity_engine._find_hypothesis(
+        state, seed.get("origin_hypothesis_id")
+    )
+    attention = (
+        hypothesis.get("exploration_priority", {})
+        if isinstance(hypothesis, dict)
+        else {}
+    )
+    try:
+        attention_score = int(attention.get("score") or 0)
+    except (TypeError, ValueError):
+        attention_score = 0
     return (
         len(blockers),
+        -attention_score,
         -len(sources),
         expected_by,
         str(seed.get("seed_id") or ""),
@@ -237,12 +272,6 @@ def _candidate_rank(state: dict[str, Any], seed: dict[str, Any]) -> tuple[Any, .
 def plan_tasks(state: dict[str, Any], max_batch: int = MAX_BATCH) -> dict[str, Any]:
     """Append at most one bounded gap task per entity and return task packets."""
     _state_lists(state)
-    if state.get("last_convergence", {}).get("decision") != "converge":
-        return {
-            "status": "blocked_unconverged",
-            "tasks": [],
-            "instruction": "根研究尚未收敛，禁止候选补证任务。",
-        }
     max_batch = max(1, min(int(max_batch or MAX_BATCH), MAX_BATCH))
     groups: dict[str, list[dict[str, Any]]] = {}
     for seed in state.get("opportunity_seeds", []):
@@ -250,16 +279,13 @@ def plan_tasks(state: dict[str, Any], max_batch: int = MAX_BATCH) -> dict[str, A
             continue
         if opportunity_engine.candidate_state(state, seed) != opportunity_engine.EVIDENCE_BACKED:
             continue
-        # Candidate supplements can only append seed evidence or fill an empty
-        # seed-contract field.  They cannot rewrite a converged root crux or a
-        # Landscape path, so do not manufacture tasks for immutable origin
-        # blockers that no legal supplement could ever clear.
-        effective = opportunity_engine.effective_seed(state, seed)
-        if opportunity_engine._origin_gate(state, effective):
-            continue
         if opportunity_engine._candidate_gap_blockers(state, str(seed["seed_id"])):
             continue
         if open_task_for_seed(state, str(seed["seed_id"])):
+            continue
+        if not _addressable_blockers(state, seed):
+            # The remaining blockers are root/origin/Landscape gates that a
+            # seed-local supplement has no authority to mutate.
             continue
         groups.setdefault(opportunity_engine.entity_identity(seed), []).append(seed)
 
@@ -276,7 +302,7 @@ def plan_tasks(state: dict[str, Any], max_batch: int = MAX_BATCH) -> dict[str, A
         canonical_json(state).encode("utf-8")
     ).hexdigest()
     for identity, seed in selected[:max_batch]:
-        assessment = opportunity_engine.assess_seed(state, seed)
+        assessment = {"blockers": _addressable_blockers(state, seed)}
         blocker = _blocker(assessment)
         effective = opportunity_engine.effective_seed(state, seed)
         excluded_publishers = sorted(
@@ -323,10 +349,17 @@ def plan_tasks(state: dict[str, Any], max_batch: int = MAX_BATCH) -> dict[str, A
 
     return {
         "status": "candidate_gap_tasks_planned" if new_tasks else "no_candidate_gap_tasks",
+        "planning_phase": (
+            "POST_CONVERGENCE"
+            if state.get("last_convergence", {}).get("decision") == "converge"
+            else "PARALLEL_PRE_SCREEN_RESEARCH"
+        ),
+        "candidate_screen_gate_unchanged": True,
         "tasks": copy.deepcopy(new_tasks),
         "task_count": len(new_tasks),
         "instruction": (
-            "逐个执行有界候选补证任务；不得修改原 seed。"
+            "逐个执行有界候选补证任务；不得修改原 seed。根研究、origin crux、"
+            "Landscape 与 CandidateScreen 闸门保持不变。"
             if new_tasks
             else "没有新的可调度候选补证任务。"
         ),

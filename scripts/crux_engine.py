@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Trade Nothing v0.13.1 — Crux Engine  (-deepthink2; replaced the retired v1 LFI engine)
+Trade Nothing v0.14.0 — Crux Engine  (-deepthink2; replaced the retired v1 LFI engine)
 
 Replaces the degenerate single-posterior + LFI layer with a per-CRUX ledger:
 
@@ -38,12 +38,17 @@ OPEN_PATIENCE = 3               # legacy compatibility; no longer forces MONITOR
 MIN_CONTESTED = 3               # min contested rounds before a crux is eligible for retirement
 DRY_ROUNDS   = 3                # no NEW crux introduced for this many rounds = adversary went dry
 MIN_VALID_CITATIONS = 2         # a crux needs real source anchors before it may retire
+MAX_CRUXES_PER_ROUND = 2        # bounded dispatch capacity shared with feasibility checks
 EVIDENCE_EXHAUSTION_DRY_ROUNDS = 2
-                                # consecutive bilateral probes with no NEW valid evidence
+                                # bilateral probes with no NEW decision-relevant evidence
 UNIVERSE_HARVEST_DRY_ROUNDS = 2 # two dry harvests; coverage round counts only when itself dry
 
 MONITORABLE_EXHAUSTION_REASON = "EVIDENCE_EXHAUSTED_AFTER_BILATERAL_PROBES"
 MONITORABLE_SEMANTICS = "RESEARCH_EXHAUSTION_ONLY_NOT_TRUTH_OR_PROBABILITY"
+DECISION_EVIDENCE_SEMANTICS = (
+    "BIBLIOGRAPHIC_NOVELTY_IS_NOT_DECISION_PROGRESS; "
+    "ONLY_NEW_JUDGE_ACCEPTED_DIRECTIONAL_EVIDENCE_RESETS_EXHAUSTION"
+)
 
 QUESTION_TYPES = {
     "CONJUNCTIVE", "DISJUNCTIVE", "CAUSAL_CHAIN", "COMPARATIVE", "UNIVERSE_SEARCH",
@@ -255,8 +260,10 @@ def _configured_exhaustion_dry_rounds(state):
     return int(_clamp(value, 2, MAX_ROUNDS))
 
 
-def _apply_evidence_exhaustion(state, round_num, round_context, accepted_citations):
-    """Retire evidence-exhausted OPEN cruxes without changing support semantics.
+def _apply_evidence_exhaustion(
+    state, round_num, round_context, accepted_citations, decision_evidence
+):
+    """Retire decision-evidence-exhausted OPEN cruxes without changing support semantics.
 
     ``round_context["crux_probe_audit"]`` is computed by the orchestration layer
     from the isolated Detective/Inquisitor payloads:
@@ -290,6 +297,20 @@ def _apply_evidence_exhaustion(state, round_num, round_context, accepted_citatio
         except (TypeError, ValueError):
             before = 0
         accepted_count = int(accepted_citations.get(cid, 0) or 0)
+        decision_item = (
+            decision_evidence.get(cid, {})
+            if isinstance(decision_evidence, dict)
+            else {}
+        )
+        directional_count = int(
+            decision_item.get("directional_new_citation_count", 0) or 0
+        )
+        nondiscriminating_count = int(
+            decision_item.get("non_discriminating_new_citation_count", 0) or 0
+        )
+        disposition = str(
+            decision_item.get("disposition") or "NO_NEW_ADMISSIBLE_EVIDENCE"
+        )
 
         # A crux absent from the caller audit was not dispatched. It neither
         # advances nor breaks a consecutive sequence of *its own* probe attempts.
@@ -312,13 +333,16 @@ def _apply_evidence_exhaustion(state, round_num, round_context, accepted_citatio
             probe["detective_probed"] and probe["inquisitor_probed"] and probe["valid"]
         )
         declared_new = probe["new_valid_evidence_count"]
-        # Newly accepted normalized citations are a fail-closed override. This
-        # prevents a malformed caller count from treating wash evidence as dry.
+        # Raw URL novelty is retained for audit, but only new Judge-accepted
+        # directional evidence is decision progress. A new yet balanced,
+        # background, or otherwise non-discriminating citation must not keep an
+        # OPEN crux alive forever. This transition remains MONITORABLE only; it
+        # never creates a bull/bear truth verdict or changes the support score.
         effective_new = max(int(declared_new or 0), accepted_count)
         if both_probed:
             if cx.get("first_bilateral_probe_round") is None:
                 cx["first_bilateral_probe_round"] = int(round_num)
-            after = before + 1 if effective_new == 0 else 0
+            after = before + 1 if directional_count == 0 else 0
         else:
             after = 0
         cx["evidence_exhaustion_dry_streak"] = after
@@ -377,6 +401,11 @@ def _apply_evidence_exhaustion(state, round_num, round_context, accepted_citatio
             "declared_new_valid_evidence_count": declared_new,
             "accepted_new_citation_count": accepted_count,
             "effective_new_valid_evidence_count": effective_new,
+            "decision_evidence_disposition": disposition,
+            "decision_relevant_new_citation_count": directional_count,
+            "non_discriminating_new_citation_count": nondiscriminating_count,
+            "raw_agent_evidence_does_not_reset_exhaustion": True,
+            "decision_evidence_semantics": DECISION_EVIDENCE_SEMANTICS,
             "valid_citation_count": valid_count,
             "minimum_valid_citations": MIN_VALID_CITATIONS,
             "dry_streak_before": before,
@@ -457,6 +486,7 @@ def new_state(topic, decision_question, horizon, cruxes,
             "DECAY": DECAY,
             "L_MAX_ODDS": 4.0,
             "MAX_ROUNDS": MAX_ROUNDS,
+            "MAX_CRUXES_PER_ROUND": MAX_CRUXES_PER_ROUND,
             "EVIDENCE_EXHAUSTION_DRY_ROUNDS": EVIDENCE_EXHAUSTION_DRY_ROUNDS,
         },
         "cruxes": {c["id"]: {
@@ -475,6 +505,7 @@ def new_state(topic, decision_question, horizon, cruxes,
             "seen_agent_evidence_keys": [],
             "first_bilateral_probe_round": None,
             "evidence_exhaustion_dry_streak": 0,
+            "decision_evidence_history": [],
         } for c in cruxes},
         "max_introduced_round": 0,
         "rounds": [],
@@ -507,6 +538,7 @@ def add_crux(state, crux, round_num):
         "seen_agent_evidence_keys": [],
         "first_bilateral_probe_round": None,
         "evidence_exhaustion_dry_streak": 0,
+        "decision_evidence_history": [],
     }
     state["max_introduced_round"] = max(state["max_introduced_round"], round_num)
 
@@ -549,6 +581,7 @@ def submit_round(state, round_num, judge_signals, round_context=None):
     fired = []
     normalized_signals = {}
     accepted_citations = {}
+    decision_evidence = {}
     for cid, cx in state["cruxes"].items():
         js = _normalize_signal(judge_signals.get(cid, {}), cx.get("seen_evidence_keys", []))
         probe = _probe_audit_item(round_context, cid)
@@ -580,6 +613,39 @@ def submit_round(state, round_num, judge_signals, round_context=None):
         accepted_citations[cid] = _append_new_citations(
             cx, js.get("citations", []), round_num, support_effect
         )
+        accepted_count = accepted_citations[cid]
+        if s > 0.0 and accepted_count:
+            disposition = "DIRECTIONAL_BULL"
+        elif s < 0.0 and accepted_count:
+            disposition = "DIRECTIONAL_BEAR"
+        elif accepted_count:
+            disposition = "NEW_NON_DISCRIMINATING_EVIDENCE"
+        elif probe and int(probe.get("new_valid_evidence_count") or 0):
+            disposition = "NEW_AGENT_EVIDENCE_NOT_JUDGE_ACCEPTED"
+        else:
+            disposition = "NO_NEW_ADMISSIBLE_EVIDENCE"
+        directional_count = accepted_count if s != 0.0 else 0
+        nondiscriminating_count = accepted_count if s == 0.0 else 0
+        js["evidence_disposition"] = disposition
+        js["decision_relevant_new_citation_count"] = directional_count
+        decision_evidence[cid] = {
+            "disposition": disposition,
+            "directional_new_citation_count": directional_count,
+            "non_discriminating_new_citation_count": nondiscriminating_count,
+        }
+        if probe is not None:
+            cx.setdefault("decision_evidence_history", []).append({
+                "round": int(round_num),
+                "disposition": disposition,
+                "signal": s,
+                "accepted_new_citation_count": accepted_count,
+                "agent_new_valid_evidence_count": probe.get(
+                    "new_valid_evidence_count"
+                ),
+                "decision_relevant": bool(directional_count),
+                "support_score_changed": s != 0.0,
+                "semantics": DECISION_EVIDENCE_SEMANTICS,
+            })
         if s != 0.0:                                # contested this round
             fired.append(cid)
             if cx["first_contested"] is None:
@@ -619,7 +685,7 @@ def submit_round(state, round_num, judge_signals, round_context=None):
         "focus_crux": weakest, "aggregation_rule": aggregation_rule,
     })
     round_record["evidence_exhaustion"] = _apply_evidence_exhaustion(
-        state, round_num, round_context, accepted_citations
+        state, round_num, round_context, accepted_citations, decision_evidence
     )
     conv = convergence(state, round_num)
     if conv.get("decision") == "converge" and verdict.get("edge_state") == "EDGE_FOUND":
@@ -1071,7 +1137,7 @@ def recommended_max_rounds(path_count):
 
 
 def _round_was_productive(round_record):
-    """A round is productive if it added evidence, a probe, or seed progress."""
+    """A round is productive if it added decision-relevant or coverage progress."""
     if not isinstance(round_record, dict):
         return False
     harvest = round_record.get("opportunity_harvest") or {}
@@ -1080,18 +1146,27 @@ def _round_was_productive(round_record):
     if int((round_record.get("landscape_audit") or {}).get("accepted") or 0):
         return True
     for audit in (round_record.get("evidence_exhaustion") or {}).values():
-        if isinstance(audit, dict) and int(
+        if not isinstance(audit, dict):
+            continue
+        if "decision_relevant_new_citation_count" in audit:
+            if int(audit.get("decision_relevant_new_citation_count") or 0):
+                return True
+        elif int(
             audit.get("accepted_new_citation_count")
             or audit.get("accepted_citations")
             or 0
         ):
-            return True
-    for audit in (round_record.get("crux_probe_audit") or {}).values():
-        if isinstance(audit, dict) and int(audit.get("new_valid_evidence_count") or 0):
+            # Legacy states predate decision-evidence disposition. Preserve their
+            # historical stop semantics instead of retroactively rewriting them.
             return True
     for signal in (round_record.get("signals") or {}).values():
-        if isinstance(signal, dict) and signal.get("citations"):
-            return True
+        if not isinstance(signal, dict) or not signal.get("citations"):
+            continue
+        try:
+            if float(signal.get("signal") or 0.0) != 0.0:
+                return True
+        except (TypeError, ValueError):
+            continue
     return False
 
 
@@ -1383,6 +1458,7 @@ def report_data(state):
             "valid_citations": valid,
             "unique_source_urls": unique_sources,
             "evidence_exhaustion": cx.get("evidence_exhaustion"),
+            "decision_evidence_history": cx.get("decision_evidence_history", []),
             "transition_reason": cx.get("transition_reason"),
             "monitorable_semantics": cx.get("monitorable_semantics"),
         })

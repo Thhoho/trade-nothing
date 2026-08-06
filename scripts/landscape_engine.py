@@ -231,6 +231,14 @@ def _attempts(path, role):
         return 0
 
 
+def _research_attention_score(path):
+    """Persisted Framer/ledger priority used only as a fair-scheduler tie-break."""
+    try:
+        return int((path.get("research_attention") or {}).get("score") or 0)
+    except (AttributeError, TypeError, ValueError):
+        return 0
+
+
 def _retire_exhausted_probes(landscape, round_num):
     """Close role slots that were dispatched their full budget without acceptance.
 
@@ -306,6 +314,7 @@ def ensure_round_plan(state, round_num, dispatch_cruxes=None):
         pending.sort(key=lambda item: (
             _attempts(item, role),
             0 if item.get("linked_crux_id") in dispatch_cruxes else 1,
+            -_research_attention_score(item),
             item.get("path_id", ""),
         ))
         selected = pending[:MAX_PATHS_PER_ROLE_ROUND]

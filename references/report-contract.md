@@ -67,6 +67,15 @@ label*; stripping the label is the violation, not holding the belief.
   the exploration ledger is where non-consensus insight comes from. Promoting a hypothesis to a bare
   assertion is hypothesis laundering and is the actual red line.
 
+## Decision evidence and liveness
+
+Reports distinguish citation novelty from decision progress. Every bilateral crux touch is projected
+as directional bull, directional bear, new non-discriminating evidence, new agent evidence not
+accepted by the Judge, or no new admissible evidence. Zero-signal citations remain visible and keep
+their source value, but they do not move support or reset the evidence-exhaustion streak. A crux
+closed through that route is `MONITORABLE` with research-exhaustion semantics, never a directional
+truth or candidate-promotion result.
+
 ## Self-description is script-filled
 
 Citation counts, round counts, independent-publisher counts, coverage ratio, and convergence status
@@ -304,6 +313,8 @@ not soften or contradict the formal result.
 When `EXECUTE_CANDIDATE_GAP_TASK` is selected, the card must render its immutable task ID, target
 claim, allowed source types, remaining budget, success/failure conditions, attempts, and any terminal
 resolution. Do not paraphrase `SOURCE_EXHAUSTED` into a positive lead or hide contradicted evidence.
+The task may exist before root convergence, but it may change only seed-local evidence/fields; its
+presence or completion never removes root, origin, Landscape, horizon, or CandidateScreen blockers.
 
 ## Validation
 

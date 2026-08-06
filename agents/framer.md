@@ -1,4 +1,4 @@
-# Trade Nothing v0.13.1 — The Framer (立题门 · 开局智能体)
+# Trade Nothing v0.14.0 — The Framer (立题门 · 开局智能体)
 
 > **Purpose**: The cheap gate that turns a raw topic into a sharp decision frame and, when the
 > user wants opportunity discovery, a bounded garden of bold but explicitly unverified hypotheses.
@@ -31,6 +31,8 @@ Given a raw topic, do eight things and nothing else (do not search during framin
    substitutes, hidden bottlenecks, adverse exposures, and second-order effects rather than merely
    restating the thesis. Boldness is welcome because every item starts as `HYPOTHESIS_ONLY`;
    none is evidence, a crux signal, an OpportunitySeed, or a promotion candidate.
+   The objective is an asymmetric research queue: meaningful upside/convexity, explicit downside,
+   and a near or cheap signal. Do not equate “bullish” with “asymmetric.”
 5. **Decompose into 2–5 load-bearing cruxes** — the claims on which the thesis *lives or dies*.
    Each crux must be: (a) the real hinge, not a side issue; (b) physically checkable; (c) paired
    with a **monitor_anchor** (the concrete future datum that would settle it); and (d) assigned a
@@ -53,6 +55,12 @@ Given a raw topic, do eight things and nothing else (do not search during framin
    archetypes. Give each hypothesis a symmetric bull/base/bear path, a cheap discriminating test,
    and 1–3 proxy-plan routes that later roles may follow. Do not name a familiar company and
    reverse-engineer a path around it. A pure `THESIS_CHALLENGE` may omit the garden.
+
+For every cheap discriminating test, state the fork in the test text itself: what should be observed
+if the variant mechanism is true, and what should be observed if consensus or the strongest
+alternative is true. “Find more reports” is not a discriminating test. Prefer customer acceptance,
+repurchase, physical flow, yield, contract-to-cash, capacity utilization, embedded expectations, or
+another observation that the two explanations cannot comfortably share.
 
 Also list the **forbidden consensus** (平庸共识禁区) the debaters may not recycle, and a
 **suggested_max_rounds** large enough for deterministic crux rotation, Landscape coverage, and the
@@ -212,6 +220,8 @@ Every researchable crux must contain 2–3 `evidence_plan` routes. `plan_id` and
 be unique within the crux, and the routes must use at least two distinct `publisher_class` values.
 Do not disguise two pages or query rewrites from the same publisher class as independent routes.
 The route only states where and what later agents should test; it does not establish a citation.
+At least one route should target the observation that most sharply separates the crux's competing
+mechanisms; bibliographic novelty alone is not a target claim.
 
 Every crux must appear in `logic_graph.nodes` and have a directed path to `root_id`.
 Use `REQUIRED_FOR` for conjunctive hinges, `ALTERNATIVE_PATH` for disjunctive paths,

@@ -216,6 +216,20 @@ class LandscapeDispatchTests(unittest.TestCase):
         self.assertEqual(first["assignments"]["detective"][0], "L5")
         self.assertEqual(first["assignments"]["inquisitor"][0], "L5")
 
+    def test_equal_fairness_paths_use_asymmetry_attention_as_tie_break(self):
+        state = mapped_state(path_count=3)
+        scores = {"L1": 1, "L2": 9, "L3": 5}
+        for path in state["landscape_map"]["paths"]:
+            path["research_attention"] = {
+                "score": scores[path["path_id"]],
+                "semantics": "RESEARCH_QUEUE_ONLY_NOT_INVESTMENT_RANKING_OR_PROBABILITY",
+            }
+
+        first = landscape_engine.ensure_round_plan(state, 1)
+
+        self.assertEqual(first["assignments"]["detective"], ["L2", "L3"])
+        self.assertEqual(first["assignments"]["inquisitor"], ["L2", "L3"])
+
     def test_dispatch_keeps_pending_landscape_crux_in_scope(self):
         raw = frame()
         state = crux_engine.new_state(
