@@ -159,6 +159,37 @@ class RunRegistryTests(unittest.TestCase):
             "ENVELOPE_ONLY",
         )
 
+    def test_report_grade_and_candidate_lifecycle_remain_in_control_envelope(self):
+        manifest = run_registry.create_manifest("Graded envelope")
+        result = {
+            "status": "report_data_ready",
+            "topic": manifest["topic"],
+            "report_grade": "FORMAL",
+            "unmet_gates": [],
+            "publication_allowed": True,
+            "ranking_allowed": False,
+            "candidate_lifecycle": {
+                "report_grade_independent": True,
+                "screening_status": "NO_SCREENABLE_CANDIDATE",
+                "verification_status": "NOT_REQUIRED",
+                "pending_steps": [],
+            },
+            "compatibility_warnings": ["deprecated flag ignored"],
+            "instruction": "compose the report",
+            "report_markdown": "# Report",
+        }
+
+        envelope = run_registry.stage_envelope(result, context=manifest)
+
+        self.assertEqual(envelope["status"], "report_data_ready")
+        self.assertEqual(envelope["result"]["report_grade"], "FORMAL")
+        self.assertTrue(envelope["result"]["publication_allowed"])
+        self.assertFalse(envelope["result"]["ranking_allowed"])
+        self.assertTrue(
+            envelope["result"]["candidate_lifecycle"]["report_grade_independent"]
+        )
+        self.assertIn("deprecated flag ignored", envelope["artifacts"]["result"]["warnings"])
+
     def test_read_only_status_projection_does_not_write_artifacts(self):
         manifest = run_registry.create_manifest("Read status")
         envelope = run_registry.stage_envelope(

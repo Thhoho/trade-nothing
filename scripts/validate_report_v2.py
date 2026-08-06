@@ -522,6 +522,7 @@ def lint_styled_artifact(path, state_path):
         "report_grade": grade["report_grade"],
         "publication_allowed": grade["publication_allowed"],
         "ranking_allowed": grade["ranking_allowed"],
+        "candidate_lifecycle": grade["candidate_lifecycle"],
         "claim_tiers": grade["claim_tiers"],
         "urls_cited": len(cited),
         "urls_in_ledger": len(cited) - len(set(unknown)),
@@ -567,6 +568,7 @@ def validate_report_outcomes(path, state_path=""):
         "unmet_gates": grade["unmet_gates"],
         "publication_allowed": grade["publication_allowed"],
         "ranking_allowed": grade["ranking_allowed"],
+        "candidate_lifecycle": grade["candidate_lifecycle"],
         "claim_tiers": grade["claim_tiers"],
     }
 

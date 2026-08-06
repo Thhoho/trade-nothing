@@ -110,5 +110,10 @@ A THESIS_CANDIDATE promotion packet remains DRAFT_REQUIRES_SOURCE_VERIFICATION
 until VERIFIED. VERIFIED changes it to DRAFT_REQUIRES_HUMAN; CONTRADICTED changes
 it to BLOCKED_CLAIM_CONFLICT.
 
+Claim verification is a candidate-promotion gate only. The absence of snapshots or verification
+records cannot lower `report_grade`, and a `PENDING`, `PARTIALLY_VERIFIED`, or `CONTRADICTED`
+candidate does not invalidate an otherwise `FORMAL` root research report. Reports must expose that
+candidate state without describing it as `VERIFIED_FOR_HUMAN`.
+
 This state means source-content alignment, not objective truth. A source can be
 wrong, stale in substance, or misleading despite an exact supporting sentence.

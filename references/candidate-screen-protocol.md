@@ -4,6 +4,13 @@ CandidateScreen is a two-sided pre-screen for OpportunitySeed. It asks whether
 a discovered lead is strong enough to become a new, independent research thesis.
 It does not rank candidates, estimate returns, or authorize a trade.
 
+CandidateScreen is independent of the root research report grade. A converged, fully covered,
+independently sourced run may be `FORMAL` with zero candidates or before any CandidateScreen.
+CandidateScreen controls whether named securities may be ordered or described with recommendation
+language; it must never be inserted into the report's `unmet_gates`. Any positive ranking
+permission is scoped to the latest-screen `rankable_seed_ids`; it does not authorize ranking an
+unscreened or rejected candidate appearing elsewhere in the report.
+
 The deterministic engine verifies citation structure, dates, freshness, and
 source diversity. It cannot fetch a URL or prove that page content supports the
 claim. The host and human reviewer must spot-check source fidelity before

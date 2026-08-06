@@ -9,7 +9,7 @@
 <p align="center">
   <a href="README.md">English</a> ·
   <a href="SKILL.md">运行契约</a> ·
-  <a href="docs/release-v0.13.0.md">v0.13.0 发布说明</a> ·
+  <a href="docs/release-v0.13.1.md">v0.13.1 发布说明</a> ·
   <a href="docs/hypothesis-led-research-v0.10.md">v0.10 基础设计</a>
 </p>
 
@@ -24,7 +24,7 @@ Trade Nothing 是一套面向 Agent Runtime 的对抗式投资研究 Skill。它
 它是研究工作流，不是自动交易系统。它不会自动给出买卖指令、目标价、预期收益、
 Kelly 仓位或持仓比例。
 
-## v0.13.0：假说驱动、时间有界的研究
+## v0.13.1：假说驱动、时间有界的研究
 
 > **想象负责提出，证据负责晋级，风险控制决定能否执行。**
 
@@ -44,7 +44,7 @@ flowchart LR
 必须新建 `OpportunitySeed`，并独立通过同一 Agent、同一轮次、同一 crux 的既有
 证据准入闸门。
 
-v0.13.0 保留 v0.10 的假说驱动基础，并把时间、研究预算分配和面向人的报告输出升级为
+v0.13.1 保留 v0.10 的假说驱动基础，并把时间、研究预算分配和面向人的报告输出升级为
 显式契约。当前方法包括：
 
 - **时间语义失败关闭。** `as_of_date` 是证据截止日，`horizon` 是相对决策窗口，
@@ -52,6 +52,9 @@ v0.13.0 保留 v0.10 的假说驱动基础，并把时间、研究预算分配�
 - **报告拥有锁定事实层。** 每份新 Decision Brief 必须以确定性 Facts Box 开头；
   Evidence Ledger 与 Candidate Cards 独立、按内容寻址保存。自由叙事可以改善可读性，
   但不能改写状态、引用或行动闸门。
+- **报告等级与候选晋级解耦。** `FORMAL` 只要求收敛、必要 Landscape 覆盖完成和每条
+  crux 具备独立来源。CandidateScreen 只控制具名标的排序，快照 claim 核验只控制候选
+  晋级；零候选也是合法的正式研究结果。
 - **大胆猜想成为一等研究对象。** `OPPORTUNITY_DISCOVERY` 和 `HYBRID` 先生成
   5–7 条实体无关路径；每个 `WildHypothesis` 都要写清因果链、共识盲区、上行与
   下行机制、催化剂、期限、替代解释和证伪条件。
@@ -68,16 +71,16 @@ v0.13.0 保留 v0.10 的假说驱动基础，并把时间、研究预算分配�
   多空双方都已探查且有界研究不再产生新证据时，crux 才可能进入 `MONITORABLE`。
   从未探查、只有单边、来源单薄或新引入的 crux 继续失败关闭。
 
-完整说明见 [v0.13.0 发布说明](docs/release-v0.13.0.md)、历史
+完整说明见 [v0.13.1 发布说明](docs/release-v0.13.1.md)、历史
 [v0.10 基础设计](docs/hypothesis-led-research-v0.10.md)、
 [假说协议](references/hypothesis-protocol.md)和
 [报告契约](references/report-contract.md)。
 
 > [!IMPORTANT]
-> **校准状态：** v0.13.0 已实现，并通过确定性工程安全门；但
+> **校准状态：** v0.13.1 已实现，并通过确定性工程安全门；但
 > `scripts/benchmark_current.py --check` 当前返回 `UNBENCHMARKED_METHOD_CHANGE`。
 > 这表示运行方法已不同于最后校准的 v0.9.9 身份。现有 closed-packet 与 discovery
-> 套件只是历史控制，不是 v0.13.0 提高机会召回率、线索质量、Alpha、收益率或风险调整
+> 套件只是历史控制，不是 v0.13.1 提高机会召回率、线索质量、Alpha、收益率或风险调整
 > 收益的证据。工程正确性、研究有效性和投资收益是三层不同结论。
 
 ## 现在真正可靠的部分
@@ -91,7 +94,8 @@ v0.13.0 保留 v0.10 的假说驱动基础，并把时间、研究预算分配�
   `HYPOTHESIS_ONLY` 对象，对 Judge 评分、来源计数、收敛和晋级完全不可见。
 - `EVIDENCE_BACKED` 仍然只是探索成熟度，不是 `OpportunitySeed`，也不能进入
   CandidateScreen。
-- `continue`、`fuse_break`、独立来源不足以及必要 crux 未解决，都会阻断正式报告。
+- `continue`、`fuse_break`、独立来源不足以及必要 crux 未解决，只会阻断 `FORMAL` 等级，
+  不会阻断完整的分级报告包。
 - `NO_EDGE` 只表示当前框架和证据下没有建立可用的预期差，不等于 `AVOID` 或
   `SHORT`，也不要求删除一个有界的探索路径。
 - 报告数值只是辩论支持度和工作流启发式，不是经过校准的市场概率。
@@ -113,7 +117,7 @@ Framer 在父上下文内联运行且不浏览。Detective 和 Inquisitor 必须
 把下面整段直接发给 Codex、Claude Code、Gemini CLI、Antigravity 或其他编程 Agent：
 
 ```text
-请为当前 Agent Runtime 安装 Trade Nothing v0.13.0，源码为：
+请为当前 Agent Runtime 安装 Trade Nothing v0.13.1，源码为：
 https://github.com/Thhoho/trade-nothing.git
 
 安全与验收要求：
@@ -126,8 +130,8 @@ https://github.com/Thhoho/trade-nothing.git
 3. 写入前检查已有源码目录和安装目标。不得 reset、删除或覆盖 dirty checkout、运行状态、
    scratch、个人研究记忆或目标目录元数据。
 4. 在新的临时目录或我批准的源码目录 clone/fetch，checkout 精确的 annotated tag
-   `v0.13.0`，确认 `git cat-file -t v0.13.0` 输出 `tag`，并报告
-   `git rev-parse 'v0.13.0^{commit}'` 解析出的 commit；不得从未打 tag 的分支 tip 安装。
+   `v0.13.1`，确认 `git cat-file -t v0.13.1` 输出 `tag`，并报告
+   `git rev-parse 'v0.13.1^{commit}'` 解析出的 commit；不得从未打 tag 的分支 tip 安装。
 5. 在该 checkout 中运行 `python3 scripts/version.py` 和 `make test`。除非必要检查因缺少
    依赖失败且我明确批准，否则不要安装第三方依赖。
 6. 使用 `python3 scripts/install_skill.py --source <checkout> --targets <target>` 安装，
@@ -146,10 +150,10 @@ Codex 和 Claude 目录，需要明确要求 Agent 运行 `make install DEV_DIR=
 ### Shell 安装
 
 ```bash
-git clone --branch v0.13.0 --depth 1 https://github.com/Thhoho/trade-nothing.git
+git clone --branch v0.13.1 --depth 1 https://github.com/Thhoho/trade-nothing.git
 cd trade-nothing
-test "$(git cat-file -t v0.13.0)" = tag
-git rev-parse 'v0.13.0^{commit}'
+test "$(git cat-file -t v0.13.1)" = tag
+git rev-parse 'v0.13.1^{commit}'
 python3 scripts/version.py
 make test
 ```
@@ -225,8 +229,11 @@ Facts Box 原样放在内容驱动的 Decision Brief 顶部，并单独保存 Ev
 
 - `report_grade` 为 `FORMAL` / `PROVISIONAL` / `EXPLORATORY`。未满足的闸门降低等级，
   但不再删除研究成果。
+- 它只由收敛、必要 Landscape 覆盖和 crux 独立来源决定。CandidateScreen 与 claim 核验
+  进入独立的 `candidate_lifecycle`，不会降低报告等级。
 - `publication_allowed`（仅 `FORMAL`）：对外传播稿的唯一硬闸门。
-- `ranking_allowed`（需完成 CandidateScreen）：对具名标的排序或使用推荐语气的硬闸门。
+- `ranking_allowed`（需完成 CandidateScreen）：对具名标的排序或使用推荐语气的硬闸门，
+  且只覆盖 `candidate_lifecycle.rankable_seed_ids`。
 - 断言分三档：`VERIFIED` 可直接陈述；`SINGLE_SOURCE` 标注『单一来源·未交叉验证』；
   `HYPOTHESIS` 标注『假说』并允许写进正文。撕掉标签才是违规。
 

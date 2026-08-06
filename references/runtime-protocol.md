@@ -54,7 +54,9 @@ it may not combine a changed prompt with a previously successful payload.
 The default CLI limits match the table: Detective/Inquisitor use `--timeout-seconds 480`, Judge is
 capped by `--judge-timeout-seconds 240`, and CandidateScreen/Claim Verifier use 480 seconds. When a
 loop stops because it converged, reached the maximum, used its round budget, or paused before a
-CandidateScreen, the host runner calls `--report` and returns a content-addressed graded report.
+CandidateScreen, the host runner calls `--report` and returns the complete content-addressed graded
+report bundle. A resume or continuation hint is preserved separately; it never replaces the report
+materialization instruction.
 A runtime-process failure remains a failure envelope and never fabricates a report-stage payload.
 
 CandidateScreen and Claim Verifier process adapters support both Antigravity and Claude Code.

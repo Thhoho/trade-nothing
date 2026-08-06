@@ -423,7 +423,10 @@ def _report_terminal(context, terminal_envelope, *, budget, stopped_reason):
     report["runner_terminal_status"] = terminal_status
     report["runner_terminal_instruction"] = terminal_instruction
     report["stopped_reason"] = stopped_reason
-    if terminal_status != "ready_for_report" and terminal_instruction:
+    # The terminal continuation is useful, but it must never replace the report
+    # materialization instruction. Replacing it made a valid report bundle look
+    # like a resume-only branch to the host.
+    if not report.get("instruction") and terminal_instruction:
         report["instruction"] = terminal_instruction
     return run_registry.stage_envelope(report, context=context, budget=budget)
 

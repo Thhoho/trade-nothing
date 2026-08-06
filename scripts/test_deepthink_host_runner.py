@@ -331,6 +331,9 @@ class HostRunnerTests(unittest.TestCase):
                     "topic": self.context["topic"],
                     "instruction": "consume report",
                     "report_markdown": "# Fixture report",
+                    "facts_box_markdown": "<!-- FACTS_BOX_START -->\nlocked",
+                    "evidence_ledger_markdown": "# Evidence Ledger",
+                    "candidate_cards_markdown": "# Candidate Cards",
                 },
             ) as report_call:
                 outcome = runner.continue_run(
@@ -345,6 +348,10 @@ class HostRunnerTests(unittest.TestCase):
             artifact = run_registry.load_result_artifact(outcome)
             self.assertEqual(artifact["runner_terminal_status"], terminal_status)
             self.assertEqual(artifact["stopped_reason"], stopped_reason)
+            self.assertEqual(artifact["instruction"], "consume report")
+            self.assertIn("facts_box_path", outcome["artifact_paths"])
+            self.assertIn("evidence_ledger_path", outcome["artifact_paths"])
+            self.assertIn("candidate_cards_path", outcome["artifact_paths"])
 
     def test_round_budget_exhaustion_delivers_exploratory_report(self):
         with mock.patch.object(
@@ -374,7 +381,8 @@ class HostRunnerTests(unittest.TestCase):
         artifact = run_registry.load_result_artifact(outcome)
         self.assertEqual(artifact["runner_terminal_status"], "paused_round_budget")
         self.assertEqual(artifact["stopped_reason"], "ROUND_BUDGET_EXHAUSTED")
-        self.assertIn("resume --run-id", artifact["instruction"])
+        self.assertEqual(artifact["instruction"], "consume report")
+        self.assertIn("resume --run-id", artifact["runner_terminal_instruction"])
 
     def test_method_drift_status_is_structured_and_read_only(self):
         path = run_registry.manifest_path(self.context["run_id"])

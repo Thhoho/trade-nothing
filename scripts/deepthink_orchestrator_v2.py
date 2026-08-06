@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Trade Nothing v0.13.0 — Crux Orchestrator  (-deepthink2; the only research pipeline)
+Trade Nothing v0.13.1 — Crux Orchestrator  (-deepthink2; the only research pipeline)
 
 Deterministic state machine. Control flow lives in code; the LLM only produces content.
 
@@ -12,7 +12,7 @@ Flow:
   --submit TOPIC --det J --inq J --judge J
                                        -> add any new cruxes; engine.submit_round(judge signals);
                                           decide: dispatch ONLY open cruxes, or ready_for_report.
-  --report TOPIC                       -> emit compact formal report only after convergence.
+  --report TOPIC                       -> emit the complete graded report bundle at any state.
   --resolution-memo TOPIC              -> emit non-formal memo + compact continuation packet.
   --resume-blocked TOPIC               -> explicitly extend a fuse-broken run after user approval.
   --record-exploration-design TOPIC    -> write one target/revision-bound design; no search.
@@ -3107,16 +3107,6 @@ def cmd_report(topic, challenge_only=False, report_view="full", include_synthesi
     landscape = landscape_engine.finalize_coverage(state, len(state.get("rounds", [])))
     grade = crux_engine.research_grade(state)
 
-    if allow_non_formal and not converged:
-        import report_v2
-        ledger_md = report_v2.render_non_formal_ledger(state)
-        return {"status": "non_formal_ledger_ready", "topic": topic,
-                "formal_report_allowed": False,
-                "convergence": conv,
-                **grade,
-                "evidence_ledger_markdown": ledger_md,
-                "instruction": "非正式证据账本已生成（研究未收敛）。"}
-
     # An unconverged run still delivers its research.  The grade and the two hard
     # gates carry the limitation; withholding the report only pushed operators
     # into hand-writing one outside the engine.
@@ -3206,6 +3196,11 @@ def cmd_report(topic, challenge_only=False, report_view="full", include_synthesi
                 f"ranking_allowed={grade['ranking_allowed']}（个股排序闸）。"
                 "这两道闸为 false 时，禁止产出对外传播稿或对具名标的排序/推荐。"
             )}
+    if allow_non_formal:
+        out["compatibility_warnings"] = [
+            "--allow-non-formal is deprecated and no longer selects a ledger-only "
+            "branch; the complete graded report bundle was returned."
+        ]
     if include_synthesis:
         out["synthesis_packet"] = research_output.build_synthesis_packet(state)
         out["instruction"] += (
@@ -3223,7 +3218,7 @@ def _jload(s):
     return json.loads(s) if s else {}
 
 def main():
-    ap = argparse.ArgumentParser(description="Trade Nothing v0.13.0 Crux Orchestrator")
+    ap = argparse.ArgumentParser(description="Trade Nothing v0.13.1 Crux Orchestrator")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--frame", action="store_true")
     g.add_argument("--init", action="store_true")
@@ -3274,7 +3269,8 @@ def main():
     ap.add_argument("--challenge-only", action="store_true",
                     help="render root-thesis report without default opportunity CandidateScreen")
     ap.add_argument("--allow-non-formal", action="store_true",
-                    help="generate non-formal evidence ledger even when unconverged")
+                    help="deprecated compatibility no-op; --report always returns the full "
+                         "graded report bundle")
     ap.add_argument("--report-view", default="full",
                     choices=["facts_box", "brief", "cards", "audit", "full"],
                     help="select one deterministic report view")

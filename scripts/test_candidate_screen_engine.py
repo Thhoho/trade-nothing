@@ -570,9 +570,15 @@ class CandidateScreenOrchestratorTests(unittest.TestCase):
         result = orchestrator.cmd_report(topic)
         self.assertEqual(result["status"], "report_data_ready")
         # Ranking named securities stays hard-gated until the screen completes,
-        # but the research itself is delivered.
+        # but CandidateScreen is a separate lifecycle and does not lower the
+        # research report grade. This fixture also lacks its required Landscape.
         self.assertFalse(result["ranking_allowed"])
-        self.assertIn("CANDIDATE_SCREEN", result["unmet_gates"])
+        self.assertNotIn("CANDIDATE_SCREEN", result["unmet_gates"])
+        self.assertIn("LANDSCAPE_COVERAGE", result["unmet_gates"])
+        self.assertIn(
+            "CANDIDATE_SCREEN",
+            result["candidate_lifecycle"]["pending_steps"],
+        )
         self.assertEqual(
             result["candidate_screen_dispatch"]["status"], "dispatch_candidate_screeners"
         )

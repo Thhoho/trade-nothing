@@ -30,6 +30,8 @@ CONTROL_RESULT_KEYS = (
     "formal_report_allowed", "instruction", "reason", "missing_roles", "issues",
     "blockers", "unresolved_cruxes", "candidate_state", "screening_state",
     "verification_state", "available_report_views", "report_view",
+    "report_grade", "unmet_gates", "publication_allowed", "ranking_allowed",
+    "candidate_lifecycle", "compatibility_warnings",
     "state_path", "run_purpose", "rounds_completed", "last_convergence", "execution_summary",
     "runner_terminal_status", "runner_terminal_instruction", "stopped_reason",
     "resumable", "pinned_method_identity", "current_method_identity",
@@ -287,7 +289,7 @@ def _control_result(result):
                 "schema_version", "topic", "decision_question", "horizon",
                 "question_type", "verdict", "candidate_counts", "formal_action",
                 "exploration_action", "hypothesis_exploration", "scenario_paths",
-                "next_action", "change_trigger", "runtime",
+                "next_action", "change_trigger", "runtime", "research_grade",
             )
             if key in view_model
         }
@@ -325,7 +327,12 @@ def _persist_result_artifacts(result, *, context, stage, status, budget):
             "counts": control.get("counts", {}),
             "next_action": str(result.get("instruction") or "")[:1000],
         },
-        "warnings": list(result.get("issues") or result.get("blockers") or [])[:8],
+        "warnings": list(
+            result.get("compatibility_warnings")
+            or result.get("issues")
+            or result.get("blockers")
+            or []
+        )[:8],
         "next_action": str(result.get("instruction") or ""),
         "as_of": str(result.get("as_of_date") or context.get("as_of_date") or ""),
         "usage": budget or {},

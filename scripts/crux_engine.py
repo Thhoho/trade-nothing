@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Trade Nothing v0.13.0 — Crux Engine  (-deepthink2; replaced the retired v1 LFI engine)
+Trade Nothing v0.13.1 — Crux Engine  (-deepthink2; replaced the retired v1 LFI engine)
 
 Replaces the degenerate single-posterior + LFI layer with a per-CRUX ledger:
 
@@ -1197,6 +1197,118 @@ def payload_yield(state):
     return totals
 
 
+def _latest_candidate_screens(state):
+    """Return the same deterministic latest-per-seed projection as screening."""
+    latest = {}
+    for screen in state.get("candidate_screens", []):
+        if not isinstance(screen, dict) or not screen.get("seed_id"):
+            continue
+        current = latest.get(screen["seed_id"])
+        if not current or screen.get("as_of_date", "") >= current.get("as_of_date", ""):
+            latest[screen["seed_id"]] = screen
+    return latest
+
+
+def _candidate_lifecycle(state, opportunity_question):
+    """Project candidate work without letting it alter the research grade.
+
+    CandidateScreen gates named-security ranking. Snapshot-bound claim
+    verification gates candidate promotion. Neither stage is evidence that the
+    root research report converged or failed to converge, so both live in this
+    separate lifecycle projection.
+    """
+    import opportunity_engine
+
+    latest_screens = _latest_candidate_screens(state)
+
+    seed_by_id = {
+        seed.get("seed_id"): seed
+        for seed in state.get("opportunity_seeds", [])
+        if isinstance(seed, dict) and seed.get("seed_id")
+    }
+    screened_entity_ids = {
+        screen.get("entity_id")
+        or opportunity_engine.entity_id(seed_by_id[seed_id])
+        for seed_id, screen in latest_screens.items()
+        if seed_id in seed_by_id
+    }
+    screenable_seed_ids = sorted(
+        entity.get("representative_seed_id")
+        for entity in opportunity_engine.entity_views(state)
+        if entity.get("screening_status") == opportunity_engine.READY
+        and entity.get("entity_id") not in screened_entity_ids
+        and entity.get("representative_seed_id")
+    )
+
+    thesis_candidate_seed_ids = sorted(
+        seed_id for seed_id, screen in latest_screens.items()
+        if str(screen.get("status") or "").upper() == "THESIS_CANDIDATE"
+    )
+    rankable_seed_ids = sorted(
+        seed_id for seed_id, screen in latest_screens.items()
+        if str(screen.get("status") or "").upper() in {
+            "WATCHLIST", "THESIS_CANDIDATE"
+        }
+    )
+    pending_verification_seed_ids = sorted(
+        seed_id for seed_id in thesis_candidate_seed_ids
+        if str(
+            latest_screens[seed_id].get("claim_verification_status") or "PENDING"
+        ).upper() in {"PENDING", "PARTIALLY_VERIFIED"}
+    )
+    contradicted_seed_ids = sorted(
+        seed_id for seed_id in thesis_candidate_seed_ids
+        if str(
+            latest_screens[seed_id].get("claim_verification_status") or "PENDING"
+        ).upper() == "CONTRADICTED"
+    )
+    verified_for_human_seed_ids = sorted(
+        seed_id for seed_id in thesis_candidate_seed_ids
+        if str(
+            latest_screens[seed_id].get("claim_verification_status") or "PENDING"
+        ).upper() == "VERIFIED"
+    )
+
+    pending_steps = []
+    if opportunity_question and screenable_seed_ids:
+        pending_steps.append("CANDIDATE_SCREEN")
+    if pending_verification_seed_ids:
+        pending_steps.append("CLAIM_VERIFICATION")
+    if contradicted_seed_ids:
+        pending_steps.append("RESOLVE_CLAIM_CONTRADICTION")
+
+    if not opportunity_question and not latest_screens:
+        screening_status = "NOT_REQUIRED"
+    elif screenable_seed_ids:
+        screening_status = "PENDING"
+    elif latest_screens:
+        screening_status = "COMPLETE"
+    else:
+        screening_status = "NO_SCREENABLE_CANDIDATE"
+
+    if contradicted_seed_ids:
+        verification_status = "CONTRADICTED"
+    elif pending_verification_seed_ids:
+        verification_status = "PENDING"
+    elif verified_for_human_seed_ids:
+        verification_status = "COMPLETE"
+    else:
+        verification_status = "NOT_REQUIRED"
+
+    return {
+        "report_grade_independent": True,
+        "screening_status": screening_status,
+        "verification_status": verification_status,
+        "pending_steps": pending_steps,
+        "screenable_seed_ids": screenable_seed_ids,
+        "rankable_seed_ids": rankable_seed_ids,
+        "thesis_candidate_seed_ids": thesis_candidate_seed_ids,
+        "pending_verification_seed_ids": pending_verification_seed_ids,
+        "contradicted_seed_ids": contradicted_seed_ids,
+        "verified_for_human_seed_ids": verified_for_human_seed_ids,
+    }
+
+
 def research_grade(state):
     """Grade the run instead of deciding whether it may exist.
 
@@ -1222,10 +1334,7 @@ def research_grade(state):
         unmet.append("CRUX_SOURCE_MINIMUM")
 
     opportunity = landscape_engine.is_required(state)
-    if opportunity and not state.get("candidate_screens"):
-        unmet.append("CANDIDATE_SCREEN")
-    if not state.get("claim_verifications"):
-        unmet.append("CLAIM_VERIFICATION")
+    candidate_lifecycle = _candidate_lifecycle(state, opportunity)
 
     if not converged:
         grade = "EXPLORATORY"
@@ -1234,20 +1343,13 @@ def research_grade(state):
     else:
         grade = "FORMAL"
 
-    # A screen that rejected everything establishes that there is nothing to
-    # rank; only a surviving candidate unlocks ordering named securities.
-    surviving_screens = [
-        screen for screen in (state.get("candidate_screens") or [])
-        if isinstance(screen, dict)
-        and str(screen.get("status") or "").upper() in {"WATCHLIST", "THESIS_CANDIDATE"}
-    ]
-
     return {
         "report_grade": grade,
         "unmet_gates": unmet,
         # The two remaining hard gates.  Everything else is a label.
         "publication_allowed": grade == "FORMAL",
-        "ranking_allowed": bool(surviving_screens),
+        "ranking_allowed": bool(candidate_lifecycle["rankable_seed_ids"]),
+        "candidate_lifecycle": candidate_lifecycle,
         "claim_tiers": tiers,
         "coverage": {
             "required": landscape["required"],

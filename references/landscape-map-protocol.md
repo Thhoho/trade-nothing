@@ -79,7 +79,7 @@ that a source exists.
 - `REJECTED`: both roles probed, at least one rejects, and neither supports;
 - `UNKNOWN`: both roles probed but results conflict or neither resolves the path.
 
-Any `UNPROBED` path blocks opportunity-run convergence, formal reporting, and an `EDGE_FOUND`
+Any `UNPROBED` path blocks opportunity-run convergence, a `FORMAL` report grade, and an `EDGE_FOUND`
 claim. `UNKNOWN` is completed coverage, not positive evidence. It must remain visible in the report.
 Neither `REJECTED` nor `UNKNOWN` deletes its underlying wild hypothesis; the exploration ledger
 retains the path, counter-explanation, trace, and stop condition without treating it as a candidate.

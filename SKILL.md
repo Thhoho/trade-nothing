@@ -11,7 +11,7 @@ description: >
   mappings and may not claim verified isolation without a supported receipt.
 ---
 
-# Trade Nothing v0.13.0 — The Sovereign Alpha Hunter
+# Trade Nothing v0.13.1 — The Sovereign Alpha Hunter
 
 > **"Propose boldly where consensus may be wrong; follow faint proxy trails before the answer is
 > obvious; promote nothing until evidence survives adversarial checks. Seek upside actively without
@@ -132,7 +132,7 @@ bottom price, target price, or path probability.
 
 ---
 
-### Mode F: `-deepthink2` — Crux-Based Adversarial Pipeline (v0.13.0, recommended)
+### Mode F: `-deepthink2` — Crux-Based Adversarial Pipeline (v0.13.1, recommended)
 
 > Replaces the single-posterior + LFI layer (which railroaded every run to 0%/100% and always
 > burned 12 rounds) with two separate ledgers: a non-promotable **exploration ledger** for wild
@@ -241,14 +241,18 @@ python3 scripts/deepthink_orchestrator_v2.py --close-gap-task --topic "TARGET" \
 #    facts box, Evidence Ledger, candidate cards, and the synthesis packet (default on). The
 #    parent compiles the content-driven Decision Brief without altering locked facts.
 python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET"
+#    `--allow-non-formal` is a deprecated compatibility no-op. Never use it to request a
+#    ledger-only result; if an older caller still passes it, the same complete graded bundle
+#    must be returned with a warning.
 # Low-context locked-facts view (synthesis input remains explicit opt-in):
 python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET" --report-view facts_box
 # Read references/report-contract.md before changing report status words, views, or next actions.
 # Explicit thesis-critique-only escape hatch:
 python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET" --challenge-only
 
-# 4a. Fuse-break: formal report remains blocked, but always render a non-formal Resolution Memo
-#     plus a compact continuation packet. Persist the memo when the user requested an artifact.
+# 4a. Fuse-break: FORMAL grade remains blocked, but always render the complete EXPLORATORY report
+#     bundle plus a Resolution Memo and compact continuation packet. Persist all report artifacts
+#     when the user requested an artifact.
 python3 scripts/deepthink_orchestrator_v2.py --resolution-memo --topic "TARGET"
 
 # 4b. Resume only after explicit user authorization because this consumes more research budget.
@@ -334,8 +338,11 @@ Before operating a specialized ledger or gate, read the matching protocol comple
 - Benchmark and product handoff: `references/benchmark-protocol.md` and
   `references/project-handoff-protocol.md`.
 
-`--report` always returns a graded artifact. FORMAL requires deterministic convergence and source
-gates; every other terminal stop is EXPLORATORY and retains its Resolution Memo and next action.
+`--report` always returns a graded artifact. FORMAL requires deterministic convergence, required
+Landscape completion, and independent sourcing for every crux. CandidateScreen gates named-security
+ranking, while claim verification gates candidate promotion only; neither lowers `report_grade`.
+An unconverged terminal stop is EXPLORATORY; a converged run with an unmet research gate is
+PROVISIONAL. Unconverged reports retain their Resolution Memo and next action.
 The parent composes a content-driven Decision Brief only from the locked Facts Box, view model, and
 explicit synthesis packet. It must never modify deterministic facts or expose raw role transcripts.
 
@@ -407,7 +414,7 @@ copied into, or auto-loaded from the skill directory.
 
 ---
 
-*Trade Nothing v0.13.0 — Hunt Alpha, Not Consensus.*
+*Trade Nothing v0.13.1 — Hunt Alpha, Not Consensus.*
 *Adversarial multi-agent architecture with full lifecycle negative feedback loops.*
 
 
@@ -435,9 +442,9 @@ copied into, or auto-loaded from the skill directory.
 > 15. **`research_intent` 必须独立于题型声明；`OPPORTUNITY_DISCOVERY` / `HYBRID` 必须先生成 5–7 个实体无关假说，`THESIS_CHALLENGE` 才可省略。**
 > 16. **报告必须物理区分唯一正式动作与可选探索动作；探索动作只用于经人明确授权的有界求证，不能绕过 fuse、CandidateScreen、快照核验或人工闸门。**
 > 17. **Inquisitor 必须同时构造 bull surprise、base、bear failure 路径；不得预设固定暴跌幅度、底价、目标价或伪概率来制造红队强度。**
-> 18. **标注优先于许可。除下述两道硬闸门外，所有闸门只降低 `report_grade` 或给断言打标签，不得阻止报告产出：**
+> 18. **标注优先于许可。研究等级只由收敛、必要 Landscape 覆盖和 crux 独立来源决定；CandidateScreen 与 claim 核验必须进入独立的 `candidate_lifecycle`，不得降低 `report_grade`，也不得阻止报告产出。对外使用另有两道硬闸门：**
 >     - **`publication_allowed`**：对外传播稿（公开文章、推送、任何离开本人之手的产物）只有 `FORMAL` 等级才允许；
->     - **`ranking_allowed`**：对具名标的排序、打分或使用推荐语气，必须先完成 CandidateScreen。
+>     - **`ranking_allowed`**：对具名标的排序、打分或使用推荐语气，必须以最新一轮 CandidateScreen 的存续结果为准，且权限只覆盖 `candidate_lifecycle.rankable_seed_ids`，不得扩展到未筛选或已拒绝候选。
 >     两者为 false 时，报告照常交付，但禁止产出对外稿件与个股排序。
 > 19. **断言分三档，缺标签才是违规，证据弱不是：`VERIFIED`（≥2 家独立出版方）可直接陈述；
 >     `SINGLE_SOURCE` 必须标注『单一来源·未交叉验证』；`HYPOTHESIS` 必须标注『假说』。

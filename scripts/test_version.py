@@ -41,7 +41,7 @@ class VersionSemanticTests(unittest.TestCase):
             judge = fixture / "agents/judge.md"
             judge.write_text(
                 judge.read_text(encoding="utf-8").replace(
-                    "Trade Nothing v0.13.0", "Trade Nothing v0.10", 1
+                    f"Trade Nothing v{version.__version__}", "Trade Nothing v0.10", 1
                 ),
                 encoding="utf-8",
             )
@@ -69,13 +69,14 @@ class VersionSemanticTests(unittest.TestCase):
     def test_readmes_publish_safe_agent_install_contract(self):
         english = (ROOT / "README.md").read_text(encoding="utf-8")
         chinese = (ROOT / "README_zh.md").read_text(encoding="utf-8")
+        tag = f"v{version.__version__}"
 
         for fragment in (
             "Natural-language installation for an agent",
             "Do not start a research run",
-            "git clone --branch v0.13.0 --depth 1",
-            "git cat-file -t v0.13.0",
-            "git rev-parse 'v0.13.0^{commit}'",
+            f"git clone --branch {tag} --depth 1",
+            f"git cat-file -t {tag}",
+            f"git rev-parse '{tag}^{{commit}}'",
             "scripts/install_skill.py --source <checkout> --targets <target>",
             'make install DEV_DIR="<checkout>"',
         ):
@@ -84,9 +85,9 @@ class VersionSemanticTests(unittest.TestCase):
         for fragment in (
             "在 Agent 中用自然语言安装",
             "不要启动任何研究 run",
-            "git clone --branch v0.13.0 --depth 1",
-            "git cat-file -t v0.13.0",
-            "git rev-parse 'v0.13.0^{commit}'",
+            f"git clone --branch {tag} --depth 1",
+            f"git cat-file -t {tag}",
+            f"git rev-parse '{tag}^{{commit}}'",
             "scripts/install_skill.py --source <checkout> --targets <target>",
             'make install DEV_DIR="<checkout>"',
         ):

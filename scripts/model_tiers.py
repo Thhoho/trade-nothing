@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Trade Nothing v0.13.0 — Model Tiering Policy
+Trade Nothing v0.13.1 — Model Tiering Policy
 
 分层调用模型，但绝不牺牲核心质量：只把"机械的、规则约束的"任务下放给小模型，
 研究/对抗推理/综合写作始终用 deep 模型。

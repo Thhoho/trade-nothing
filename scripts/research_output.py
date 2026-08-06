@@ -960,6 +960,7 @@ def build_synthesis_packet(state):
         "unmet_gates": grade["unmet_gates"],
         "publication_allowed": grade["publication_allowed"],
         "ranking_allowed": grade["ranking_allowed"],
+        "candidate_lifecycle": grade["candidate_lifecycle"],
         "claim_tiers": grade["claim_tiers"],
         "evidence_counts": grade["evidence_counts"],
         "decision_question": state.get("decision_question", ""),
@@ -1034,7 +1035,9 @@ def build_synthesis_packet(state):
             "ranking_gate": (
                 f"ranking_allowed={grade['ranking_allowed']}. When false, do not "
                 "order, score, or rank named securities and do not use "
-                "recommendation phrasing about them."
+                "recommendation phrasing about them. When true, the permission "
+                "is limited to candidate_lifecycle.rankable_seed_ids; never rank "
+                "an unscreened or rejected seed."
             ),
             "no_new_numbers": (
                 "A number that appears in neither this packet nor a cited source "

@@ -18,9 +18,12 @@ adds immutable identity, stage checkpoints, and bounded continuation.
    saved payload with a changed prompt. A checkpoint containing only failed, payload-free attempts
    may be superseded while preserving the old prompt hashes for audit.
 8. No automatic retry. `resume` is an explicit new budget authorization.
-9. Every non-runtime terminal stop materializes a report. Convergence, maximum rounds, round-budget
-   exhaustion, candidate gaps, and stop-before-screen may change the grade or next action, but they
-   do not erase the report artifact.
+9. Every non-runtime terminal stop materializes the complete graded report bundle: Facts Box,
+   Evidence Ledger, Candidate Cards, structured view model, and a Resolution Memo when unconverged.
+   Convergence, maximum rounds, round-budget exhaustion, candidate gaps, and stop-before-screen may
+   change the grade or next action, but they do not select a ledger-only branch or erase the report
+   artifact. A continuation instruction is preserved separately and never replaces the report
+   materialization instruction.
 10. Method drift is fail-closed. `status` remains read-only and returns
     `paused_method_contract_drift` with pinned/current identities; `resume` returns the same
     structured state and cannot append to or rewrite the old run.

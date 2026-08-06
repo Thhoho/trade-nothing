@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Trade Nothing v0.13.0 — Compact Formal Report Renderer
+Trade Nothing v0.13.1 — Compact Formal Report Renderer
 
 Architecture:
   FIXED LAYER (脚本物理生成，数值勿改):
@@ -1437,6 +1437,7 @@ def _render_decision_brief(view):
     counts = view["candidate_counts"]
     root = view["root_thesis"]
     grade = view.get("research_grade") or {}
+    candidate_lifecycle = grade.get("candidate_lifecycle") or {}
     survived = "；".join(
         f"{item['id']} {item['label']}" for item in root["survived"][:3]
     ) or "无已确认的偏多 crux"
@@ -1634,6 +1635,11 @@ def _render_decision_brief(view):
         f"未满足闸门 {'、'.join(grade.get('unmet_gates') or []) or '无'}；"
         f"对外发布={grade.get('publication_allowed', False)}；"
         f"个股排序={grade.get('ranking_allowed', False)}。",
+        f"- 候选流程（不影响报告等级）：筛查="
+        f"{candidate_lifecycle.get('screening_status', 'UNKNOWN')}；claim 核验="
+        f"{candidate_lifecycle.get('verification_status', 'UNKNOWN')}；待办="
+        f"{'、'.join(candidate_lifecycle.get('pending_steps') or []) or '无'}；可排序 seed="
+        f"{'、'.join(candidate_lifecycle.get('rankable_seed_ids') or []) or '无'}。",
         "- 支持度、候选状态和模拟收益均不是概率、预期收益、交易指令或仓位输入。",
     ])
 
@@ -2094,6 +2100,7 @@ def render_facts_box(view):
     if temporal_line:
         lines.append(temporal_line)
     grade = view.get("research_grade") or {}
+    candidate_lifecycle = grade.get("candidate_lifecycle") or {}
     tiers = grade.get("claim_tiers") or {}
     ev = grade.get("evidence_counts") or {}
     py = grade.get("payload_yield") or {}
@@ -2110,6 +2117,11 @@ def render_facts_box(view):
         f"未满足闸门={facts_text('、'.join(grade.get('unmet_gates') or []) or '无')} | "
         f"对外发布={grade.get('publication_allowed', False)} | "
         f"个股排序={grade.get('ranking_allowed', False)}",
+        f"**候选流程（不影响报告等级）**: 筛查="
+        f"{facts_text(candidate_lifecycle.get('screening_status', 'UNKNOWN'))} | "
+        f"claim核验={facts_text(candidate_lifecycle.get('verification_status', 'UNKNOWN'))} | "
+        f"待办={facts_text('、'.join(candidate_lifecycle.get('pending_steps') or []) or '无')} | "
+        f"可排序seed={facts_text('、'.join(candidate_lifecycle.get('rankable_seed_ids') or []) or '无')}",
         f"**断言分档**: VERIFIED={facts_text(tier_text('VERIFIED'))} | "
         f"SINGLE_SOURCE={facts_text(tier_text('SINGLE_SOURCE'))} | "
         f"HYPOTHESIS={facts_text(tier_text('HYPOTHESIS'))}",
@@ -2195,150 +2207,6 @@ def render(state, view="full"):
         + _render_audit(state, include_title=False)
         + "\n\n</details>",
     ])
-
-
-def render_non_formal_ledger(state):
-    """Render an auditable evidence ledger from unconverged state.
-
-    Skips the convergence guard in build_report_view_model / _render_audit.
-    All underlying data extraction (crux_engine.report_data, _citation_quality,
-    _evidence_matrix) is convergence-agnostic.  The output carries a
-    NON_FORMAL_LEDGER header and must never be represented as a formal report.
-    """
-    def _compact(text, limit=80):
-        if not isinstance(text, str):
-            return str(text)[:limit]
-        return text[:limit] + ("…" if len(text) > limit else "")
-
-    rd = crux_engine.report_data(state)
-    topic = state.get("topic", "")
-    question = state.get("decision_question", "")
-    horizon = state.get("horizon", "")
-    as_of = (state.get("frame_contract") or {}).get("as_of_date", "—")
-    question_type = state.get("question_type", "")
-    last_conv = state.get("last_convergence", {})
-    n_rounds = len(state.get("rounds", []))
-    quality = _citation_quality(state)
-
-    lines = []
-    lines.append(f"# Trade Nothing v0.13.0 — 非正式证据账本 (Non-Formal Evidence Ledger)")
-    lines.append("")
-    lines.append("> **⚠️ 非正式产物。** 研究管线未收敛，此账本不得被引用为正式报告。")
-    lines.append("> 它仅用于保存已收集的证据、暴露缺口并定义下一轮最小研究任务。")
-    lines.append("")
-    lines.append(f"- **Topic**: {topic}")
-    lines.append(f"- **决策问题**: {question}")
-    lines.append(f"- **视野**: {horizon} ｜ **证据截止**: {as_of} ｜ **题型**: {question_type}")
-    lines.append(f"- **轮次**: {n_rounds} ｜ **收敛状态**: {last_conv.get('decision', 'UNKNOWN')}")
-    lines.append(f"- **阻塞原因**: {last_conv.get('reason', '—')}")
-    lines.append(f"- **引用质量**: 有效 {quality.get('valid', 0)} / 已检查 {quality.get('checked', 0)}")
-    lines.append("")
-
-    # ── A. 证明账本 (per crux) ──
-    lines.append("## A · 证明账本 (Crux Evidence Ledger)")
-    lines.append("")
-    lines.append("| Crux | 标签 | 角色 | 支持度 | 状态 | 有效引用 | 唯一来源 |")
-    lines.append("|:---|:---|:---|:---:|:---:|:---:|:---:|")
-    for c in rd["cruxes"]:
-        lines.append(
-            f"| **{c['id']}** | {c['label']} | {c['logic_role']} | "
-            f"{c['support_score']:.3f} | {c['status']} | "
-            f"{len(c['valid_citations'])} | {len(c['unique_source_urls'])} |"
-        )
-    lines.append("")
-
-    for c in rd["cruxes"]:
-        lines.append(f"### {c['id']} — {c['label']}")
-        lines.append("")
-        lines.append(f"- **逻辑角色**: {c['logic_role']}")
-        lines.append(f"- **支持度**: {c['support_score']:.3f} ｜ **状态**: {c['status']}")
-        lines.append(f"- **多头最强**: {c.get('best_bull') or '—'}")
-        lines.append(f"- **空头最强**: {c.get('best_bear') or '—'}")
-        lines.append(f"- **监控锚点**: {c.get('monitor_anchor', '—')}")
-        lines.append(f"- **反证条件**: {c.get('falsifier', '—')}")
-        if c.get("catalyst_window", {}).get("event"):
-            cat = c["catalyst_window"]
-            lines.append(f"- **催化窗口**: {cat.get('event')} @ {cat.get('expected_by', '—')} [{cat.get('date_status', '—')}]")
-        lines.append("")
-
-        valid = c.get("valid_citations", [])
-        if valid:
-            lines.append("| # | Claim | 数值 | 来源 | 日期 | URL |")
-            lines.append("|:---|:---|:---|:---|:---|:---|")
-            for i, cit in enumerate(valid, 1):
-                lines.append(
-                    f"| {i} | {_compact(cit.get('claim', ''), limit=80)} | "
-                    f"{cit.get('number') or '—'} | {cit.get('source', '—')} | "
-                    f"{cit.get('date', '—')} | {cit.get('url', '—')} |"
-                )
-            lines.append("")
-        else:
-            lines.append("（无有效引用）\n")
-
-    # ── B. 引用注册表 (all unique citations) ──
-    lines.append("## B · 引用注册表 (Citation Registry)")
-    lines.append("")
-    all_citations = []
-    seen_keys = set()
-    for c in rd["cruxes"]:
-        for cit in c.get("valid_citations", []):
-            key = crux_engine.citation_identity(cit)
-            if key and key not in seen_keys:
-                seen_keys.add(key)
-                all_citations.append((c["id"], cit))
-    lines.append(f"**总计**: {len(all_citations)} 条唯一引用")
-    lines.append("")
-    lines.append("| # | Crux | Claim | 来源 | 日期 | URL |")
-    lines.append("|:---|:---|:---|:---|:---|:---|")
-    for i, (cid, cit) in enumerate(all_citations, 1):
-        lines.append(
-            f"| {i} | {cid} | {_compact(cit.get('claim', ''), limit=60)} | "
-            f"{cit.get('source', '—')} | {cit.get('date', '—')} | "
-            f"{cit.get('url', '—')} |"
-        )
-    lines.append("")
-
-    # ── C. 证据质量闸 ──
-    lines.append("## C · 证据质量闸 (Citation Quality Gate)")
-    lines.append("")
-    lines.append(f"- 有效引用: {quality.get('valid', 0)}")
-    lines.append(f"- 已检查: {quality.get('checked', 0)}")
-    issues = quality.get("issues", [])
-    if issues:
-        lines.append("- **问题**:")
-        for issue in issues:
-            lines.append(f"  - {issue}")
-    else:
-        lines.append("- 无质量问题")
-    lines.append("")
-
-    # ── D. 探索假说 ──
-    hl = state.get("hypothesis_ledger", {})
-    hyps = hl.get("hypotheses", []) if isinstance(hl, dict) else []
-    if hyps:
-        lines.append("## D · 探索假说 (Hypothesis Garden)")
-        lines.append("")
-        lines.append("| ID | 猜想 | 状态 | 优先级 |")
-        lines.append("|:---|:---|:---|:---|")
-        for h in hyps:
-            if not isinstance(h, dict):
-                continue
-            lines.append(
-                f"| {h.get('hypothesis_id', '?')} | "
-                f"{_compact(h.get('hypothesis', ''), limit=50)} | "
-                f"{h.get('state', '—')} | "
-                f"{(h.get('exploration_priority') or {}).get('band', '—')} |"
-            )
-        lines.append("")
-
-    # ── Footer ──
-    lines.append("---")
-    lines.append("")
-    lines.append(
-        "*此账本由 Trade Nothing v0.13.0 `render_non_formal_ledger` 生成。"
-        "非正式产物，不构成交易建议。*"
-    )
-    return "\n".join(lines)
 
 
 if __name__ == "__main__":

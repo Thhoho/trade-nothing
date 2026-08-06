@@ -40,7 +40,7 @@ pip install -r requirements.txt
 
 - **No hardcoded personal paths**. All paths must use `utils.py` helpers or environment variables.
 - **No secrets or credentials** in code or commit history.
-- **Version semantics**: The current source version is `v0.13.0`. Use it on active runtime, agent,
+- **Version semantics**: The current source version is `v0.13.1`. Use it on active runtime, agent,
   CLI, and README surfaces; preserve explicit historical versions in design notes, compatibility
   branches, frozen benchmarks, and old tags. Run `python3 scripts/version.py` before submitting.
 - **Bilingual support**: Keep Chinese comments/terms where they add domain-specific clarity.

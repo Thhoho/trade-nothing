@@ -601,7 +601,10 @@ def summary(state):
     established = counts["SUPPORTED"] + counts["REJECTED"]
     probe_slots_total = len(paths) * len(ROLES)
     return {
-        "required": bool(paths),
+        # Requirement comes from the declared research contract, not from the
+        # accidental presence of path rows. Otherwise a missing Landscape map
+        # makes its own coverage gate disappear.
+        "required": is_required(state),
         "path_count": len(paths),
         "unprobed_count": counts["UNPROBED"],
         "supported_count": counts["SUPPORTED"],

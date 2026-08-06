@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 import benchmark_current
+from version import __version__
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -23,7 +24,7 @@ class BenchmarkCurrentTests(unittest.TestCase):
         self.assertFalse(result["current_method_calibrated"])
         self.assertEqual(
             result["operational_method_identity"]["method_version"],
-            "0.13.0",
+            __version__,
         )
         self.assertNotEqual(
             result["operational_method_identity"]["contract_sha256"],

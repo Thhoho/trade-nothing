@@ -108,9 +108,113 @@ class ClaimTierTests(unittest.TestCase):
             {**citation("b"), "url": "https://publisher-two.org/b", "source": "Publisher Two"},
         ]
         st["candidate_screens"] = [{"seed_id": "OS-1", "status": "REJECTED"}]
-        self.assertFalse(crux_engine.research_grade(st)["ranking_allowed"])
+        rejected = crux_engine.research_grade(st)
+        self.assertFalse(rejected["ranking_allowed"])
+        self.assertEqual(rejected["candidate_lifecycle"]["rankable_seed_ids"], [])
         st["candidate_screens"].append({"seed_id": "OS-2", "status": "WATCHLIST"})
-        self.assertTrue(crux_engine.research_grade(st)["ranking_allowed"])
+        surviving = crux_engine.research_grade(st)
+        self.assertTrue(surviving["ranking_allowed"])
+        self.assertEqual(
+            surviving["candidate_lifecycle"]["rankable_seed_ids"], ["OS-2"]
+        )
+
+    def test_latest_screen_controls_ranking_instead_of_stale_history(self):
+        st = converged_state()
+        st["cruxes"]["C1"]["citations"] = [
+            {**citation("a"), "url": "https://publisher-one.org/a", "source": "Publisher One"},
+            {**citation("b"), "url": "https://publisher-two.org/b", "source": "Publisher Two"},
+        ]
+        st["candidate_screens"] = [
+            {"seed_id": "OS-1", "as_of_date": "2026-07-01", "status": "WATCHLIST"},
+            {"seed_id": "OS-1", "as_of_date": "2026-08-01", "status": "REJECTED"},
+        ]
+        self.assertFalse(crux_engine.research_grade(st)["ranking_allowed"])
+
+    def test_formal_research_report_does_not_require_candidate_workflow(self):
+        st = converged_state()
+        st["cruxes"]["C1"]["citations"] = [
+            {**citation("a"), "url": "https://publisher-one.org/a", "source": "Publisher One"},
+            {**citation("b"), "url": "https://publisher-two.org/b", "source": "Publisher Two"},
+        ]
+
+        grade = crux_engine.research_grade(st)
+
+        self.assertEqual(grade["report_grade"], "FORMAL")
+        self.assertEqual(grade["unmet_gates"], [])
+        self.assertTrue(grade["publication_allowed"])
+        self.assertFalse(grade["ranking_allowed"])
+        self.assertEqual(
+            grade["candidate_lifecycle"]["screening_status"], "NOT_REQUIRED"
+        )
+        self.assertEqual(grade["candidate_lifecycle"]["pending_steps"], [])
+
+    def test_opportunity_report_can_be_formal_with_zero_screenable_candidates(self):
+        st = converged_state()
+        st["research_intent"] = "OPPORTUNITY_DISCOVERY"
+        st["cruxes"]["C1"]["citations"] = [
+            {**citation("a"), "url": "https://publisher-one.org/a", "source": "Publisher One"},
+            {**citation("b"), "url": "https://publisher-two.org/b", "source": "Publisher Two"},
+        ]
+        st["landscape_map"] = {
+            "paths": [{
+                "path_id": "L1",
+                "state": "UNKNOWN",
+                "probes": {
+                    "detective": {"state": "UNKNOWN"},
+                    "inquisitor": {"state": "UNKNOWN"},
+                },
+            }],
+            "round_plans": [],
+        }
+
+        grade = crux_engine.research_grade(st)
+
+        self.assertEqual(grade["report_grade"], "FORMAL")
+        self.assertNotIn("CANDIDATE_SCREEN", grade["unmet_gates"])
+        self.assertNotIn("CLAIM_VERIFICATION", grade["unmet_gates"])
+        self.assertEqual(
+            grade["candidate_lifecycle"]["screening_status"],
+            "NO_SCREENABLE_CANDIDATE",
+        )
+
+    def test_missing_required_landscape_cannot_erase_its_own_grade_gate(self):
+        st = converged_state()
+        st["research_intent"] = "OPPORTUNITY_DISCOVERY"
+        st["cruxes"]["C1"]["citations"] = [
+            {**citation("a"), "url": "https://publisher-one.org/a", "source": "Publisher One"},
+            {**citation("b"), "url": "https://publisher-two.org/b", "source": "Publisher Two"},
+        ]
+
+        grade = crux_engine.research_grade(st)
+
+        self.assertEqual(grade["report_grade"], "PROVISIONAL")
+        self.assertIn("LANDSCAPE_COVERAGE", grade["unmet_gates"])
+        self.assertTrue(grade["coverage"]["required"])
+
+    def test_pending_claim_verification_is_visible_but_does_not_lower_grade(self):
+        st = converged_state()
+        st["cruxes"]["C1"]["citations"] = [
+            {**citation("a"), "url": "https://publisher-one.org/a", "source": "Publisher One"},
+            {**citation("b"), "url": "https://publisher-two.org/b", "source": "Publisher Two"},
+        ]
+        st["candidate_screens"] = [{
+            "seed_id": "OS-1",
+            "as_of_date": "2026-08-01",
+            "status": "THESIS_CANDIDATE",
+            "claim_verification_status": "PENDING",
+        }]
+
+        grade = crux_engine.research_grade(st)
+
+        self.assertEqual(grade["report_grade"], "FORMAL")
+        self.assertEqual(grade["unmet_gates"], [])
+        self.assertTrue(grade["ranking_allowed"])
+        self.assertEqual(
+            grade["candidate_lifecycle"]["pending_steps"], ["CLAIM_VERIFICATION"]
+        )
+        self.assertEqual(
+            grade["candidate_lifecycle"]["pending_verification_seed_ids"], ["OS-1"]
+        )
 
     def test_evidence_counts_are_script_filled(self):
         st = state()
@@ -1198,6 +1302,27 @@ class ReportSafetyTests(unittest.TestCase):
             out["report_view_model"]["schema_version"],
             "trade-nothing.report-view-model.v2",
         )
+
+    def test_allow_non_formal_is_compatibility_noop_returning_full_bundle(self):
+        topic = "deprecated non formal flag"
+        orchestrator._save(topic, state())
+
+        out = orchestrator.cmd_report(
+            topic,
+            allow_non_formal=True,
+            include_synthesis=False,
+        )
+
+        self.assertEqual(out["status"], "report_data_ready")
+        self.assertEqual(out["report_grade"], "EXPLORATORY")
+        self.assertIn("CONVERGENCE", out["unmet_gates"])
+        self.assertIn("facts_box_markdown", out)
+        self.assertIn("evidence_ledger_markdown", out)
+        self.assertIn("candidate_cards_markdown", out)
+        self.assertIn("resolution_memo_markdown", out)
+        self.assertIn("report_view_model", out)
+        self.assertIn("deprecated", out["compatibility_warnings"][0])
+        self.assertNotEqual(out["status"], "non_formal_ledger_ready")
 
     def test_orchestrator_can_select_facts_box_compatibility_view(self):
         topic = "facts box report view"

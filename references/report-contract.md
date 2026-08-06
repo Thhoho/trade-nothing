@@ -17,7 +17,7 @@ Never label a future target as “as of” or imply evidence extends to that dat
 invalid temporal contract blocks a new project handoff. Historical artifacts keep the conflict
 visible for human resolution; they are not silently rewritten.
 
-## Report grade and the two hard gates
+## Report grade, ranking, and candidate promotion
 
 Every run produces a report. Unmet gates lower `report_grade` and constrain what the report may do;
 they never delete the research. Withholding output only moved report writing outside the engine,
@@ -25,9 +25,18 @@ where nothing is checked.
 
 | Grade | Meaning |
 | --- | --- |
-| `FORMAL` | Converged, coverage complete, every crux independently sourced, screened, claim-verified. |
-| `PROVISIONAL` | Converged, but at least one gate unmet. Deliverable and useful; not publishable. |
+| `FORMAL` | Converged, required Landscape coverage complete, and every crux independently sourced. CandidateScreen and claim verification are not report-grade inputs. |
+| `PROVISIONAL` | Converged, but at least one research gate is unmet. Deliverable and useful; not publishable. |
 | `EXPLORATORY` | Not converged. Deliverable as research; no external use. |
+
+The report-grade gates are only `CONVERGENCE`, `LANDSCAPE_COVERAGE` when the Landscape is required,
+and `CRUX_SOURCE_MINIMUM`. Candidate work is projected separately under `candidate_lifecycle`:
+
+- CandidateScreen gates `ranking_allowed`, not `report_grade`;
+- snapshot-bound claim verification gates only promotion of a `THESIS_CANDIDATE` to
+  `VERIFIED_FOR_HUMAN`; and
+- zero candidates, zero screenable candidates, or zero claim-verification records are valid report
+  outcomes and cannot lower an otherwise `FORMAL` research report.
 
 Exactly two gates remain hard:
 
@@ -38,6 +47,13 @@ Exactly two gates remain hard:
 
 Both booleans and the unmet-gate list appear in the Facts Box, so a reader sees the limitation
 before the narrative.
+
+`candidate_lifecycle` appears beside them with screening status, verification status, pending
+candidate steps, and `rankable_seed_ids`. Its `pending_steps` are not copied into `unmet_gates`.
+A later CandidateScreen supersedes an older screen for the same seed when computing
+`ranking_allowed`; stale WATCHLIST history cannot keep ranking unlocked after a current REJECTED
+screen. When `ranking_allowed=true`, the permission covers only `rankable_seed_ids`, never an
+unscreened or rejected candidate.
 
 ## Claim tiers
 
@@ -84,6 +100,11 @@ ledger holds.
 envelope persists the selected compatibility view and the complete result artifact; it does not
 inline the report bodies into the parent context. Load the result artifact when compiling the two
 new files, and open the Evidence Ledger only when the user asks to read or audit it.
+
+The deprecated `--allow-non-formal` option is a compatibility no-op. It must return the same full
+`report_data_ready` bundle and may add a compatibility warning; it must never select a
+ledger-only early-return branch. Every host terminal path preserves the report-composition
+instruction and carries any resume/continuation instruction in a separate terminal field.
 
 Select a view with:
 
