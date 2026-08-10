@@ -38,7 +38,7 @@ The engine simulates the deterministic scheduler using these capacities:
   not falsely model them as two serial phases;
 - a `UNIVERSE_SEARCH` crux receives capacity for at least one directional touch and the source
   minimum because root completion is coverage-based;
-- opportunity frames reserve two harvest-dry rounds after bilateral Landscape coverage. Those
+- frames with an explicitly required Landscape reserve two harvest-dry rounds after bilateral coverage. Those
   rounds may overlap later crux rotation; they are not blindly added after every crux settles.
 
 If `suggested_max_rounds` is below the computed minimum, init returns:

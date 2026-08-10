@@ -63,10 +63,11 @@ def frame():
 
 
 def result(role, prompt, payload=None, *, resource_exhausted=False):
+    process_ids = {"detective": 100, "inquisitor": 101, "judge": 102}
     return {
         "role": role,
         "invocation_id": f"{role}-test",
-        "process_id": 100 if role == "detective" else 101,
+        "process_id": process_ids[role],
         "exit_code": 0 if payload is not None else 1,
         "timed_out": False,
         "elapsed_seconds": 1.0,
@@ -172,16 +173,29 @@ class HostRunnerTests(unittest.TestCase):
             "antigravity",
         )
 
+    def test_runtime_auto_never_selects_an_installed_cli_without_configuration(self):
+        with mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(
+            runner.shutil, "which", return_value="/usr/local/bin/claude"
+        ):
+            with self.assertRaisesRegex(ValueError, "host_runtime_required_explicitly"):
+                runner._resolve_host_runtime("auto")
+
     def test_claude_child_does_not_inherit_parent_session_markers(self):
         markers = {
             "CLAUDECODE": "1",
             "CLAUDE_CODE_ENTRYPOINT": "cli",
             "CLAUDE_CODE_SESSION_ID": "parent-session",
         }
-        with mock.patch.dict(os.environ, {**markers, "KEEP_ME": "yes"}, clear=False):
+        with mock.patch.dict(
+            os.environ,
+            {**markers, "KEEP_ME": "yes", "TUSHARE_TOKEN": "host-only"},
+            clear=False,
+        ):
             child = runner._host_environment("claude-code")
             antigravity = runner._host_environment("antigravity")
         self.assertEqual(child["KEEP_ME"], "yes")
+        self.assertNotIn("TUSHARE_TOKEN", child)
+        self.assertNotIn("TUSHARE_TOKEN", antigravity)
         for name in markers:
             self.assertNotIn(name, child)
             self.assertEqual(antigravity[name], markers[name])
@@ -241,6 +255,11 @@ class HostRunnerTests(unittest.TestCase):
         stored = run_registry.load_checkpoint(self.context["run_id"], "round-1")
         self.assertTrue(stored["submitted"])
         self.assertEqual(stored["roles"]["detective"]["payload"], det_payload)
+        state = orchestrator._load(self.context["topic"])
+        self.assertEqual(
+            state["rounds"][0]["execution_integrity"]["status"], "verified"
+        )
+        self.assertEqual(state["runtime_contract"]["isolation_status"], "verified")
 
         self.assertEqual(
             run_registry.load_checkpoint(self.context["run_id"], "round-1")["submit_result"],
@@ -312,6 +331,7 @@ class HostRunnerTests(unittest.TestCase):
     def test_terminal_round_statuses_always_materialize_report(self):
         for terminal_status, stopped_reason in (
             ("ready_for_report", "CONVERGED"),
+            ("research_more_requires_authorization", "AUTHORIZED_BUDGET_USED"),
             ("blocked_max_rounds", "MAX_ROUNDS_REACHED"),
             ("dispatch_candidate_screeners", "CANDIDATE_SCREEN_PENDING"),
         ):

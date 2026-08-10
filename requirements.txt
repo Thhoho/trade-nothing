@@ -2,9 +2,12 @@
 # the Python standard library. No third-party package is required to install or
 # run the release gates.
 
-# Optional experimental macro observations used by scripts/verified_fetcher.py:
+# Optional read-only data providers. The core and CSV path remain stdlib-only:
 # yfinance>=0.2.40
 # akshare>=1.14.0
+# baostock==0.8.9
+# tushare==1.4.29
+# chardet>=3.0.2,<6  # only when chardet is present alongside requests
 
 # Install optional providers only after explicit user approval. Provider output
 # remains contextual until it passes the normal citation and claim gates.

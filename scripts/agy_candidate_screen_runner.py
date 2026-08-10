@@ -62,7 +62,7 @@ def _resolve_runtime(value="auto", host_bin=""):
 
 
 def _host_environment(runtime):
-    child = os.environ.copy()
+    child = process_control.model_child_environment()
     if _normalize_runtime(runtime) == "claude-code":
         for name in CLAUDE_PARENT_ENV_MARKERS:
             child.pop(name, None)

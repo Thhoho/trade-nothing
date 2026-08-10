@@ -286,7 +286,11 @@ class ClaimVerificationOrchestratorTests(unittest.TestCase):
         stored = orchestrator._load(topic)
         self.assertEqual(result["verified_thesis_candidate_count"], 1)
         self.assertEqual(stored["candidate_screens"][0]["claim_verification_status"], "VERIFIED")
-        md = report_v2.render(stored)
+        md = (
+            report_v2.render(stored, view="cards")
+            + "\n"
+            + report_v2.render(stored, view="audit")
+        )
         self.assertIn("P2 VERIFIED", md)
         self.assertIn("页面快照与 claim 对齐账本", md)
         self.assertIn("DRAFT_REQUIRES_HUMAN", md)

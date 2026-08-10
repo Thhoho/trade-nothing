@@ -107,6 +107,7 @@ class RunRegistryTests(unittest.TestCase):
         self.assertIn("inquisitor", envelope["blockers"])
         stored = run_registry.load_manifest(manifest["run_id"])
         self.assertEqual(stored["failure_count"], 1)
+        self.assertEqual(stored["status"], "paused_runtime_failure")
         self.assertLess(len(json.dumps(envelope)), 10000)
 
     def test_large_result_and_report_are_content_addressed_not_inlined(self):

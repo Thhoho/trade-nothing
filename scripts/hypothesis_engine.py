@@ -1692,7 +1692,7 @@ def _validate_asymmetry_case_shape(raw, prefix):
 
 
 def validate_frame(frame):
-    """Validate intent and the deterministic 5–7 path Framer garden contract."""
+    """Validate an optional mechanism-hypothesis tool, never the topic root."""
     if not isinstance(frame, dict):
         return ["frame_must_be_object"]
     issues = []
@@ -1706,10 +1706,8 @@ def validate_frame(frame):
     garden_source = _garden_source(frame)
     garden_declared = garden_source != "NONE"
     legacy_projection = garden_source == "LEGACY_LANDSCAPE_MAP"
-    if intent in {OPPORTUNITY_DISCOVERY, HYBRID} and not hypotheses:
-        issues.append("opportunity_intent_requires_hypothesis_garden")
-    if garden_declared and not (5 <= len(hypotheses) <= 7):
-        issues.append("hypothesis_garden_requires_5_to_7_hypotheses")
+    if garden_declared and not (1 <= len(hypotheses) <= 7):
+        issues.append("hypothesis_garden_requires_1_to_7_hypotheses")
 
     cruxes = frame.get("candidate_cruxes")
     if cruxes is None and isinstance(frame.get("cruxes"), dict):
@@ -1886,7 +1884,7 @@ def validate_frame(frame):
                     f"{prefix}_search_queries_require_exactly_2_distinct"
                 )
 
-    if hypotheses:
+    if len(hypotheses) >= 5:
         missing_archetypes = sorted(ARCHETYPES - archetypes_seen)
         if missing_archetypes:
             issues.append(

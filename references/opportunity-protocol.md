@@ -1,196 +1,158 @@
-# OpportunitySeed Protocol
+# Opportunity Research Protocol
 
-`OpportunitySeed` turns useful side findings from adversarial research into a
-screening queue. It does not change the root-thesis verdict and is never a buy,
-sell, return, target-price, or sizing recommendation.
+This protocol defines the boundary between an exploratory mechanism, a concrete market-map item,
+and an evidence-backed OpportunitySeed. It ends at the Deep Research Report and has no authority over
+Thesis, Decision, order, position, portfolio, publication workflow, or cross-product handoff.
 
-## Two lanes: exploration is not promotion
+## 1. Three distinct objects
 
-The method keeps two ledgers with different truth standards:
+### Hypothesis
 
-1. **Exploration ledger** — `wild_hypotheses`, `hypothesis_sparks`, and `proxy_trails`. This is where
-   bold conjectures, indirect clues, analogies, counter-mechanisms, and cheap next tests survive.
-   Evidence may be absent. A new conjecture with no accepted observation remains
-   `HYPOTHESIS_ONLY`; it is never silently dropped merely for being early.
-2. **Promotion ledger** — admitted `OpportunitySeed` objects and their deterministic maturation,
-   CandidateScreen, and claim-verification states. Every existing citation and human gate remains
-   mandatory.
+A causal conjecture worth testing. It may be entity-agnostic and may have no citation. It must keep
+its strongest alternative explanation, falsifier, catalyst or checkpoint, and cheapest next test.
 
-Exploration objects are not weak OpportunitySeeds. They do not count as candidates, evidence-backed
-leads, source diversity, pricing anchors, convergence evidence, or promotion progress. A role may
-later emit a *new, separately validated* OpportunitySeed inspired by a spark, but no engine or model
-may mutate or relabel the original exploration object into a seed.
+States remain descriptive only:
 
-Use these exploration states:
+`HYPOTHESIS_ONLY -> TRACED -> EVIDENCE_BACKED`
 
-`HYPOTHESIS_ONLY -> TRACED -> EVIDENCE_BACKED`.
+`EVIDENCE_BACKED` means the mechanism deserves concrete candidate research. It does not transform
+the hypothesis into a candidate. Engines and models must never auto-promote, relabel, truncate, or
+copy hypothesis prose into an OpportunitySeed.
 
-- `HYPOTHESIS_ONLY`: conjecture plus falsifier or discriminating test; admissible evidence may be
-  empty.
-- `TRACED`: at least one accepted proxy observation exists. It may support, contradict, or leave
-  the proposed mechanism ambiguous.
-- `EVIDENCE_BACKED`: trace evidence is sufficient to justify drafting a *separate*
-  OpportunitySeed. The hypothesis is still non-promotable and is not itself a seed.
+### CandidateMapItem
 
-Mechanism completeness, economic capture, instrument identity, and pricing are fields and blocker
-conditions, not additional states. These labels are exploration maturity, not engine promotion
-states. Even exploration `EVIDENCE_BACKED` must satisfy the independent Admission rule below before
-an `OpportunitySeed` exists.
+A concrete company, security, asset, commodity, technology, or explicit statement that no listed
+vehicle was found. It connects a hypothesis to the market without claiming verification.
 
-Introduced in v0.10 and retained in v0.13.0, expiry and falsifier are explicit audit fields, not
-silently inferred maturity states. Crossing either boundary must stay visible for human review or
-a later explicitly authorized run; the runtime does not delete, promote, or relabel the hypothesis
-automatically.
-
-Every new `hypothesis_spark` should carry `subject`, `origin_crux`, optional
-`landscape_path_id`, `status=HYPOTHESIS_ONLY`, `hypothesis`, `why_nonconsensus`, a list-valued
-`causal_chain`, `value_transfer`, `strongest_alternative_explanation`, `falsifier`, `catalyst`,
-`cheap_discriminating_test`, and optional same-unit scenario `payoff`. The deterministic ledger
-assigns its immutable `hypothesis_id`.
-
-Every top-level `proxy_trail` should reference an existing `hypothesis_id` or repeat the exact
-same-round `hypothesis` text, then carry `proxy`, `causal_link`,
-`direction=SUPPORTS|CONTRADICTS|AMBIGUOUS`, `alternative_explanation`, `checkpoint`, and optional
-`evidence`. It represents an observation actually encountered. A suggested query belongs in the
-spark's cheap test or Framer `proxy_plan`; a query or publisher route alone is not a ProxyTrail and
-does not advance maturity.
-
-## Admission rule
-
-A seed is admitted only when all of the following hold:
-
-1. It names a concrete candidate and one allowed `relation_type`.
-2. It points to an existing `origin_crux` and states a causal path. In a mapped run it also binds
-   `landscape_path_id`, whose `linked_crux_id` must match `origin_crux`.
-3. Optional `origin_hypothesis_id` is lineage only. When non-null, it must resolve to an existing
-   exploration hypothesis whose `context.origin_crux` matches the seed's `origin_crux`. It grants
-   no evidence, readiness, screening, or promotion credit.
-4. At least one citation exactly matches structured evidence submitted by the
-   same agent for the same crux in the same round.
-5. The citation contains claim, source, date, and a concrete non-homepage URL.
-
-The engine drops invented, homepage-only, cross-agent, and cross-crux evidence.
-Each agent may submit at most three seeds per round.
-It must preserve separately well-formed exploration objects even when they fail this seed rule.
-
-## Schema
+Fields in the v0.15 CandidateMap implementation:
 
 ```json
 {
-  "candidate": "<company, asset, commodity, or technology>",
-  "ticker": null,
+  "candidate": "Concrete company or asset",
+  "ticker": "required for LISTED_EQUITY",
+  "asset_type": "LISTED_EQUITY|PRIVATE_COMPANY|COMMODITY|TECHNOLOGY|OTHER",
+  "market_role": "EVENT_BETA|ECONOMIC_CAPTURE|BOTTLENECK|SECOND_ORDER|SUBSTITUTE|FAILURE_HEDGE|WATCH_ONLY",
+  "setup_types": ["EVENT_SETUP", "ECONOMIC_SETUP"],
+  "mechanism": "event -> value or attention transfer -> candidate",
+  "economic_exposure": "how business economics are captured or UNKNOWN",
+  "catalyst": "observable event or checkpoint",
+  "invalidation": "observable fact that breaks the mapping",
+  "price_or_expectation": "current price or embedded expectation, or UNKNOWN",
+  "crowding_or_position": "known fact, labelled inference, or UNKNOWN",
+  "strongest_alternative_explanation": "ordinary explanation for the same observation",
+  "cheap_discriminating_test": "one bounded next check",
+  "field_update_modes": {
+    "mechanism": "REFINE|REPLACE|CHALLENGE",
+    "price_or_expectation": "REFINE|REPLACE|CHALLENGE"
+  },
+  "evidence_boundary": "FACT|SINGLE_SOURCE|INFERENCE|HYPOTHESIS"
+}
+```
+
+Text inequality is not evidence of contradiction. `REFINE` supplies a newer or more precise current
+snapshot; `REPLACE` explicitly supersedes a wrong old value and resolves prior conflict;
+`CHALLENGE` records a mutually exclusive unresolved claim. Only `CHALLENGE` blocks setup readiness.
+
+A CandidateMapItem may appear in research-attention or conditional-setup comparisons. It is not a
+buy/sell instruction and does not inherit evidence from its parent hypothesis.
+
+### OpportunitySeed
+
+A concrete candidate path that has at least one candidate-aligned citation and is worth focused
+verification. It remains a research object, not a trade or downstream workflow state.
+
+## 2. Seed admission
+
+A seed is admitted only when:
+
+1. `candidate` names a concrete entity or asset, not a proposition, industry mechanism, event, or
+   “if/then” sentence;
+2. `asset_type=LISTED_EQUITY` includes a non-empty ticker;
+3. `relation_type` is one of the allowed value-transfer roles;
+4. it binds an existing origin crux and, in mapped runs, a compatible Landscape path;
+5. it states the candidate-specific causal path;
+6. at least one citation exactly matches structured evidence from the same role, crux, and round;
+7. every admitted citation contains claim, source, date, and a concrete URL.
+
+An `origin_hypothesis_id` is lineage only. It never supplies candidate identity, evidence, price,
+catalyst, or readiness. If a mature hypothesis suggests several companies, each company must be
+submitted as a separate candidate path.
+
+## 3. Seed schema
+
+```json
+{
+  "candidate": "Concrete company or asset",
+  "ticker": "required for LISTED_EQUITY",
   "asset_type": "LISTED_EQUITY|PRIVATE_COMPANY|COMMODITY|TECHNOLOGY|OTHER",
   "relation_type": "DIRECT_WINNER|SUBSTITUTE_WINNER|COMPETITOR_WINNER|BOTTLENECK_OWNER|INFRA_ASSET_OWNER|SECOND_ORDER|SHORT_CANDIDATE",
   "origin_crux": "C1",
   "landscape_path_id": "L1",
   "origin_hypothesis_id": "WH-... or null",
-  "causal_path": "<crux outcome -> value transfer -> candidate exposure>",
-  "economic_exposure": "<how the candidate captures or loses economics; blank if unknown>",
-  "why_market_may_miss": "<specific pricing or attention gap; blank if unknown>",
+  "causal_path": "crux outcome -> candidate-specific value transfer",
+  "economic_exposure": "known capture mechanism or blank",
+  "why_market_may_miss": "candidate-specific expectation gap or blank",
   "pricing_anchor": {
     "as_of_date": "YYYY-MM-DD",
     "anchor_type": "ABSOLUTE_VALUATION|RELATIVE_VALUATION|EMBEDDED_EXPECTATION|CONTRACT_PRICE|CAPACITY_OR_EARNINGS|MARKET_PRICE",
-    "metric": "<observable metric>",
-    "current_value": "<current price, multiple, or embedded assumption>",
-    "comparison_value": "<peer, historical, contract, or thesis-implied comparison>",
-    "source": "<organization>",
-    "source_url": "<must exactly match one same-round seed evidence URL>",
-    "source_claim": "<what the source establishes>"
+    "metric": "observable metric",
+    "current_value": "current value",
+    "comparison_value": "comparison",
+    "source": "organization",
+    "source_url": "same-round seed evidence URL",
+    "source_claim": "what the source establishes"
   },
-  "catalyst": "<observable event; blank if unknown>",
+  "catalyst": "observable event or blank",
   "catalyst_window": {
-    "event": "<observable event>",
-    "expected_by": "<YYYY-MM-DD>",
+    "event": "observable event",
+    "expected_by": "YYYY-MM-DD",
     "date_status": "REVIEW_CHECKPOINT|DATE_CLAIMED_UNVERIFIED"
   },
-  "falsifier": "<observable fact that kills this candidate path; blank if unknown>",
-  "evidence": [
-    {
-      "claim": "<exactly reuse a same-round structured evidence claim>",
-      "number": null,
-      "source": "<organization>",
-      "url": "<specific URL>",
-      "date": "<YYYY-MM-DD or YYYY-MM>",
-      "source_tier": "primary|secondary"
-    }
-  ]
+  "falsifier": "observable candidate-specific failure condition or blank",
+  "evidence": []
 }
 ```
 
-## Evidence maturity and screening eligibility
+Missing price, economic exposure, catalyst, or falsifier is a visible verification gap. It must not
+delete the lead, but it also cannot be silently filled from an abstract parent hypothesis.
 
-- `EVIDENCE_BACKED`: at least one agent-backed concrete citation.
-- Evidence-ready path: at least two distinct source organizations, plus non-empty economic
-  exposure, expectation gap, pricing anchor, catalyst, structured catalyst window, and falsifier.
-  A narrative such as “the market underestimates this” is not a pricing anchor. Use an observable
-  as-of valuation, embedded expectation, contract price, capacity/earnings assumption, or relative
-  benchmark. The anchor URL must exactly match same-round, same-crux seed evidence. This is not
-  yet screen eligibility. Read `references/pricing-gap-protocol.md` before emitting a structured
-  pricing anchor.
-- `READY_FOR_SCREENING`: the evidence-ready path also requires a contested and settled or
-  monitorable origin crux with the minimum source count, a converged root thesis, and a structured
-  catalyst date inside the root research horizon. In a mapped run, the bound Landscape path must
-  also be `SUPPORTED`; `UNPROBED`, `REJECTED`, and `UNKNOWN` paths cannot become READY.
+## 4. Discovery and verification are asymmetric
 
-Independent seed sources are counted by final publisher domain, never by the agent-written
-`source` label. Search/grounding redirect wrappers must be resolved to the final publisher URL;
-otherwise the evidence and any pricing anchor bound to it are rejected.
+Discovery may mention and compare CandidateMapItems with explicit evidence labels. Focused
+verification is stricter and asks whether a selected candidate has:
 
-Fail closed without deleting the lead:
+- candidate-specific economic capture;
+- an observable price or embedded-expectation anchor;
+- catalyst timing inside the declared horizon;
+- liquidity, crowding and tradability evidence when relevant;
+- a concrete falsifier and strongest alternative explanation;
+- at least two genuinely independent publisher paths for high-confidence factual claims.
 
-- `BLOCKED_ORIGIN_CRUX`: the origin crux is untested, unsettled, or source-thin.
-- `BLOCKED_ROOT_UNCONVERGED`: the root thesis has not passed convergence.
-- `NEEDS_CATALYST_CHECK`: the catalyst date is missing or malformed.
-- `OUT_OF_HORIZON_LEAD`: the catalyst is expired or outside the root horizon.
+Failure to pass focused verification means `WATCH_ONLY` or `NO_USABLE_SETUP` for the current
+window. It does not prove that the theme has no market opportunity.
 
-Failing any seed-admission or readiness condition does not authorize copying an exploratory
-inference into formal evidence. Keep the spark and its next test visible in the exploration ledger,
-with the exact maturity boundary that failed.
+## 5. Conditional ordering
 
-Once an `EVIDENCE_BACKED` seed is admitted, it may enter the bounded Candidate Maturation loop in
-parallel with unfinished root research. The planner may target only seed-local fields and evidence:
-economic exposure, expectation gap, pricing anchor, independent source, catalyst/window, or
-falsifier. It cannot edit or bypass root convergence, origin-crux settlement, Landscape support, or
-CandidateScreen eligibility. The planner converts its first deterministic seed-local blocker into a
-content-addressed `CandidateGapTask`; new evidence is appended as supplements and never edits the
-original seed contract. Read
-`references/candidate-maturation-protocol.md` before planning or submitting gap evidence.
+The Deep Research Report may provide:
 
-`READY_FOR_SCREENING` means “eligible for the two-sided CandidateScreen,” not
-“investable.” Run Candidate Analyst and Candidate Skeptic using
-`references/candidate-screen-protocol.md`. Valuation, liquidity, governance,
-crowding, and catalyst timing must pass that separate evidence gate.
+- research-attention ordering;
+- `EVENT_SETUP` ordering;
+- `ECONOMIC_SETUP` ordering.
 
-An exploration action may spend a separately authorized bounded research budget on one proxy trail.
-It is not a formal next action, a CandidateScreen dispatch, or a recommendation. It must specify the
-question, source class, search/read cap, success condition, and stop condition before execution.
+Every ordered setup must show its trigger, invalidation, time window, crowding or position risk,
+and evidence boundary. Do not describe this ordering as expected return, conviction, buy/sell
+advice, target price, or position size.
 
-## Cross-system candidate state
+## 6. Identity and de-duplication
 
-Use only the deterministic projection emitted by `opportunity_engine.promotion_assessment()`:
+- Prefer ticker as the exact identity for listed securities;
+- otherwise use normalized explicit entity name plus asset type;
+- keep different causal paths separate even when they point to the same entity;
+- do not merge evidence across unrelated cruxes or mechanisms to manufacture confidence;
+- never freeze an abstract mechanism as a candidate identity.
 
-`EVIDENCE_BACKED -> READY_FOR_SCREENING -> WATCHLIST | REJECTED | THESIS_CANDIDATE -> VERIFIED_FOR_HUMAN`
+## 7. Stop semantics
 
-Only `VERIFIED_FOR_HUMAN` may be offered to a human for creation of a fresh DRAFT Thesis. It
-requires a `THESIS_CANDIDATE` screen, verified screen isolation, snapshot-bound claim verification,
-and a `DRAFT_REQUIRES_HUMAN` promotion packet. Human rationale cannot override a lower state.
-`COMPLETED` gap evidence means only that one bounded seed blocker was addressed; it does not skip
-CandidateScreen or any later gate.
-
-## Entity de-duplication
-
-Keep each `OpportunitySeed` as an independent evidence path. Do not combine citations across
-different cruxes or relation types to manufacture readiness. Project paths sharing the same exact
-ticker, or the same normalized name when no ticker exists, into one candidate entity for reports
-and default screen dispatch. Screen at most one representative ready path per entity unless the
-user explicitly requests a specific seed.
-
-## Root-thesis independence
-
-The declared question type and logic graph control root-thesis aggregation. Weakest-crux
-rejection is valid only for necessary hinges in `CONJUNCTIVE` or `CAUSAL_CHAIN` questions;
-it cannot negate one surviving alternative path or an entire universe search. A `NO_EDGE`
-root verdict may coexist with valid substitute, competitor, bottleneck-owner, asset-owner,
-second-order, or short-candidate seeds. The report must preserve both the root assessment and
-the evidence-backed research leads. It may also preserve clearly labelled `HYPOTHESIS_ONLY`
-discoveries without presenting them as opportunities. `NO_EDGE` never means `AVOID` or `SHORT`.
+`NO_USABLE_SETUP` is valid only after bounded work covers concrete securities, alternative and
+second-order routes, price/crowding, and the declared event window. Search exhaustion means only
+that the current route produced no new information. It is not market-negative evidence.

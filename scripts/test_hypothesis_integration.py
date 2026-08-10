@@ -1478,7 +1478,7 @@ class ReportAndFuseTests(unittest.TestCase):
     def test_report_keeps_formal_and_exploration_actions_separate(self):
         state = self.state_with_exploration()
         model = report_v2.build_report_view_model(state)
-        markdown = report_v2.render(state)
+        markdown = report_v2.render(state, view="brief")
         self.assertEqual(
             model["formal_action"]["code"],
             "STOP_NO_PROMOTABLE_CANDIDATE",
@@ -1501,12 +1501,11 @@ class ReportAndFuseTests(unittest.TestCase):
             markdown.index("## 正式晋级动作"),
             markdown.index("## 探索动作（无晋级与交易权限）"),
         )
-        self.assertLess(
-            markdown.index("# Insight Cards"),
-            markdown.index("# Candidate Cards"),
-        )
         self.assertIn("## 研究资源与风险收益匹配", markdown)
         self.assertIn("## 证据矩阵（按对象绑定）", markdown)
+        default_markdown = report_v2.render(state)
+        self.assertTrue(default_markdown.startswith("# Deep Research Report"))
+        self.assertNotIn("## 正式晋级动作", default_markdown)
 
     def test_resolution_memo_preserves_hypotheses_without_authorizing_resume(self):
         state = self.state_with_exploration()
@@ -1567,7 +1566,7 @@ class ReportAndFuseTests(unittest.TestCase):
         )
         self.assertEqual(card["observation_status"], "CITED_PROXY_TRAIL")
         self.assertEqual(card["proxy_evidence_count"], 2)
-        markdown = report_v2.render(state)
+        markdown = report_v2.render(state, view="insights")
         self.assertIn(
             "`CITED_PROXY_TRAIL` 见下方 2 条 ProxyTrail 引用",
             markdown,

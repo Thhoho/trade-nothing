@@ -1,4 +1,4 @@
-# Data Acquisition and Governance Protocol (v0.13)
+# Data Acquisition and Governance Protocol (v0.15)
 
 This protocol covers read-only research acquisition. It does not authorize an order, portfolio
 mutation, background daemon, notification, webhook, automatic retry, or external publication.
@@ -39,6 +39,19 @@ python3 scripts/verified_fetcher.py --all
 # Event helper.
 python3 scripts/catalyst_calendar.py --sector solar
 
+# Explicitly selected, bounded free A-share observations. It never auto-falls back.
+python3 scripts/free_market_observations.py --input free-market-request.json \
+  --output market-observations.json
+
+# Provider-neutral market snapshot from frozen candidate + benchmark observations.
+# The input owns source URLs and canonical evidence IDs; the adapter does not fetch.
+python3 scripts/market_snapshot_adapter.py --input market-observations.json \
+  --output market-snapshot.json
+
+# Explicitly bind the complete adapter artifact to one registered run.
+python3 scripts/deepthink_orchestrator_v2.py --ingest-market-snapshot \
+  --run-id RUN_ID --market-snapshot market-snapshot.json
+
 # Read-only radar preview. Persistence requires explicit authorization.
 python3 scripts/logic_radar_v2.py
 python3 scripts/logic_radar_v2.py --write-evolution  # only after explicit user approval
@@ -46,6 +59,67 @@ python3 scripts/logic_radar_v2.py --write-evolution  # only after explicit user 
 
 Quotes and trigger thresholds are context fields. They do not become
 probabilities, expected returns, target prices, or sizing inputs.
+
+The market snapshot adapter computes 5/20/60-session return and benchmark excess return, 60-session
+drawdown, 20-session volume ratio and current turnover when enough observations exist. When the
+selected provider supplies them, it also preserves current provider volume ratio, PE(TTM), PB,
+total market cap and float market cap with explicit CNY units. Candidate
+and benchmark must end on the same observed session. Its receipt binds both the input packet and the
+normalized snapshot payload. It proves deterministic transformation, not that the provider is
+complete or that the result predicts returns. Content-addressed receipts are integrity and lineage
+proofs, not cryptographic signatures from the provider; explicit host ingestion remains the trust
+root and must never be delegated to a model role.
+
+### Bounded A-share request
+
+The compatibility-named `free_market_observations.py` adapter fetches only one candidate and one
+benchmark over a 90–730 calendar-day window. The caller must explicitly select exactly one of
+`TUSHARE`, `BAOSTOCK`, `AKSHARE_TENCENT`, or `CSV`; there is no `AUTO` mode. A second provider
+attempt is a new bounded acquisition, not an invisible fallback.
+
+```json
+{
+  "as_of_date": "2026-08-11",
+  "lookback_calendar_days": 180,
+  "provider": "TUSHARE",
+  "candidate": {
+    "name": "贵州茅台", "ticker": "600519", "exchange": "XSHG",
+    "asset_type": "EQUITY"
+  },
+  "benchmark": {
+    "name": "沪深300", "ticker": "000300", "exchange": "XSHG",
+    "asset_type": "INDEX"
+  },
+  "evidence_ids": ["EV-PRICE", "EV-CROWDING"]
+}
+```
+
+For `CSV`, add `csv_path`, the actual upstream `source_url`, and optional `source` to each asset.
+Accepted headers are `date/日期`, `close/收盘/收盘价`, optional `volume/成交量`, and optional
+`turnover_rate/换手率`. A local filename is not an upstream citation.
+
+`TUSHARE` reads `TUSHARE_TOKEN` only in the parent acquisition process. For equities it joins
+`daily`, `adj_factor`, and `daily_basic`, converts close to forward-adjusted values anchored to the
+latest session on or before the research cutoff, and attaches current turnover, valuation, and
+market-cap fields. For indices it uses `index_daily`. The token is never written to the request,
+receipt, state, prompt, or report. The bounded Antigravity and Claude host adapters strip it before
+launching model-role subprocesses; Codex collaboration-process isolation remains host-owned, so its
+roles must consume the frozen artifact rather than invoke the provider.
+
+`TUSHARE`, `BAOSTOCK`, and `AKSHARE_TENCENT` are market-data observations, not issuer evidence.
+Missing packages, network failures, empty windows and session mismatches return explicit failure
+statuses. The acquisition receipt binds provider version, request, market session and normalized
+series hashes. `market_snapshot_adapter.py` verifies that receipt before calculating metrics, so
+post-acquisition edits fail closed. BaoStock 0.8.9 exposes no total request timeout, so the adapter
+isolates it in a child process and enforces a 20-second wall-clock boundary.
+
+The complete adapter artifact—not only its nested `market_snapshot`—must be ingested through the
+orchestrator command above. The artifact carries the complete upstream acquisition receipt and binds
+the candidate identity plus normalized snapshot in the adapter receipt. Ingestion requires canonical Agenda
+evidence covering both price/expectation and activity/crowding, at least one benchmark-relative
+return, and at least one volume/turnover metric. It is idempotent by receipt and rejects a conflicting
+artifact for the same candidate and market session. Model-role payloads cannot invoke this command
+or expose the Tushare token.
 
 ## 3. Acquisition rules
 
@@ -63,14 +137,14 @@ probabilities, expected returns, target prices, or sizing inputs.
 
 ## 4. Provider and plugin boundary
 
-`scripts/tier1_providers.py`, `scripts/verified_fetcher.py`, and `scripts/verified_crawler.py` are
+`scripts/tier1_providers.py`, `scripts/verified_fetcher.py`, `scripts/verified_crawler.py`, and
+`scripts/free_market_observations.py` are
 read-only acquisition adapters. A provider response must still
 pass the citation and independence gates.
 
-Custom providers or Python plugins are not part of the published bundle. They execute local code and
-may transmit credentials or queries, so a host may load one only through a separately reviewed and
-explicitly authorized integration. Secrets belong in environment or host-managed credential stores
-and must never be written into a report, state file, prompt, or installation manifest.
+Optional Python providers execute local code and transmit bounded queries to the explicitly selected
+service. Secrets belong in environment or host-managed credential stores and must never be written
+into a report, state file, prompt, child-model environment, or installation manifest.
 
 ## 5. Failure reporting
 

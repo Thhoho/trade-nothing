@@ -1,8 +1,9 @@
 # Landscape Map Protocol
 
-Use this protocol whenever `research_intent` is `OPPORTUNITY_DISCOVERY` or `HYBRID`, including a
-single-company or single-asset task. Question type alone does not decide whether opportunity
-discovery runs. A pure `THESIS_CHALLENGE` may omit the map. The map expands the causal search
+Use this specialist protocol only when the Framer explicitly sets `landscape_required=true`.
+Opportunity discovery, a single-company task, or question type alone does not require a complete
+Landscape. The default Research Agenda and CandidateMap handle ordinary opportunity work. An
+explicit map expands the causal search
 surface before the research roles see entity names. It is a hypothesis garden, not evidence,
 candidate ranking, or a claim that every industry has seven investable paths.
 
@@ -83,7 +84,8 @@ that a source exists.
 - `REJECTED`: both roles probed, at least one rejects, and neither supports;
 - `UNKNOWN`: both roles probed but results conflict or neither resolves the path.
 
-Any `UNPROBED` path blocks opportunity-run convergence, a `FORMAL` report grade, and an `EDGE_FOUND`
+Any `UNPROBED` path blocks convergence and a `FORMAL` report grade only in a run that explicitly
+declared Landscape coverage. It also blocks an `EDGE_FOUND`
 claim. `UNKNOWN` is completed coverage, not positive evidence. It must remain visible in the report.
 Neither `REJECTED` nor `UNKNOWN` deletes its underlying wild hypothesis; the exploration ledger
 retains the path, counter-explanation, trace, and stop condition without treating it as a candidate.

@@ -4,19 +4,18 @@
   <img src="assets/images/hero_banner.jpg" alt="Trade Nothing——越过共识寻找现实" width="900" />
 </p>
 
-<p align="center"><strong>大胆猜想，沿迹求证，只让经得起证据的东西晋级。</strong></p>
+<p align="center"><strong>定清课题，逐题回答，发现盲点，解释市场。</strong></p>
 
 <p align="center">
   <a href="README.md">English</a> ·
   <a href="SKILL.md">运行契约</a> ·
-  <a href="docs/release-v0.14.0.md">v0.14.0 发布说明</a> ·
+  <a href="docs/release-v0.15.0.md">v0.15.0 发布说明</a> ·
   <a href="docs/hypothesis-led-research-v0.10.md">v0.10 基础设计</a>
 </p>
 
-Trade Nothing 是一套面向 Agent Runtime 的对抗式投资研究 Skill。它不是证否机器，也
-不是故事生成器：大胆、非共识的猜想可以先进入不可晋级的探索账本，再沿可观察代理
-线索、替代解释和证伪条件“草蛇灰线”地求证；正式结论则始终受确定性证据闸门和人工
-复核约束。
+Trade Nothing 是一套面向 Agent Runtime 的课题驱动、对抗式投资研究 Skill。它把一个
+课题拆成可回答的 Research Agenda，在有界轮次中搜索、质证和更新答案，主动发现新盲点，
+解释市场传导并映射具体证券。
 
 目标不是追求最低风险，而是更积极地寻找收益风险不对称的机会，同时让下行摩擦、
 失效条件、证据缺口以及市场已经支付的价格无处隐藏。
@@ -24,40 +23,67 @@ Trade Nothing 是一套面向 Agent Runtime 的对抗式投资研究 Skill。它
 它是研究工作流，不是自动交易系统。它不会自动给出买卖指令、目标价、预期收益、
 Kelly 仓位或持仓比例。
 
-## v0.14.0：假说驱动、时间有界的研究
+> **v0.15 产品形态已落地。** Research Agenda 是主对象，机会发现是核心任务，重型验证
+> 改为显式、选择性调用，Skill 止于 Deep Research Report 与条件性建议。Thesis、Decision、订单、仓位、组合、发布流程和跨产品 handoff
+> 均在边界之外。CandidateMap、discovery-first 调度和新默认 renderer 已接通；真实主题
+> 有效性仍未完成 benchmark。
+> 详见[课题驱动产品基准](docs/topic-led-research-product.md)。
 
-> **想象负责提出，证据负责晋级，风险控制决定能否执行。**
+## v0.15.0：发现优先，验证按需
+
+> **课题定义工作；每轮回答、质证，并发现此前没意识到的问题。**
 
 ```mermaid
 flowchart LR
-    A["研究意图"] --> B["探索轨<br/>假说花园 → WildHypothesis → ProxyTrail"]
-    A --> C["正式轨<br/>Crux → 已接纳证据 → 根命题结论"]
-    B -. "新 Seed 必须重新通过证据准入" .-> D["OpportunitySeed"]
-    C --> D
-    D --> E["CandidateScreen → 快照绑定核验 → 人工复核"]
-    B --> F["一个有界探索动作<br/>设计 → 计划 → 明确授权 → 回执"]
-    F -. "不能晋级、定仓或交易" .-> B
+    A["研究课题"] --> B["Research Agenda"]
+    B --> C["搜索 + 质证当前问题"]
+    C --> X["答案 + 新盲点"]
+    X --> B
+    X --> M["市场运行逻辑"]
+    M --> D["CandidateMap<br/>具名载体 + ticker + 角色"]
+    D --> E["EVENT_SETUP"]
+    D --> F["ECONOMIC_SETUP"]
+    E --> G["情景树 + 触发 + 失效"]
+    F --> G
+    G -. "仅显式请求" .-> H["聚焦验证"]
+    G --> I["Deep Research Report + 建议"]
+    H --> I
 ```
 
-两条轨道有意保持不对称：大胆假说可以在尚无引用时被记录，但不能改变 crux 支持度、
-根命题结论、CandidateScreen、Thesis、Decision、订单或持仓。它若要进入正式轨，
-必须新建 `OpportunitySeed`，并独立通过同一 Agent、同一轮次、同一 crux 的既有
-证据准入闸门。
+发现与验证有意保持不对称：未验证机制可以在尚无引用时被记录，具名载体也可以带着
+`HYPOTHESIS` 或 `INFERENCE` 标签进入 CandidateMap；只有前列候选的关键断言才需要
+更严格的证据路径。两条路径都不会创建自动下游动作。
 
-v0.14.0 保留 v0.10 的假说驱动基础，并把非对称机会挖掘、判别性证据、研究预算分配和
-有界停止升级为显式契约。当前方法包括：
+v0.15.0 保留 v0.10 的假说驱动基础，并把非对称机会挖掘、判别性证据、研究预算分配和
+有界停止升级为显式契约。
+
+### 相比 v0.14 改了什么
+
+- **研究内核改为问题原生。** Research Agenda、统一证据、答案合并与具名证券身份共用
+  确定性契约，但没有把研究流程重建成另一套状态机。
+- **产业逻辑真正连接市场选择。** `ValueTransferPath` 把事实/约束变化连接到利润池转移，
+  经济暴露池与市场实际交易池保持分离，并分别在事件日、战术周、财报季度和长期结构视野
+  下投影建议。
+- **推荐权限改为 fail-closed。** 条件性优先项必须同时具备路径语义对齐证据、最近替代项、
+  当前优先理由、切换条件、与原始 payload 绑定的多角色阶段回执，以及同时包含基准超额和
+  市场活跃度的宿主行情 artifact。模型自报行情和纯估值快照不能自行获得权限。
+- **A 股数据可回放且不泄露密钥。** Tushare Pro、BaoStock、AKShare 腾讯和 CSV 进入统一
+  冻结适配器；采集与 adapter 回执绑定候选、基准、交易日、原始序列和派生快照。Tushare
+  凭证不会进入角色 prompt、state、回执、报告或三个 Skill 安装目录。
+
+当前方法包括：
 
 - **时间语义失败关闭。** `as_of_date` 是证据截止日，`horizon` 是相对决策窗口，
   `forecast_target_date` 是可选的精确未来目标；未来目标绝不能伪装成证据覆盖日期。
-- **报告拥有锁定事实层。** 每份新 Decision Brief 必须以确定性 Facts Box 开头；
-  Evidence Ledger 与 Candidate Cards 独立、按内容寻址保存。自由叙事可以改善可读性，
-  但不能改写状态、引用或行动闸门。
+- **Deep Research Report 是默认产物。** 首屏给出结论与条件性建议，随后展示逐题答案、
+  质证、新盲点、市场机制、具名载体、事件与经济兑现、价格筹码和证据标签。旧
+  Opportunity Brief、Facts Box、Decision Brief 与 Candidate Cards 只保留为显式兼容视图。
 - **报告等级与候选晋级解耦。** `FORMAL` 只要求收敛、必要 Landscape 覆盖完成和每条
   crux 具备独立来源。CandidateScreen 只控制具名标的排序，快照 claim 核验只控制候选
   晋级；零候选也是合法的正式研究结果。
-- **大胆猜想成为一等研究对象。** `OPPORTUNITY_DISCOVERY` 和 `HYBRID` 先生成
-  5–7 条实体无关路径；每个 `WildHypothesis` 都要写清因果链、共识盲区、上行与
-  下行机制、催化剂、期限、替代解释和证伪条件。
+- **Research Agenda 成为一等研究对象。** 新课题先形成 4—8 个事实、因果、市场、候选、
+  定价、风险或前瞻问题；每轮保留答案、争议、缺失信息、新盲点和新问题。假说花园是
+  可选工具，只有显式声明完整 Landscape 时才要求 5—7 条路径。
 - **微弱线索变成可审计轨迹。** `ProxyTrail` 把一个可观察线索与方向、因果联系、
   替代解释、来源谱系、有界查询和停止条件绑定起来，不允许从“有意思”直接跳到
   “可投资”。
@@ -70,25 +96,26 @@ v0.14.0 保留 v0.10 的假说驱动基础，并把非对称机会挖掘、判�
 - **轮次可行性按真实结算工作计算。** Framer 必须在每轮最多两个 crux 的容量下，为
   每条 crux 预留完整结算路径所需触达；来源获取与 dry probe 可以同轮重叠，不再被错误
   串行相加。只有确实装不下完整路径时才拒绝开跑。
-- **候选局部补证可与根研究并行。** 已有证据的 Seed 可以提前补定价、催化剂、证伪条件
-  和快照缺口，但不能修复根 crux、补 Landscape 覆盖、解锁排序或绕过 CandidateScreen。
-- **正式停止不再抹去探索价值。** 每份报告只有一个确定性 `formal_action`，同时
-  最多保留一个需要单独授权的 `exploration_action`。后者只能获取信息，不能覆盖
-  正式停止或推动候选晋级。
+- **CandidateMap 保持轻量。** 上市证券必须有 ticker；价格、筹码或证据未知时，具名线索
+  仍可保留，但必须标明缺口。它不新增生命周期、信心分或预期收益排序。
+- **推荐权限使用独立可信数据平面。** 模型自报行情、只有估值的快照、纯假说价值路径和
+  单角色阶段读数都不能形成条件性优先级；必须有宿主摄入、同时覆盖相对强弱与市场活跃度的回执。
+- **严格停止不再抹去探索价值。** 只有在具名载体、替代路径、价格/筹码和事件窗口均
+  完成有界覆盖后，才能输出 `NO_USABLE_SETUP`；否则保持 `EXPLORE` 并给出最低成本检验。
 - **证据耗尽也能诚实收敛。** Judge 连续给出零信号不会改变支持度；只有在来源充分、
   多空双方都已探查且有界研究不再产生新证据时，crux 才可能进入 `MONITORABLE`。
   从未探查、只有单边、来源单薄或新引入的 crux 继续失败关闭。
 
-完整说明见 [v0.14.0 发布说明](docs/release-v0.14.0.md)、历史
+完整说明见 [v0.15.0 发布说明](docs/release-v0.15.0.md)、历史
 [v0.10 基础设计](docs/hypothesis-led-research-v0.10.md)、
 [假说协议](references/hypothesis-protocol.md)和
 [报告契约](references/report-contract.md)。
 
 > [!IMPORTANT]
-> **校准状态：** v0.14.0 已实现，并通过确定性工程安全门；但
+> **校准状态：** v0.15.0 已实现，并通过确定性工程安全门；但
 > `scripts/benchmark_current.py --check` 当前返回 `UNBENCHMARKED_METHOD_CHANGE`。
 > 这表示运行方法已不同于最后校准的 v0.9.9 身份。现有 closed-packet 与 discovery
-> 套件只是历史控制，不是 v0.14.0 提高机会召回率、线索质量、Alpha、收益率或风险调整
+> 套件只是历史控制，不是 v0.15.0 提高机会召回率、线索质量、Alpha、收益率或风险调整
 > 收益的证据。工程正确性、研究有效性和投资收益是三层不同结论。
 
 ## 现在真正可靠的部分
@@ -125,7 +152,7 @@ Framer 在父上下文内联运行且不浏览。Detective 和 Inquisitor 必须
 把下面整段直接发给 Codex、Claude Code、Gemini CLI、Antigravity 或其他编程 Agent：
 
 ```text
-请为当前 Agent Runtime 安装 Trade Nothing v0.14.0，源码为：
+请为当前 Agent Runtime 安装 Trade Nothing v0.15.0，源码为：
 https://github.com/Thhoho/trade-nothing.git
 
 安全与验收要求：
@@ -137,9 +164,9 @@ https://github.com/Thhoho/trade-nothing.git
    无法确认时停止并询问我，不要猜路径。
 3. 写入前检查已有源码目录和安装目标。不得 reset、删除或覆盖 dirty checkout、运行状态、
    scratch、个人研究记忆或目标目录元数据。
-4. 在新的临时目录或我批准的源码目录 clone/fetch，checkout 精确的 annotated tag
-   `v0.14.0`，确认 `git cat-file -t v0.14.0` 输出 `tag`，并报告
-   `git rev-parse 'v0.14.0^{commit}'` 解析出的 commit；不得从未打 tag 的分支 tip 安装。
+4. 在新的临时目录或我批准的源码目录 clone/fetch `origin/main`，detach 到刚拉取的精确
+   commit，并报告 `git rev-parse HEAD`；不得在不说明安装 commit 的情况下直接依赖持续移动
+   的分支。若用户另行明确要求 annotated release tag，再单独核验；这条安装指令不授权建 tag。
 5. 在该 checkout 中运行 `python3 scripts/version.py` 和 `make test`。除非必要检查因缺少
    依赖失败且我明确批准，否则不要安装第三方依赖。
 6. 使用 `python3 scripts/install_skill.py --source <checkout> --targets <target>` 安装，
@@ -147,7 +174,7 @@ https://github.com/Thhoho/trade-nothing.git
    --targets <target>`。
 7. 保留 `Methodology_Evolution.md`、`scripts/.state`、`.git` 和
    `~/.trade-nothing/` 下的全部内容；旧受控代码交给安装器移入可恢复隔离区。
-8. 宿主要求时，网络访问和工作区外写入必须先申请权限。最后报告 tag、commit、安装目标、
+8. 宿主要求时，网络访问和工作区外写入必须先申请权限。最后报告 commit、安装目标、
    测试结果、同步结果和被隔离文件。
 ```
 
@@ -158,10 +185,10 @@ Codex 和 Claude 目录，需要明确要求 Agent 运行 `make install DEV_DIR=
 ### Shell 安装
 
 ```bash
-git clone --branch v0.14.0 --depth 1 https://github.com/Thhoho/trade-nothing.git
+git clone --branch main --depth 1 https://github.com/Thhoho/trade-nothing.git
 cd trade-nothing
-test "$(git cat-file -t v0.14.0)" = tag
-git rev-parse 'v0.14.0^{commit}'
+git switch --detach
+git rev-parse HEAD
 python3 scripts/version.py
 make test
 ```
@@ -192,13 +219,51 @@ make install DEV_DIR="$(pwd)"
    隔离的 Detective 与 Inquisitor。
 3. Judge 只对带引用的正式证据评分；由引擎而不是 LLM 更新支持度，并决定继续、
    收敛或熔断。
-4. 机会研究必须先让有证据的 Seed 成熟并完成 CandidateScreen，再进入快照绑定的
-   claim 核验与人工复核。
+4. 机会研究先推进 Research Agenda、产业到市场映射与 CandidateMap；CandidateScreen 和
+   快照绑定的 claim 核验只在用户要求核验短名单时显式运行。
 5. 如有价值，可以设计一个有界探索动作；计划不等于授权，只有用户对精确 action ID
    的明确授权，才允许执行一次查询并提交一次回执。
 
 驱动底层命令前，必须完整阅读 [SKILL.md](SKILL.md)。运行恢复、CandidateScreen、
 claim 核验和探索执行的精确 schema 都以其中契约为准。
+
+需要 A 股有界行情时，先采集并生成 adapter artifact，再用
+`--ingest-market-snapshot --market-snapshot PATH` 显式写入注册 run。它只是数据注入，
+不是候选状态迁移。
+
+### 配置 Tushare Pro
+
+Trade Nothing 只从**父级数据采集进程**读取 `TUSHARE_TOKEN`。不要把 token 写进仓库、
+提交到 Git 的 `.env`、请求 JSON、角色 prompt，或 Codex、Claude、Gemini 的三个 Skill
+目录。三个 Agent 不需要分别保存三份 token；只要它们继承同一个宿主环境即可。
+
+在 macOS/Linux 终端启动 Agent 时，先在启动它的 shell 中配置；如需持久化，只写入你自己的
+私有 shell profile：
+
+```bash
+export TUSHARE_TOKEN="替换为你自己的-token"
+python3 -c 'import os; print("TUSHARE_TOKEN 已配置" if os.environ.get("TUSHARE_TOKEN") else "TUSHARE_TOKEN 未配置")'
+```
+
+如果 macOS GUI 应用没有继承终端环境，把已经 export 的值注入当前用户的 launch 环境，
+然后彻底退出并重启应用：
+
+```bash
+launchctl setenv TUSHARE_TOKEN "$TUSHARE_TOKEN"
+```
+
+每次只执行一个显式有界请求；适配器不会扫描全市场，也不会静默切换数据源：
+
+```bash
+python3 scripts/free_market_observations.py --input tushare-request.json \
+  --output market-observations.json
+python3 scripts/market_snapshot_adapter.py --input market-observations.json \
+  --output market-snapshot.json
+```
+
+在 `tushare-request.json` 中设置 `"provider": "TUSHARE"`；完整请求 schema 和写入注册 run
+的命令见 [`references/data-sources.md`](references/data-sources.md)。数据调用成功只证明采集与
+确定性转换完成，不证明公司基本面、推荐质量或预期收益。
 
 ## 最小手动流程
 
@@ -219,10 +284,9 @@ python3 scripts/deepthink_orchestrator_v2.py --submit \
 python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET"
 ```
 
-报告命令会返回锁定的 `facts_box_markdown`、独立的
-`evidence_ledger_markdown`、可选 Candidate Cards 和结构化 view model。新的宿主应把
-Facts Box 原样放在内容驱动的 Decision Brief 顶部，并单独保存 Evidence Ledger；
-确定性的 `brief` 与 `full` 仅作为兼容回退。
+报告命令会返回默认的 `deep_research_report_markdown`、独立的
+`evidence_ledger_markdown`、兼容视图和结构化 view model。新的宿主默认交付 Deep
+Research Report；`opportunity`、`brief`、`cards` 和 `audit` 仅作为显式兼容视图。
 
 常见终态或续研状态：
 
@@ -239,11 +303,11 @@ Facts Box 原样放在内容驱动的 Decision Brief 顶部，并单独保存 Ev
   但不再删除研究成果。
 - 它只由收敛、必要 Landscape 覆盖和 crux 独立来源决定。CandidateScreen 与 claim 核验
   进入独立的 `candidate_lifecycle`，不会降低报告等级。
-- `publication_allowed`（仅 `FORMAL`）：对外传播稿的唯一硬闸门。
-- `ranking_allowed`（需完成 CandidateScreen）：对具名标的排序或使用推荐语气的硬闸门，
-  且只覆盖 `candidate_lifecycle.rankable_seed_ids`。
-- 断言分三档：`VERIFIED` 可直接陈述；`SINGLE_SOURCE` 标注『单一来源·未交叉验证』；
-  `HYPOTHESIS` 标注『假说』并允许写进正文。撕掉标签才是违规。
+- 报告等级不产生发布权限，也不拥有任何下游流程。
+- 当触发、失效、价格筹码、替代解释和证据边界可见时，可以对具名标的给出条件性研究
+  或市场建议。
+- 断言分四档：`FACT` 可直接陈述；`SINGLE_SOURCE` 标注单一来源；`INFERENCE` 与
+  `HYPOTHESIS` 必须带标签并允许写进正文。撕掉标签才是违规。
 
 旧的 `-deepthink` 单后验/LFI 流程已于 v0.13.0 退役。它的 LFI/AFI/EGI/后验数值未经校准、
 维护独立的 `scripts/.state/` 状态格式，且其 harvest 路径对 `-deepthink2` 的状态会静默失效。
@@ -277,6 +341,7 @@ Facts Box 原样放在内容驱动的 Decision Brief 顶部，并单独保存 Ev
 | `TRADE_NOTHING_VAULT_DIR` | `~/trade-nothing-vault` | 研究资料库 |
 | `TRADE_NOTHING_EVOLUTION_PATH` | `<vault>/Methodology/Evolution.md` | 负面先验记忆 |
 | `TRADE_NOTHING_MODEL_DEEP` | 宿主默认 | 质量关键角色与 Judge |
+| `TUSHARE_TOKEN` | 未配置 | 仅供父进程有界采集 A 股行情的 Tushare Pro 凭证 |
 
 ## 验证、维护与同步
 
@@ -306,7 +371,7 @@ make status DEV_DIR="$(pwd)"
 ```text
 agents/       隔离角色契约
 scripts/      Orchestrator、确定性引擎、校验器与测试
-references/   规范性研究与交接协议
+references/   规范性研究与报告协议；旧交接文件仅作兼容
 docs/         架构与设计说明
 benchmarks/   冻结评估包与方法绑定
 assets/       报告模板与 README 插图

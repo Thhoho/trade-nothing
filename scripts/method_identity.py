@@ -28,7 +28,9 @@ def _operational_paths(root=ROOT):
         ("references", (".md",)),
         ("scripts", (".py",)),
     ):
-        for path in (root / folder).iterdir():
+        for path in (root / folder).rglob("*"):
+            if not path.is_file():
+                continue
             if path.suffix not in suffixes:
                 continue
             if folder == "scripts" and path.name.startswith("test_"):
@@ -95,13 +97,11 @@ def build_method_identity_from_git(repo, commit):
         if path == "SKILL.md"
         or (
             path.startswith("agents/")
-            and path.count("/") == 1
             and (path.endswith(".md") or path.endswith(".yaml"))
         )
-        or (path.startswith("references/") and path.count("/") == 1 and path.endswith(".md"))
+        or (path.startswith("references/") and path.endswith(".md"))
         or (
             path.startswith("scripts/")
-            and path.count("/") == 1
             and path.endswith(".py")
             and not Path(path).name.startswith("test_")
         )

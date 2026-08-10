@@ -276,6 +276,10 @@ def _normalize_seed(raw, state, agent_name, round_num, allowed, audit):
     if asset_type not in ASSET_TYPES:
         _reason(audit, "invalid_asset_type")
         return None
+    ticker = _ticker(raw.get("ticker")) or None
+    if asset_type == "LISTED_EQUITY" and not ticker:
+        _reason(audit, "listed_equity_ticker_required")
+        return None
     if not causal_path:
         _reason(audit, "missing_causal_path")
         return None
@@ -302,7 +306,7 @@ def _normalize_seed(raw, state, agent_name, round_num, allowed, audit):
 
     seed = {
         "candidate": candidate,
-        "ticker": _ticker(raw.get("ticker")) or None,
+        "ticker": ticker,
         "asset_type": asset_type,
         "relation_type": relation,
         "origin_crux": origin,
@@ -551,6 +555,10 @@ def evidence_maturity(seed, state=None):
 def seed_contract_blockers(seed):
     """Return deterministic fields missing before CandidateScreen dispatch."""
     blockers = []
+    if _text(seed.get("asset_type")).upper() == "LISTED_EQUITY" and not _ticker(
+        seed.get("ticker")
+    ):
+        blockers.append("listed_equity_ticker_required")
     required = {
         "economic_exposure": "missing_economic_exposure",
         "why_market_may_miss": "missing_expectation_gap",
@@ -941,147 +949,38 @@ def harvest_round(state, round_num, detective=None, inquisitor=None):
     return audit
 
 
-def _escalation_evidence(hypothesis):
-    """Collect valid citations from a hypothesis's proxy trails.
-
-    Returns (evidence_bearing_trail_count, deduplicated_citations,
-    independent_publisher_domains).  Domain identity is derived from citation
-    URLs, never from agent-supplied labels.
-    """
-    trails = hypothesis.get("proxy_trails") if isinstance(hypothesis, dict) else None
-    trails = trails if isinstance(trails, list) else []
-    trail_count = 0
-    citations = []
-    domains = set()
-    seen = set()
-    for trail in trails:
-        if not isinstance(trail, dict):
-            continue
-        items = trail.get("evidence")
-        items = items if isinstance(items, list) else []
-        valid = [c for c in items if crux_engine.valid_citation(c)]
-        if valid:
-            trail_count += 1
-        for citation in valid:
-            key = crux_engine.citation_identity(citation)
-            if key and key not in seen:
-                seen.add(key)
-                citations.append(copy.deepcopy(citation))
-            domain = crux_engine.citation_publisher_identity(citation)
-            if domain:
-                domains.add(domain)
-    return trail_count, citations, domains
-
-
-def _first_context_value(context, field, plural_field):
-    """Return one context value, preferring the singular field then the list."""
-    context = context if isinstance(context, dict) else {}
-    value = context.get(field)
-    if isinstance(value, list):
-        value = value[0] if value else None
-    if not _text(value):
-        values = context.get(plural_field)
-        if isinstance(values, list) and values:
-            value = values[0]
-    return _text(value) or None
-
-
 def escalate_mature_hypotheses(state, round_num):
-    """Auto-promote EVIDENCE_BACKED hypotheses into draft OpportunitySeeds.
+    """Audit mature hypotheses without converting prose into candidates.
 
-    Escalation is conservative by design: every draft seed is classified
-    SECOND_ORDER, and its maturity label comes from the deterministic evidence
-    gate (evidence_maturity), never from agent claims.  A draft seed is a
-    research-queue entry, not a screen-ready or investable candidate.  The
-    draft is skipped when its seed_id already exists in the ledger or when the
-    hypothesis has already been escalated (same origin_hypothesis_id).
+    Earlier versions truncated the hypothesis sentence into ``candidate`` and
+    froze that prose as an OpportunitySeed identity. Candidate-specific ticker,
+    price, and exposure evidence could then never align with the seed. The
+    product-reset contract retains this compatibility hook but requires a role
+    to submit a new, concrete, independently validated seed instead.
     """
+    _ = round_num  # retained in the compatibility signature and audit call site
     result = {
         "escalated_count": 0,
         "escalated_ids": [],
         "skipped_existing": 0,
         "skipped_immature": 0,
+        "skipped_requires_explicit_seed": 0,
+        "eligible_hypothesis_count": 0,
+        "automatic_promotion_disabled": True,
     }
     if not isinstance(state, dict):
         return result
     ledger = state.get("hypothesis_ledger")
     hypotheses = ledger.get("hypotheses", []) if isinstance(ledger, dict) else []
-    seeds = state.setdefault("opportunity_seeds", [])
-    existing_seed_ids = {
-        _text(seed.get("seed_id"))
-        for seed in seeds
-        if isinstance(seed, dict)
-    }
-    existing_origin_hypotheses = {
-        _text(seed.get("origin_hypothesis_id"))
-        for seed in seeds
-        if isinstance(seed, dict)
-    }
+    state.setdefault("opportunity_seeds", [])
     for hypothesis in hypotheses:
         if not isinstance(hypothesis, dict):
             continue
         if hypothesis.get("state") != EVIDENCE_BACKED:
-            continue
-        trail_count, citations, domains = _escalation_evidence(hypothesis)
-        candidate = _text(hypothesis.get("hypothesis"))[:60]
-        if trail_count < 2 or len(domains) < 2 or not candidate:
             result["skipped_immature"] += 1
             continue
-        context = hypothesis.get("context")
-        origin_crux = _first_context_value(context, "origin_crux", "origin_cruxes")
-        landscape_path_id = _first_context_value(
-            context, "landscape_path_id", "landscape_path_ids"
-        )
-        causal_chain = [
-            c for c in (hypothesis.get("causal_chain") or []) if _text(c)
-        ]
-        seed = {
-            "candidate": candidate,
-            "relation_type": "SECOND_ORDER",
-            "origin_crux": origin_crux,
-            "origin_hypothesis_id": _text(hypothesis.get("hypothesis_id")),
-            "landscape_path_id": landscape_path_id,
-            "causal_path": " -> ".join(causal_chain),
-            "economic_exposure": _text(hypothesis.get("value_transfer")),
-            "why_market_may_miss": _text(hypothesis.get("why_nonconsensus")),
-            "catalyst": _text(hypothesis.get("catalyst")),
-            "falsifier": _text(hypothesis.get("falsifier")),
-            "evidence": citations,
-            "asymmetry_case": hypothesis_engine._asymmetry_case(hypothesis),
-            "scenario_paths": copy.deepcopy(
-                hypothesis.get("scenario_paths")
-                if isinstance(hypothesis.get("scenario_paths"), dict)
-                else {}
-            ),
-            "causal_chain": causal_chain,
-            "payoff": hypothesis_engine._payoff(hypothesis),
-            "source_agents": ["hypothesis_escalation"],
-            "first_seen_round": round_num,
-            "last_seen_round": round_num,
-        }
-        key = _seed_key(seed)
-        if not key.split("|", 1)[0]:
-            result["skipped_immature"] += 1
-            continue
-        seed["seed_id"] = _seed_id(key)
-        seed["entity_id"] = entity_id(seed)
-        seed["maturity"] = evidence_maturity(seed)
-        origin_hypothesis_id = _text(seed.get("origin_hypothesis_id"))
-        if (
-            seed["seed_id"] in existing_seed_ids
-            or (
-                origin_hypothesis_id
-                and origin_hypothesis_id in existing_origin_hypotheses
-            )
-        ):
-            result["skipped_existing"] += 1
-            continue
-        seeds.append(seed)
-        existing_seed_ids.add(seed["seed_id"])
-        if origin_hypothesis_id:
-            existing_origin_hypotheses.add(origin_hypothesis_id)
-        result["escalated_count"] += 1
-        result["escalated_ids"].append(seed["seed_id"])
+        result["eligible_hypothesis_count"] += 1
+        result["skipped_requires_explicit_seed"] += 1
     return result
 
 

@@ -21,6 +21,7 @@ import crux_engine
 import hypothesis_engine
 import opportunity_engine
 import report_v2
+import execution_integrity
 from version import __version__
 
 
@@ -41,6 +42,13 @@ DATA_NUMBER_RE = re.compile(
     r"(\d+(?:\.\d+)?\s*(?:%|元|亿元|亿|万元|万|MW|GW|GWh|Wh|℃|°C|美元|颗|吨|μm|um|cm2|倍|股|亿元?))|"
     r"(\d{4}年(?:\d{1,2}月(?:\d{1,2}日)?)?)|"
     r"(\d{4}-\d{2}(?:-\d{2})?)"
+)
+ROUND_COMPLETION_CLAIM_RE = re.compile(
+    r"^(?:#{1,6}\s*)?(?:"
+    r"第\s*[一二三四五六七八九十\d]+\s*轮(?:\s*[:：—-]|\s*$)|"
+    r"(?:完成|经过|共|研究|运行|博弈|深度|质证)\s*[一二三四五六七八九十\d]+\s*轮|"
+    r"[^\n]{0,24}轮次\s*[:：=]\s*\d+|Round\s*\d+)",
+    flags=re.IGNORECASE | re.MULTILINE,
 )
 
 
@@ -89,6 +97,39 @@ def validate_report(path, state_path=""):
     errors = []
     warnings = []
     normalized_md = md.lstrip("\ufeff \t\r\n")
+    execution_marker = execution_integrity.parse_marker(md)
+    is_trade_nothing_artifact = any(fragment in md for fragment in (
+        "# Deep Research Report",
+        "# Decision Brief",
+        "# Candidate Cards",
+        f"# Trade Nothing v{__version__}",
+        "Trade Nothing",
+        "-deepthink2",
+        FACTS_BOX_START,
+    )) or bool(re.search(r"\bdeepthink2\b", md, flags=re.IGNORECASE))
+    if is_trade_nothing_artifact and execution_marker is None:
+        errors.append(
+            "Missing TRADE_NOTHING_EXECUTION_INTEGRITY marker; execution mode is unproven."
+        )
+    if execution_marker is not None:
+        if execution_marker.get("schema") != execution_integrity.AUDIT_SCHEMA:
+            errors.append("Execution integrity marker schema is invalid.")
+        mode = str(execution_marker.get("execution_mode") or "")
+        if mode == "INLINE_DEGRADED_RESEARCH" and ROUND_COMPLETION_CLAIM_RE.search(md):
+            errors.append(
+                "INLINE_DEGRADED_RESEARCH cannot claim completed rounds or Round-numbered work."
+            )
+        if (
+            execution_marker.get("can_claim_completed_rounds") is not True
+            and ROUND_COMPLETION_CLAIM_RE.search(md)
+        ):
+            errors.append(
+                "Report claims research rounds without complete state-bound execution receipts."
+            )
+        if not state_path and mode != "INLINE_DEGRADED_RESEARCH":
+            warnings.append(
+                "Execution integrity marker was not independently checked; pass --state."
+            )
     has_decision_brief = normalized_md.startswith("# Decision Brief")
     has_audit = "## A · 证明账本" in md
     has_insight_cards = "# Insight Cards" in md
@@ -135,6 +176,11 @@ def validate_report(path, state_path=""):
         with open(state_path, encoding="utf-8") as handle:
             state = json.load(handle)
         state_bound_md = md.lstrip("\ufeff \t\r\n")
+        expected_execution = execution_integrity.audit_state(state)
+        if execution_marker != expected_execution:
+            errors.append(
+                "Execution integrity marker differs from the supplied state and run manifest."
+            )
         official_view = None
         if has_facts_box:
             canonical_facts = ""
@@ -158,6 +204,8 @@ def validate_report(path, state_path=""):
                 official_view = "facts_box"
             else:
                 official_view = "composed_decision_brief"
+        elif state_bound_md.startswith("# Deep Research Report"):
+            official_view = "research"
         elif (
             state_bound_md.startswith("# Decision Brief")
             and "# Audit Appendix" in state_bound_md
@@ -431,6 +479,22 @@ FORBIDDEN_OUTPUT_PATTERNS = (
     ("TRADE_INSTRUCTION", re.compile(r"建议买入|建议卖出|逢低(买|配|吸)|止损|buy\s+rating|sell\s+rating", re.I)),
 )
 
+NEGATED_GUARDRAIL_RE = re.compile(
+    r"(?:不代表|不构成|不提供|未提供|不得视为|不能作为|并非).{0,40}"
+    r"(?:目标价|target\s+price|price\s+target|预期收益率|期望收益|"
+    r"expected\s+return|建议买入|建议卖出|仓位|position\s+siz)",
+    re.I,
+)
+
+
+def _is_guardrail_disclaimer(line):
+    """Recognize a pure prohibition/disclaimer, not a disguised numeric output."""
+    if not NEGATED_GUARDRAIL_RE.search(line):
+        return False
+    # A disclaimer that also supplies a number may still contain the forbidden
+    # product (for example, "不构成建议，目标价 78 元"). Keep that visible.
+    return re.search(r"\d", line) is None
+
 
 def _forbidden_output_hits(text):
     """Locate lines containing outputs that are never permitted at any grade."""
@@ -438,6 +502,8 @@ def _forbidden_output_hits(text):
     for number, line in enumerate(text.splitlines(), 1):
         stripped = line.strip()
         if not stripped:
+            continue
+        if _is_guardrail_disclaimer(stripped):
             continue
         for name, pattern in FORBIDDEN_OUTPUT_PATTERNS:
             if pattern.search(stripped):
@@ -456,6 +522,13 @@ def _ledger_source_urls(state):
             identity = crux_engine.citation_source_identity(citation)
             if identity:
                 urls.add(identity)
+
+    agenda = state.get("research_agenda", {})
+    if isinstance(agenda, dict):
+        # Agenda-native runs admit evidence here first.  Legacy crux, seed and
+        # landscape planes below remain compatibility inputs only.
+        for citation in agenda.get("evidence_items", []) or []:
+            add(citation)
 
     for crux in state.get("cruxes", {}).values():
         for citation in crux.get("citations", []) or []:

@@ -180,6 +180,7 @@ class ClaimTierTests(unittest.TestCase):
     def test_missing_required_landscape_cannot_erase_its_own_grade_gate(self):
         st = converged_state()
         st["research_intent"] = "OPPORTUNITY_DISCOVERY"
+        st["landscape_required"] = True
         st["cruxes"]["C1"]["citations"] = [
             {**citation("a"), "url": "https://publisher-one.org/a", "source": "Publisher One"},
             {**citation("b"), "url": "https://publisher-two.org/b", "source": "Publisher Two"},
@@ -975,13 +976,14 @@ class ReportSafetyTests(unittest.TestCase):
             os.environ["TRADE_NOTHING_SCRATCH_DIR"] = self.old_scratch
         self.tmp.cleanup()
 
-    def test_full_report_leads_with_decision_brief_and_defers_audit(self):
+    def test_default_report_is_deep_research_and_full_defers_audit(self):
         md = report_v2.render(converged_state())
-        self.assertTrue(md.startswith("# Decision Brief"))
-        self.assertLess(md.index("# Insight Cards"), md.index("# Candidate Cards"))
-        self.assertLess(md.index("# Candidate Cards"), md.index("# Audit Appendix"))
-        self.assertLess(md.index("# Audit Appendix"), md.index("## A · 证明账本"))
-        self.assertIn("<details><summary>展开完整证据、状态、来源与运行审计</summary>", md)
+        self.assertTrue(md.startswith("# Deep Research Report"))
+        self.assertNotIn("# Audit Appendix", md)
+        full = report_v2.render(converged_state(), view="full")
+        self.assertTrue(full.startswith("# Deep Research Report"))
+        self.assertLess(full.index("# Audit Appendix"), full.index("## A · 证明账本"))
+        self.assertIn("<details><summary>展开完整证据、状态、来源与运行审计</summary>", full)
 
     def test_report_view_model_excludes_raw_role_payloads(self):
         st = converged_state()
@@ -1093,9 +1095,7 @@ class ReportSafetyTests(unittest.TestCase):
         self.assertNotIn("INSUFFICIENT_EVIDENCE / BEAR / MONITOR", md)
         self.assertNotIn("最低路径支持度", md)
         self.assertNotIn("命题均值支持度", md)
-        self.assertIn("Landscape 双边覆盖 + 候选收割静默", md)
-        self.assertIn("## 研究轴证据状态", md)
-        self.assertIn("不构成候选宇宙的整体多空方向", md)
+        self.assertIn("## 5. 具体载体与机会结构", md)
         self.assertNotIn("## 原想法经质证后发生了什么", md)
         self.assertIn("**研究轴质证**", facts)
         self.assertNotIn("**经质证后**", facts)
@@ -1107,7 +1107,7 @@ class ReportSafetyTests(unittest.TestCase):
             "status": "MONITORABLE", "retired": True, "first_contested": 1,
             "citations": [citation("drift-a"), citation("drift-b")],
         })
-        md = report_v2.render(st).replace(
+        md = report_v2.render(st, view="brief").replace(
             "证据方向: **UNDETERMINED**", "证据方向: **BEAR**"
         )
         with tempfile.NamedTemporaryFile("w", suffix=".md", encoding="utf-8") as report_handle, \
@@ -1191,8 +1191,8 @@ class ReportSafetyTests(unittest.TestCase):
         self.assertNotIn("建议仓位", md)
         self.assertNotIn("| 概率 |", md)
         self.assertNotIn("回报预期", md)
-        self.assertIn("辩论支持度", md)
-        self.assertIn("不是交易指令", md)
+        self.assertIn("核验序不是收益排序", md)
+        self.assertIn("不构成操作建议", md)
         self.assertNotIn("NO_EDGE / AVOID", md)
         self.assertNotIn("全量工作数据", md)
         self.assertNotIn("detective_raw", md)
@@ -1201,8 +1201,7 @@ class ReportSafetyTests(unittest.TestCase):
     def test_unconverged_render_is_delivered_but_graded_exploratory(self):
         md = report_v2.render(state())
         self.assertIn("EXPLORATORY", md)
-        self.assertIn("对外发布=False", md)
-        self.assertIn("个股排序=False", md)
+        self.assertIn("`EXPLORE`", md)
 
     def test_compact_formal_report_passes_validator_without_raw_bundle(self):
         st = converged_state()
@@ -1216,13 +1215,16 @@ class ReportSafetyTests(unittest.TestCase):
             "falsifier": "observable reversal",
             "citations": [citation("formal-a"), citation("formal-b")],
         })
-        md = report_v2.render(st)
+        md = report_v2.render(st, view="brief")
         with tempfile.NamedTemporaryFile("w", suffix=".md", encoding="utf-8") as handle:
             handle.write(md)
             handle.flush()
             errors, warnings = validate_report_v2.validate_report(handle.name)
         self.assertEqual(errors, [])
-        self.assertEqual(warnings, [])
+        self.assertEqual(
+            warnings,
+            ["Execution integrity marker was not independently checked; pass --state."],
+        )
 
     def test_report_validator_rejects_legacy_no_edge_avoid_semantics(self):
         st = converged_state()
@@ -1258,7 +1260,7 @@ class ReportSafetyTests(unittest.TestCase):
             "falsifier": "contract fails",
             "evidence": [citation("seed-a"), citation("seed-b")],
         }]
-        md = report_v2.render(st)
+        md = report_v2.render(st, view="brief")
         with tempfile.NamedTemporaryFile("w", suffix=".md", encoding="utf-8") as report_handle, \
                 tempfile.NamedTemporaryFile("w", suffix=".json", encoding="utf-8") as state_handle:
             report_handle.write(md)
@@ -1287,10 +1289,9 @@ class ReportSafetyTests(unittest.TestCase):
             "artifact_policy": orchestrator._frame_artifact_policy(),
         }
         md = report_v2.render(st)
-        self.assertIn("## 0.1 · 立题完整性闸", md)
+        self.assertIn("## 10. 证据边界与方法限制", md)
         self.assertIn("PROVISIONAL_UNVERIFIED", md)
         self.assertIn("unverified seed", md)
-        self.assertIn("requires_explicit_user_opt_in", md)
 
     def test_orchestrator_can_emit_brief_without_synthesis_packet(self):
         topic = "brief report view"
@@ -1320,7 +1321,7 @@ class ReportSafetyTests(unittest.TestCase):
         self.assertTrue(out["candidate_cards_markdown"].startswith("# Candidate Cards"))
         self.assertIn("## A · 证明账本", out["evidence_ledger_markdown"])
         self.assertTrue(out["report_markdown_deprecated"])
-        self.assertIn("两个主文件", out["instruction"])
+        self.assertIn("deep_research_report_markdown", out["instruction"])
         self.assertEqual(
             out["report_view_model"]["schema_version"],
             "trade-nothing.report-view-model.v2",
@@ -1366,7 +1367,7 @@ class ReportSafetyTests(unittest.TestCase):
         self.assertEqual(out["report_markdown"], out["facts_box_markdown"])
         self.assertNotIn("synthesis_packet", out)
 
-    def test_synthesis_packet_ships_by_default_and_carries_the_contract(self):
+    def test_synthesis_packet_is_explicit_opt_in_and_carries_legacy_contract(self):
         topic = "brief report synthesis opt in"
         st = converged_state()
         st["cruxes"]["C1"].update({
@@ -1380,7 +1381,11 @@ class ReportSafetyTests(unittest.TestCase):
         without_synthesis = orchestrator.cmd_report(
             topic, challenge_only=True, report_view="brief", include_synthesis=False
         )
-        out = orchestrator.cmd_report(topic, challenge_only=True, report_view="brief")
+        default_out = orchestrator.cmd_report(topic, challenge_only=True, report_view="brief")
+        self.assertNotIn("synthesis_packet", default_out)
+        out = orchestrator.cmd_report(
+            topic, challenge_only=True, report_view="brief", include_synthesis=True
+        )
         self.assertIn("synthesis_packet", out)
         packet = out["synthesis_packet"]
         # The packet is the enforceable contract for styled artifacts, which
@@ -1435,6 +1440,14 @@ class StyledArtifactLintTests(unittest.TestCase):
         self.assertEqual(lint["urls_not_in_ledger"],
                          ["https://never-seen.example.org/story"])
 
+    def test_agenda_native_evidence_is_part_of_the_validator_ledger(self):
+        st = converged_state()
+        agenda_citation = citation("agenda-native")
+        st["research_agenda"] = {"evidence_items": [agenda_citation]}
+        article = self._write(f"cited {agenda_citation['url']}\n")
+        lint = validate_report_v2.lint_styled_artifact(article, self._state_file(st))
+        self.assertEqual(lint["urls_not_in_ledger"], [])
+
     def test_flags_outputs_that_are_never_allowed(self):
         st = converged_state()
         article = self._write("目标价 78 元。\n建议配置，仓位不超过 20%。\n")
@@ -1448,6 +1461,21 @@ class StyledArtifactLintTests(unittest.TestCase):
         article = self._write("公募基金已经在 Q1 大幅减仓源杰，机构在业绩爆发前就跑了。\n")
         lint = validate_report_v2.lint_styled_artifact(article, self._state_file(st))
         self.assertEqual(lint["forbidden_output_hits"], [])
+
+    def test_guardrail_disclaimer_is_not_misread_as_forbidden_output(self):
+        st = converged_state()
+        article = self._write(
+            "本轮状态只说明研究覆盖，不代表收益率、目标价或任何外部执行权限。\n"
+        )
+        lint = validate_report_v2.lint_styled_artifact(article, self._state_file(st))
+        self.assertEqual(lint["forbidden_output_hits"], [])
+
+        article = self._write("不构成投资建议，目标价 78 元。\n")
+        lint = validate_report_v2.lint_styled_artifact(article, self._state_file(st))
+        self.assertEqual(
+            {hit["kind"] for hit in lint["forbidden_output_hits"]},
+            {"TARGET_PRICE"},
+        )
 
     def test_lint_never_claims_to_be_a_proof(self):
         st = converged_state()

@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import method_identity
 import version
 
 
@@ -31,6 +32,15 @@ def _copy_semantic_fixture(destination):
 
 
 class VersionSemanticTests(unittest.TestCase):
+    def test_method_identity_includes_nested_runtime_contracts(self):
+        paths = {
+            path.relative_to(ROOT).as_posix()
+            for path in method_identity._operational_paths(ROOT)
+        }
+        self.assertIn("agents/runtime/research-round.md", paths)
+        self.assertIn("agents/runtime/detective.md", paths)
+        self.assertIn("agents/runtime/inquisitor.md", paths)
+
     def test_current_repository_passes_semantic_audit(self):
         self.assertEqual(version.version_consistency_errors(ROOT), [])
 
@@ -69,27 +79,31 @@ class VersionSemanticTests(unittest.TestCase):
     def test_readmes_publish_safe_agent_install_contract(self):
         english = (ROOT / "README.md").read_text(encoding="utf-8")
         chinese = (ROOT / "README_zh.md").read_text(encoding="utf-8")
-        tag = f"v{version.__version__}"
-
         for fragment in (
             "Natural-language installation for an agent",
             "Do not start a research run",
-            f"git clone --branch {tag} --depth 1",
-            f"git cat-file -t {tag}",
-            f"git rev-parse '{tag}^{{commit}}'",
+            "git clone --branch main --depth 1",
+            "git switch --detach",
+            "git rev-parse HEAD",
             "scripts/install_skill.py --source <checkout> --targets <target>",
             'make install DEV_DIR="<checkout>"',
+            "Tushare Pro configuration",
+            "launchctl setenv TUSHARE_TOKEN",
+            "Tushare credentials never enter role prompts",
         ):
             self.assertIn(fragment, english)
 
         for fragment in (
             "在 Agent 中用自然语言安装",
             "不要启动任何研究 run",
-            f"git clone --branch {tag} --depth 1",
-            f"git cat-file -t {tag}",
-            f"git rev-parse '{tag}^{{commit}}'",
+            "git clone --branch main --depth 1",
+            "git switch --detach",
+            "git rev-parse HEAD",
             "scripts/install_skill.py --source <checkout> --targets <target>",
             'make install DEV_DIR="<checkout>"',
+            "配置 Tushare Pro",
+            "launchctl setenv TUSHARE_TOKEN",
+            "凭证不会进入角色 prompt",
         ):
             self.assertIn(fragment, chinese)
 

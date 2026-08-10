@@ -2,7 +2,9 @@
 """Offline tests for the separate-process agy CandidateScreen adapter."""
 import hashlib
 import json
+import os
 import unittest
+from unittest import mock
 
 import agy_candidate_screen_runner as runner
 import candidate_screen_engine
@@ -11,6 +13,11 @@ import test_candidate_screen_engine as fixtures
 
 
 class AgyCandidateScreenRunnerTests(unittest.TestCase):
+    def test_model_roles_do_not_receive_tushare_token(self):
+        with mock.patch.dict(os.environ, {"TUSHARE_TOKEN": "host-only"}, clear=False):
+            self.assertNotIn("TUSHARE_TOKEN", runner._host_environment("antigravity"))
+            self.assertNotIn("TUSHARE_TOKEN", runner._host_environment("claude-code"))
+
     def test_dangerous_permission_bypass_requires_explicit_opt_in(self):
         safe = runner._build_command("agy", "prompt", 60)
         enabled = runner._build_command("agy", "prompt", 60, allow_agent_tools=True)

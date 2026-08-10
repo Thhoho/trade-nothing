@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Trade Nothing v0.14.0 — Crux Engine  (-deepthink2; replaced the retired v1 LFI engine)
+Trade Nothing v0.15.0 — Crux Engine  (-deepthink2; replaced the retired v1 LFI engine)
 
 Replaces the degenerate single-posterior + LFI layer with a per-CRUX ledger:
 

@@ -122,7 +122,7 @@ def create_manifest(topic, *, state_path="", as_of_date="", runtime_isolation="u
         "created_at": _now(),
         "updated_at": _now(),
         "stage": "adopted" if adopted else "created",
-        "status": "active",
+        "status": "created",
         "runtime_isolation": str(runtime_isolation or "unverified"),
         "run_purpose": run_purpose,
         "latest_envelope": {},
@@ -433,6 +433,9 @@ def stage_envelope(result, *, context=None, budget=None, persist=True):
         manifest = load_manifest(run_id)
         manifest["updated_at"] = _now()
         manifest["stage"] = envelope["stage"]
+        # Mirror the latest persisted envelope instead of leaving every run
+        # permanently "active" after a pause or terminal report.
+        manifest["status"] = status
         manifest["latest_envelope"] = {
             key: envelope[key]
             for key in (

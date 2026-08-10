@@ -24,6 +24,7 @@ sys.path.insert(0, SCRIPT_DIR)
 import agy_candidate_screen_runner
 import crux_engine
 import deepthink_orchestrator_v2 as orchestrator
+import execution_integrity
 import process_control
 import run_registry
 from utils import get_skill_dir, load_json_safe
@@ -57,11 +58,12 @@ def _normalize_host_runtime(value):
 
 
 def _resolve_host_runtime(value="auto", host_bin=""):
-    """Resolve an explicit runtime, with conservative auto-detection.
+    """Resolve only caller-configured runtime intent.
 
-    Backward compatibility prefers Antigravity when both CLIs are installed.
-    Inside Claude Code, its exported environment markers take precedence. A
-    caller can always force the adapter with ``--runtime claude-code``.
+    An installed binary is capability, not authorization.  In particular, a
+    Codex session must not silently launch Claude merely because ``claude`` is
+    present on PATH.  ``auto`` therefore accepts only an explicit host binary or
+    the Trade Nothing runtime configuration environment variable.
     """
     requested = str(value or "auto").strip().lower().replace("_", "-")
     if requested != "auto":
@@ -71,21 +73,67 @@ def _resolve_host_runtime(value="auto", host_bin=""):
         return "claude-code"
     if executable == "agy" or "antigravity" in executable:
         return "antigravity"
-    if any(os.environ.get(name) for name in (
-        "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID",
-    )):
-        return "claude-code"
-    if shutil.which("agy"):
-        return "antigravity"
-    if shutil.which("claude"):
-        return "claude-code"
-    raise ValueError("no_supported_host_runtime_found")
+    configured = os.environ.get("TRADE_NOTHING_HOST_RUNTIME", "").strip()
+    if configured:
+        return _normalize_host_runtime(configured)
+    raise ValueError("host_runtime_required_explicitly")
 
 
 def _default_host_bin(host_runtime):
     runtime = _normalize_host_runtime(host_runtime)
     executable = "agy" if runtime == "antigravity" else "claude"
     return shutil.which(executable) or executable
+
+
+def _runtime_preflight(host_runtime, host_bin):
+    """Check the selected adapter before creating or mutating a run."""
+    runtime = _normalize_host_runtime(host_runtime)
+    requested = str(host_bin or _default_host_bin(runtime))
+    resolved = (
+        requested
+        if os.path.isabs(requested)
+        else shutil.which(requested)
+    )
+    if not resolved or not os.path.isfile(resolved) or not os.access(resolved, os.X_OK):
+        return {
+            "status": "runtime_preflight_failed",
+            "host_runtime": runtime,
+            "host_executable": requested,
+            "reason": "host_executable_not_found_or_not_executable",
+            "formal_report_allowed": False,
+        }
+    try:
+        completed = subprocess.run(
+            [resolved, "--version"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=10,
+            check=False,
+            env=_host_environment(runtime),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {
+            "status": "runtime_preflight_failed",
+            "host_runtime": runtime,
+            "host_executable": resolved,
+            "reason": f"host_version_probe_failed:{type(exc).__name__}",
+            "formal_report_allowed": False,
+        }
+    if completed.returncode != 0:
+        return {
+            "status": "runtime_preflight_failed",
+            "host_runtime": runtime,
+            "host_executable": resolved,
+            "reason": f"host_version_probe_exit:{completed.returncode}",
+            "formal_report_allowed": False,
+        }
+    return {
+        "status": "runtime_preflight_ready",
+        "host_runtime": runtime,
+        "host_executable": resolved,
+        "formal_report_allowed": False,
+    }
 
 
 def _host_environment(host_runtime):
@@ -95,9 +143,10 @@ def _host_environment(host_runtime):
     interactive session.  The host runner intentionally launches bounded,
     non-persistent role processes, so those parent-session markers must not be
     forwarded to the isolated child.  Authentication and all unrelated user
-    environment variables are preserved.
+    environment variables are preserved except data-provider credentials,
+    which belong to the parent acquisition adapter rather than model roles.
     """
-    child = os.environ.copy()
+    child = process_control.model_child_environment()
     if _normalize_host_runtime(host_runtime) == "claude-code":
         for name in CLAUDE_PARENT_ENV_MARKERS:
             child.pop(name, None)
@@ -163,17 +212,12 @@ def _command(host_bin, prompt, timeout_seconds, allow_agent_tools=False,
 def _run_role(role, prompt, host_bin, timeout_seconds, allow_agent_tools=False,
               workdir="", host_runtime="antigravity"):
     host_runtime = _normalize_host_runtime(host_runtime)
-    wrapped = (
-        f"You are the isolated deepthink2 {role} role. Return exactly one JSON object and no "
-        "markdown, commentary, progress notes, transcript, or file link. Do not read or infer "
-        "another role's output.\n\n" + prompt
-    )
     started = time.monotonic()
     if workdir:
         os.makedirs(workdir, exist_ok=True)
     process = subprocess.Popen(
         _command(
-            host_bin, wrapped, timeout_seconds, allow_agent_tools,
+            host_bin, prompt, timeout_seconds, allow_agent_tools,
             host_runtime=host_runtime,
         ),
         cwd=workdir or get_skill_dir(),
@@ -393,8 +437,24 @@ def execute_round(context, *, agy_bin="", host_bin="", host_runtime="antigravity
         )
         return _pause(context, stage_id, checkpoint, ["judge"], reason, budget)
 
+    round_receipt = execution_integrity.build_process_receipt(
+        round_num,
+        host_runtime,
+        prompts,
+        {
+            "detective": detective,
+            "inquisitor": inquisitor,
+            "judge": judge_record["payload"],
+        },
+        {
+            "detective": records["detective"],
+            "inquisitor": records["inquisitor"],
+            "judge": judge_record,
+        },
+    )
     result = orchestrator.cmd_submit(
-        context["topic"], detective, inquisitor, judge_record["payload"]
+        context["topic"], detective, inquisitor, judge_record["payload"],
+        round_receipt=round_receipt,
     )
     checkpoint["submitted"] = True
     checkpoint["submit_result"] = result
@@ -435,7 +495,7 @@ def continue_run(context, *, agy_bin="", host_bin="", host_runtime="antigravity"
                  timeout_seconds, judge_timeout_seconds=240,
                  allow_agent_tools=False, round_budget=1,
                  continue_screen=True, stop_after_dry_rounds=0):
-    """Run rounds until convergence, exhaustion, or the safety fuse.
+    """Run authorized rounds until Agenda delivery, exhaustion, or a safety fuse.
 
     A round count is a poor budget unit: one round may add five citations and the
     next may add nothing. When `stop_after_dry_rounds` is set, `round_budget`
@@ -460,7 +520,10 @@ def continue_run(context, *, agy_bin="", host_bin="", host_runtime="antigravity"
                     "round_budget": round_budget, "rounds_used": completed,
                     "stop_after_dry_rounds": stop_after_dry_rounds,
                 })
-        if (state.get("last_convergence") or {}).get("decision") == "converge":
+        if (
+            not orchestrator.research_agenda_engine.is_agenda_native(state)
+            and (state.get("last_convergence") or {}).get("decision") == "converge"
+        ):
             result = orchestrator.cmd_report(context["topic"])
             last = run_registry.stage_envelope(result, context=context, budget={
                 "round_budget": round_budget, "rounds_used": completed,
@@ -494,6 +557,7 @@ def continue_run(context, *, agy_bin="", host_bin="", host_runtime="antigravity"
             return last
         if status in {
             "ready_for_report",
+            "research_more_requires_authorization",
             "blocked_max_rounds",
             "candidate_gap_tasks_planned",
             "dispatch_candidate_screeners",
@@ -501,6 +565,7 @@ def continue_run(context, *, agy_bin="", host_bin="", host_runtime="antigravity"
         }:
             reasons = {
                 "ready_for_report": "CONVERGED",
+                "research_more_requires_authorization": "AUTHORIZED_BUDGET_USED",
                 "blocked_max_rounds": "MAX_ROUNDS_REACHED",
                 "candidate_gap_tasks_planned": "CANDIDATE_GAPS_PENDING",
                 "dispatch_candidate_screeners": "CANDIDATE_SCREEN_PENDING",
@@ -552,7 +617,10 @@ def _runner_args(parser):
     parser.add_argument(
         "--runtime", default="auto",
         choices=("auto", "antigravity", "claude-code"),
-        help="isolated-process host; use claude-code when running from Claude Code",
+        help=(
+            "isolated-process host; auto requires --host-bin or "
+            "TRADE_NOTHING_HOST_RUNTIME and never guesses from installed CLIs"
+        ),
     )
     parser.add_argument(
         "--host-bin", default="",
@@ -607,7 +675,11 @@ def main():
     start = sub.add_parser("start")
     start.add_argument("--topic", required=True)
     start.add_argument("--frame-json", required=True)
-    start.add_argument("--runtime-isolation", default="verified")
+    start.add_argument(
+        "--runtime-isolation", default="unverified",
+        choices=("unverified", "degraded"),
+        help="initial state only; verified is derived after valid host receipts",
+    )
     start.add_argument(
         "--run-purpose", required=True, choices=sorted(run_registry.RUN_PURPOSES - {"UNSPECIFIED"})
     )
@@ -620,7 +692,39 @@ def main():
     _runner_args(resume)
     status = sub.add_parser("status")
     status.add_argument("--run-id", required=True)
+    preflight = sub.add_parser("preflight")
+    _runner_args(preflight)
     args = parser.parse_args()
+
+    if args.command in {"start", "resume", "preflight"}:
+        if args.agy_bin and args.host_bin and args.agy_bin != args.host_bin:
+            raise SystemExit("--agy-bin and --host-bin disagree")
+        configured_bin = args.host_bin or args.agy_bin
+        try:
+            host_runtime = _resolve_host_runtime(
+                "antigravity" if args.agy_bin else args.runtime,
+                host_bin=configured_bin,
+            )
+        except ValueError as exc:
+            print(json.dumps({
+                "status": "runtime_preflight_failed",
+                "reason": str(exc),
+                "formal_report_allowed": False,
+                "instruction": (
+                    "显式传 --runtime/--host-bin，或在 Codex 中使用三独立 agent 的"
+                    " hash-bound 手动提交；否则改为 INLINE_DEGRADED_RESEARCH，"
+                    "不得声称完成 deepthink2 轮次。"
+                ),
+            }, ensure_ascii=False, indent=2))
+            return
+        preflight_result = _runtime_preflight(host_runtime, configured_bin)
+        if preflight_result["status"] != "runtime_preflight_ready":
+            print(json.dumps(preflight_result, ensure_ascii=False, indent=2))
+            return
+        host_bin = preflight_result["host_executable"]
+        if args.command == "preflight":
+            print(json.dumps(preflight_result, ensure_ascii=False, indent=2))
+            return
 
     if args.command == "status":
         try:
@@ -668,7 +772,8 @@ def main():
         )
         run_registry.bind_context(context)
         initialized = orchestrator.cmd_init(
-            context["topic"], _read_json_arg(args.frame_json), args.runtime_isolation
+            context["topic"], _read_json_arg(args.frame_json),
+            args.runtime_isolation, authorized_round_budget=args.round_budget
         )
         if initialized.get("status") != "dispatch_subagents":
             print(json.dumps(run_registry.stage_envelope(initialized, context=context),
@@ -687,15 +792,23 @@ def main():
                     "reason": str(exc),
                 }, ensure_ascii=False, indent=2))
             return
+        state = load_json_safe(context["state_path"], default={})
+        if (
+            isinstance(state, dict)
+            and orchestrator.research_agenda_engine.is_agenda_native(state)
+            and len(state.get("rounds", []))
+            >= int(state.get("research_runtime", {}).get("authorized_rounds", 1) or 1)
+        ):
+            resumed = orchestrator.cmd_resume_blocked(
+                context["topic"], extra_rounds=args.round_budget
+            )
+            if resumed.get("status") != "dispatch_subagents":
+                print(json.dumps(
+                    run_registry.stage_envelope(resumed, context=context),
+                    ensure_ascii=False, indent=2,
+                ))
+                return
 
-    if args.agy_bin and args.host_bin and args.agy_bin != args.host_bin:
-        raise SystemExit("--agy-bin and --host-bin disagree")
-    host_bin = args.host_bin or args.agy_bin
-    host_runtime = _resolve_host_runtime(
-        "antigravity" if args.agy_bin else args.runtime,
-        host_bin=host_bin,
-    )
-    host_bin = host_bin or _default_host_bin(host_runtime)
     if args.timeout_seconds < 30 or args.timeout_seconds > 1800:
         raise SystemExit("--timeout-seconds must be between 30 and 1800")
     if args.judge_timeout_seconds < 30 or args.judge_timeout_seconds > 1800:

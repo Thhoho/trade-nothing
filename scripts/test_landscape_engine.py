@@ -133,11 +133,13 @@ def orchestrator_frame():
 
 
 class LandscapeFrameTests(unittest.TestCase):
-    def test_opportunity_frame_requires_real_map(self):
+    def test_opportunity_frame_requires_map_only_when_explicit(self):
         raw = frame()
         raw.pop("landscape_map")
+        self.assertEqual(landscape_engine.validate_frame(raw), [])
+        raw["landscape_required"] = True
         self.assertIn(
-            "opportunity_question_requires_landscape_map",
+            "explicit_landscape_requires_hypothesis_garden_or_landscape_map",
             landscape_engine.validate_frame(raw),
         )
 
@@ -183,12 +185,16 @@ class LandscapeOrchestratorIntegrationTests(unittest.TestCase):
             os.environ["TRADE_NOTHING_EVOLUTION_PATH"] = self.old_evolution
         self.tmp.cleanup()
 
-    def test_init_rejects_opportunity_frame_without_map(self):
+    def test_init_rejects_explicit_landscape_without_map(self):
         raw = orchestrator_frame()
         raw.pop("landscape_map")
+        raw["landscape_required"] = True
         result = orchestrator.cmd_init("missing-map", raw)
         self.assertEqual(result["status"], "frame_rejected")
-        self.assertIn("opportunity_question_requires_landscape_map", result["issues"])
+        self.assertIn(
+            "explicit_landscape_requires_hypothesis_garden_or_landscape_map",
+            result["issues"],
+        )
 
     def test_init_persists_map_and_round_assignments(self):
         result = orchestrator.cmd_init("mapped-init", orchestrator_frame())
@@ -573,7 +579,8 @@ class LandscapeGateAndReportTests(unittest.TestCase):
         state = mapped_state()
         ev = citation("seed")
         raw = {
-            "candidate": "Capture Asset", "asset_type": "LISTED_EQUITY",
+            "candidate": "Capture Asset", "ticker": "CAP",
+            "asset_type": "LISTED_EQUITY",
             "relation_type": "DIRECT_WINNER", "origin_crux": "C1",
             "causal_path": "shock -> capture -> earnings", "evidence": [ev],
         }
@@ -600,7 +607,8 @@ class LandscapeGateAndReportTests(unittest.TestCase):
         payload = {
             "crux_evidence": [{"crux_id": "C1", "evidence": [ev]}],
             "opportunity_seeds": [{
-                "candidate": "Capture Asset", "asset_type": "LISTED_EQUITY",
+                "candidate": "Capture Asset", "ticker": "CAP",
+                "asset_type": "LISTED_EQUITY",
                 "relation_type": "DIRECT_WINNER", "origin_crux": "C1",
                 "causal_path": "shock -> capture -> earnings", "evidence": [ev],
             }],
@@ -618,7 +626,8 @@ class LandscapeGateAndReportTests(unittest.TestCase):
         payload = {
             "crux_evidence": [{"crux_id": "C2", "evidence": [ev]}],
             "opportunity_seeds": [{
-                "candidate": "Capture Asset", "asset_type": "LISTED_EQUITY",
+                "candidate": "Capture Asset", "ticker": "CAP",
+                "asset_type": "LISTED_EQUITY",
                 "relation_type": "DIRECT_WINNER", "origin_crux": "C2",
                 "causal_path": "shock -> capture -> earnings", "evidence": [ev],
             }],

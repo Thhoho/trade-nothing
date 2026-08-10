@@ -1,8 +1,8 @@
 # Hypothesis Garden and ProxyTrail Protocol
 
-This protocol defines Trade Nothing's exploration ledger. It preserves bold,
-testable conjectures without weakening the evidence, candidate-admission, or
-human decision gates.
+This protocol defines Trade Nothing's optional mechanism-hypothesis tool. The primary research
+object is the Research Agenda. This tool preserves testable conjectures when competing causal
+mechanisms need explicit discrimination.
 
 The exploration ledger is deliberately non-promotional. It cannot create an
 `OpportunitySeed`, invoke `CandidateScreen`, write a thesis or decision, recommend
@@ -47,10 +47,9 @@ the exploration ledger when no explicit garden exists. Legacy paths may retain
 the projection does not invent missing scenarios, proxy routes, or evidence.
 Projected paths start at `HYPOTHESIS_ONLY` and retain their path/crux context.
 
-`OPPORTUNITY_DISCOVERY` and `HYBRID` require an initial hypothesis garden.
-`THESIS_CHALLENGE` may omit it. If a challenge frame includes a garden, the
-garden must satisfy the same complete contract; a smaller, looser garden is not
-a compatibility path.
+No research intent requires an initial hypothesis garden. A frame may omit it entirely. If the
+Framer declares `landscape_required=true`, the garden must satisfy the complete Landscape contract;
+otherwise a smaller 1–7 item garden may be used as a bounded mechanism tool.
 
 ## Framer garden contract
 
@@ -64,7 +63,8 @@ The Framer writes:
 }
 ```
 
-The garden contains 5–7 entity-agnostic paths and covers all five archetypes:
+An optional garden contains 1–7 entity-agnostic paths. A full Landscape contains 5–7 paths and
+covers all five archetypes:
 
 - `DIRECT_CAPTURE`
 - `BOTTLENECK_OWNER`

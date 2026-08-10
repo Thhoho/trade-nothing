@@ -79,23 +79,31 @@ def frame_paths(frame):
 
 
 def is_required(frame_or_state):
-    """Return whether the question explicitly asks for opportunity-path discovery."""
-    if research_intent(frame_or_state) in {"OPPORTUNITY_DISCOVERY", "HYBRID"}:
+    """Require coverage only for an explicitly declared specialist map.
+
+    A research topic may seek opportunities without starting from a hypothesis
+    garden.  The Research Agenda and CandidateMap cover that default path; this
+    legacy Landscape gate applies only when the Framer deliberately declares it.
+    """
+    explicit = frame_or_state.get("landscape_required")
+    if explicit is None:
+        explicit = (frame_or_state.get("frame_contract") or {}).get("landscape_required")
+    if explicit is not None:
+        return explicit is True
+    landscape = frame_or_state.get("landscape_map")
+    if bool(
+        isinstance(landscape, dict)
+        and isinstance(landscape.get("paths"), list)
+        and landscape.get("paths")
+    ):
         return True
-    question_type = _text(frame_or_state.get("question_type")).upper()
-    if question_type in {"UNIVERSE_SEARCH", "COMPARATIVE"}:
-        return True
-    cruxes = frame_or_state.get("candidate_cruxes")
-    if cruxes is None:
-        cruxes = [
-            {"logic_role": item.get("logic_role")}
-            for item in frame_or_state.get("cruxes", {}).values()
-            if isinstance(item, dict)
-        ]
-    return any(
-        _text(item.get("logic_role")).upper() == "OPPORTUNITY_PATH"
-        for item in cruxes or [] if isinstance(item, dict)
-    )
+    # New topic-led frames may use a few mechanism hypotheses without declaring
+    # a complete Landscape. Archived frames retain their former garden mapping.
+    if isinstance(frame_or_state.get("research_workplan"), dict):
+        return False
+    if _text((frame_or_state.get("frame_contract") or {}).get("agenda_source")) == "EXPLICIT_WORKPLAN":
+        return False
+    return bool(frame_paths(frame_or_state))
 
 
 def validate_frame(frame):
@@ -104,11 +112,7 @@ def validate_frame(frame):
         return []
     paths = frame_paths(frame)
     if not paths:
-        if _text(frame.get("research_intent")).upper() in {
-            "OPPORTUNITY_DISCOVERY", "HYBRID",
-        }:
-            return ["opportunity_intent_requires_hypothesis_garden_or_landscape_map"]
-        return ["opportunity_question_requires_landscape_map"]
+        return ["explicit_landscape_requires_hypothesis_garden_or_landscape_map"]
     issues = []
     if not 5 <= len(paths) <= 7:
         issues.append("landscape_requires_5_to_7_paths")

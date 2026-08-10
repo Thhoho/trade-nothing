@@ -91,6 +91,37 @@ def inquisitor_payload(evidence, candidate_seed=None):
 
 
 class OpportunityEngineTests(unittest.TestCase):
+    def test_listed_equity_without_ticker_is_rejected(self):
+        st = research_state()
+        evidence = citation("missing-ticker")
+        payload = detective_payload(evidence, seed(evidence, ticker=None))
+        audit = opportunity_engine.harvest_round(st, 1, payload, {})
+        self.assertEqual(st["opportunity_seeds"], [])
+        self.assertEqual(
+            audit["rejected_reasons"]["listed_equity_ticker_required"], 1
+        )
+
+    def test_evidence_backed_hypothesis_never_auto_promotes(self):
+        st = research_state()
+        st["hypothesis_ledger"] = {
+            "hypotheses": [
+                {
+                    "hypothesis_id": "WH-ABSTRACT",
+                    "state": opportunity_engine.EVIDENCE_BACKED,
+                    "hypothesis": (
+                        "若成功进入高频验证期，通用检测和地面保障可能率先受益"
+                    ),
+                    "context": {"origin_crux": "C1"},
+                }
+            ]
+        }
+        result = opportunity_engine.escalate_mature_hypotheses(st, 2)
+        self.assertTrue(result["automatic_promotion_disabled"])
+        self.assertEqual(result["eligible_hypothesis_count"], 1)
+        self.assertEqual(result["skipped_requires_explicit_seed"], 1)
+        self.assertEqual(result["escalated_count"], 0)
+        self.assertEqual(st["opportunity_seeds"], [])
+
     def test_invented_seed_citation_is_rejected(self):
         st = research_state()
         real = citation("real")
@@ -318,12 +349,13 @@ class OpportunityReportTests(unittest.TestCase):
             "citations": [evidence, citation("report-2", claim="second source")],
         })
         md = report_v2.render(st)
-        self.assertIn("Edge: **NO_EDGE**", md)
+        self.assertIn("**证据姿态**：NO_EDGE / BEAR / NONE", md)
         self.assertNotIn("NO_EDGE / AVOID", md)
-        self.assertIn("A.3 · 候选线索地图", md)
+        self.assertIn("## 5. 具体载体与机会结构", md)
         self.assertIn("Asset Owner", md)
-        self.assertIn("未筛选不等于机会", md)
-        self.assertIn("Thesis 升级资格", md)
+        self.assertIn("`SINGLE_SOURCE`", md)
+        self.assertIn("`EXPLORE`", md)
+        self.assertNotIn("Thesis", md)
         self.assertIn("https://fixture-report.org/research/evidence", md)
         self.assertNotIn("全量工作数据", md)
         self.assertNotIn("待 deep 模型写入", md)

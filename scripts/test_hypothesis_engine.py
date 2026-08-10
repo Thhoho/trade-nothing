@@ -227,10 +227,11 @@ class FrameIntentTests(unittest.TestCase):
                     hypothesis_engine.infer_research_intent(legacy),
                     "HYBRID",
                 )
-                self.assertIn(
-                    "opportunity_intent_requires_hypothesis_garden",
-                    hypothesis_engine.validate_frame(legacy),
-                )
+                issues = hypothesis_engine.validate_frame(legacy)
+                if "hypothesis_garden" in legacy or "landscape_map" in legacy:
+                    self.assertIn("hypothesis_garden_requires_1_to_7_hypotheses", issues)
+                else:
+                    self.assertEqual(issues, [])
 
     def test_question_type_cannot_substitute_for_research_intent(self):
         legacy = {"question_type": "UNIVERSE_SEARCH"}
@@ -274,12 +275,9 @@ class FrameIntentTests(unittest.TestCase):
             all(not item["proxy_trails"] for item in ledger["hypotheses"])
         )
 
-    def test_explicit_discovery_requires_garden(self):
+    def test_explicit_discovery_does_not_require_garden(self):
         raw = {"research_intent": "OPPORTUNITY_DISCOVERY"}
-        self.assertIn(
-            "opportunity_intent_requires_hypothesis_garden",
-            hypothesis_engine.validate_frame(raw),
-        )
+        self.assertEqual(hypothesis_engine.validate_frame(raw), [])
         self.assertIsNone(hypothesis_engine.initialize(raw))
 
     def test_complete_five_path_garden_is_valid_and_starts_untraced(self):
@@ -375,13 +373,20 @@ class FrameIntentTests(unittest.TestCase):
         self.assertEqual(hypothesis_engine.validate_frame(raw), [])
         self.assertEqual(len(hypothesis_engine.initialize(raw)["hypotheses"]), 5)
 
-    def test_garden_count_and_archetype_coverage_are_enforced(self):
+    def test_small_optional_garden_is_valid_but_large_garden_is_bounded(self):
         raw = frame(hypotheses=garden()[:4])
+        self.assertEqual(hypothesis_engine.validate_frame(raw), [])
+        raw = frame(hypotheses=garden() + garden()[:3])
         issues = hypothesis_engine.validate_frame(raw)
         self.assertIn(
-            "hypothesis_garden_requires_5_to_7_hypotheses",
+            "hypothesis_garden_requires_1_to_7_hypotheses",
             issues,
         )
+
+    def test_complete_landscape_sized_garden_requires_archetype_coverage(self):
+        hypotheses = garden()
+        hypotheses[-1]["archetype"] = "DIRECT_CAPTURE"
+        issues = hypothesis_engine.validate_frame(frame(hypotheses=hypotheses))
         self.assertTrue(
             any(issue.startswith("hypothesis_garden_missing_archetypes:")
                 for issue in issues)

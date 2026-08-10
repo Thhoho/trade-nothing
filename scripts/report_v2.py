@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Trade Nothing v0.14.0 — Compact Formal Report Renderer
+Trade Nothing v0.15.0 — Compact Formal Report Renderer
 
 Architecture:
   FIXED LAYER (脚本物理生成，数值勿改):
@@ -19,14 +19,18 @@ expected return, trade signal, or position-sizing input.
 import os, sys, json, hashlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import crux_engine
+import research_agenda_engine
 import hypothesis_engine
 import tracking_engine
 import landscape_engine
+import market_map_engine
+import research_kernel
 import opportunity_engine
 import candidate_gap_engine
 import candidate_screen_engine
 import claim_verification_engine
 import temporal_contract
+import execution_integrity
 from version import __version__
 
 _STATUS = {
@@ -80,6 +84,27 @@ def _citation_quality(state):
 
 def _clean(value):
     return " ".join(str(value or "").split()) or "—"
+
+
+def _execution_round_label(runtime):
+    return execution_integrity.round_label(
+        (runtime or {}).get("execution_integrity") or {}
+    )
+
+
+def _attach_execution_marker(markdown, audit):
+    """Embed one machine-readable receipt without displacing the report title."""
+    lines = str(markdown or "").splitlines()
+    receipt_marker = execution_integrity.marker(audit)
+    if not lines:
+        return receipt_marker + "\n"
+    if lines[0] == "---" and len(lines) > 1 and lines[1].startswith(
+        "<!-- FACTS_BOX_START"
+    ):
+        lines.insert(2, receipt_marker)
+    else:
+        lines.insert(1, receipt_marker)
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def _exploration_history_lines(
@@ -570,8 +595,9 @@ def build_report_view_model(state):
     """Build the deterministic user-facing projection used by every report view.
 
     The view model contains no raw role payloads. It keeps root-thesis truth,
-    candidate maturity, and the next legal action separate so renderers cannot
-    turn a valid report into an investment recommendation.
+    candidate maturity, Research Agenda progress, and the next legal action
+    separate. Renderers may give bounded conditional research or market advice,
+    but cannot turn it into an order, position, target return, or execution.
 
     An unconverged run still projects a view model.  Its `research_grade` states
     what the run did not establish; suppressing the projection entirely only
@@ -584,6 +610,15 @@ def build_report_view_model(state):
     landscape = landscape_engine.summary(state)
     exploration = hypothesis_engine.report_view(state, limit=7)
     scenario_paths = hypothesis_engine.scenario_view(state)
+    candidate_map = market_map_engine.report_view(state)
+    market_bridge = candidate_map.get("market_bridge", {})
+    research_agenda = research_agenda_engine.report_view(state)
+    research_control = research_agenda.get("research_control", {})
+    evidence_plane = research_kernel.evidence_plane_counts(
+        research_agenda.get("evidence_items", [])
+    )
+    agenda_native = research_agenda_engine.is_agenda_native(state)
+    legacy_evidence_counts = crux_engine.evidence_counts(state)
     survived = [
         item for item in rd["cruxes"] if item.get("status") == "RESOLVED_BULL"
     ]
@@ -656,6 +691,7 @@ def build_report_view_model(state):
             "gap, not evidence that no adjacent opportunity exists."
         ),
     }
+    execution_audit = execution_integrity.audit_state(state)
     return {
         "schema_version": "trade-nothing.report-view-model.v2",
         "topic": _clean(state.get("topic")),
@@ -668,6 +704,18 @@ def build_report_view_model(state):
         "forecast_target_date": temporal["forecast_target_date"],
         "temporal_contract": temporal,
         "question_type": verdict.get("question_type", rd.get("question_type", "CONJUNCTIVE")),
+        "framing": {
+            "quality_status": _clean(
+                state.get("frame_contract", {}).get("quality_status")
+            ),
+            "premise_audit": [
+                dict(item) for item in state.get("frame_contract", {}).get("premise_audit", [])
+                if isinstance(item, dict)
+            ],
+            "artifact_policy": dict(
+                state.get("frame_contract", {}).get("artifact_policy") or {}
+            ),
+        },
         "verdict": {
             "edge_state": verdict.get("edge_state", "INSUFFICIENT_EVIDENCE"),
             "evidence_direction": verdict.get("evidence_direction", "UNDETERMINED"),
@@ -691,6 +739,10 @@ def build_report_view_model(state):
         "formal_action": formal_action,
         "exploration_action": exploration["exploration_action"],
         "scenario_paths": scenario_paths,
+        "candidate_map": candidate_map,
+        "market_bridge": market_bridge,
+        "research_agenda": research_agenda,
+        "research_control": research_control,
         # Backwards-compatible alias. Formal action remains the only candidate
         # promotion action; exploration_action has research-only authority.
         "next_action": formal_action,
@@ -704,8 +756,27 @@ def build_report_view_model(state):
                 "isolation_status", "unverified"
             ),
             "round_count": len(state.get("rounds", [])),
-            "unique_source_count": rd.get("n_unique_sources", 0),
-            "primary_source_count": rd.get("n_primary_sources", 0),
+            "execution_integrity": execution_audit,
+            "unique_source_count": (
+                evidence_plane["unique_source_url_count"]
+                if agenda_native else rd.get("n_unique_sources", 0)
+            ),
+            "independent_publisher_count": (
+                evidence_plane["independent_publisher_count"]
+                if agenda_native else legacy_evidence_counts.get("unique_publishers", 0)
+            ),
+            "primary_source_count": (
+                evidence_plane["primary_source_count"]
+                if agenda_native else rd.get("n_primary_sources", 0)
+            ),
+            "evidence_plane": evidence_plane,
+            "legacy_crux_audit": {
+                "unique_source_url_count": rd.get("n_unique_sources", 0),
+                "independent_publisher_count": legacy_evidence_counts.get(
+                    "unique_publishers", 0
+                ),
+                "primary_source_count": rd.get("n_primary_sources", 0),
+            },
         },
         "research_grade": crux_engine.research_grade(state),
     }
@@ -716,6 +787,10 @@ def _render_audit(state, include_title=True):
     rd = crux_engine.report_data(state)
     landscape = landscape_engine.summary(state)
     topic = state.get("topic", "")
+    agenda_native = research_agenda_engine.is_agenda_native(state)
+    agenda_evidence_counts = research_kernel.evidence_plane_counts(
+        state.get("research_agenda", {}).get("evidence_items", [])
+    )
 
     # ═══ Build citation registry (deduped, numbered) ═══
     refs, ref_no = [], {}
@@ -859,6 +934,8 @@ def _render_audit(state, include_title=True):
 
     # ═══ Debate-support trace (not a calibrated probability) ═══
     n_rounds = len(state.get("rounds", []))
+    execution_audit = execution_integrity.audit_state(state)
+    execution_label = execution_integrity.round_label(execution_audit)
     dt = state.get("decision_trace", [])
     is_universe = rd.get("question_type") == "UNIVERSE_SEARCH"
     trace_str = " → ".join(
@@ -899,8 +976,17 @@ def _render_audit(state, include_title=True):
         L.append(f"- 聚合规则: **{rd.get('aggregation_rule', 'LOGIC_GRAPH_MULTI_PATH')}** ｜ "
                  f"当前研究焦点 {rd.get('focus_crux') or '—'} ｜ 最低路径支持度 {int(support_w*100)}/100；"
                  "多路径题型不存在可否定全局的单一 binding crux。")
-    L.append(f"- 博弈深度: {n_rounds} 轮 ｜ 唯一可复核来源: {rd['n_unique_sources']} 个"
-             f" ｜ 其中一级来源: {rd['n_primary_sources']} 个")
+    if agenda_native:
+        L.append(
+            f"- 执行真实性: {execution_label} ｜ Agenda evidence: "
+            f"{agenda_evidence_counts['canonical_evidence_item_count']} 条 / "
+            f"{agenda_evidence_counts['unique_source_url_count']} 个去重 URL / "
+            f"{agenda_evidence_counts['independent_publisher_count']} 家独立发布方；"
+            f"旧 crux 审计 URL={rd['n_unique_sources']}（仅兼容指标）"
+        )
+    else:
+        L.append(f"- 执行真实性: {execution_label} ｜ 唯一可复核来源: {rd['n_unique_sources']} 个"
+                 f" ｜ 其中一级来源: {rd['n_primary_sources']} 个")
     opportunity_counts = opportunity_engine.summary(state)
     L.append(f"- 候选线索: {opportunity_counts['opportunity_seed_count']} 条证据路径 → "
              f"{opportunity_counts['unique_candidate_count']} 个唯一候选 ｜ "
@@ -1230,7 +1316,16 @@ def _render_audit(state, include_title=True):
     )
     L.append("═══════════════════════════════════════════")
     L.append(f"  标的: {topic}")
-    L.append(f"  博弈深度: {n_rounds} 轮 ｜ 唯一来源: {rd['n_unique_sources']} 个")
+    if agenda_native:
+        L.append(
+            f"  执行真实性: {execution_label} ｜ Agenda证据: "
+            f"{agenda_evidence_counts['canonical_evidence_item_count']} 条 ｜ "
+            f"去重URL: {agenda_evidence_counts['unique_source_url_count']} ｜ "
+            f"独立发布方: {agenda_evidence_counts['independent_publisher_count']}"
+        )
+        L.append(f"  兼容crux审计URL: {rd['n_unique_sources']}（不代表产品证据量）")
+    else:
+        L.append(f"  执行真实性: {execution_label} ｜ 唯一来源: {rd['n_unique_sources']} 个")
     if is_universe:
         L.append(f"  当前研究焦点: {rd.get('focus_crux') or '—'}")
         L.append("  收敛单位: Landscape覆盖 + 连续候选收割静默")
@@ -1647,7 +1742,8 @@ def _render_decision_brief(view):
         f"反证条件: {view['change_trigger']['falsifier']}。",
         "",
         "## 运行边界",
-        f"- 隔离 `{view['runtime']['isolation_status']}`；轮次 {view['runtime']['round_count']}；"
+        f"- 执行 `{_clean(view['runtime'].get('execution_integrity', {}).get('execution_mode'))}`；"
+        f"{_execution_round_label(view['runtime'])}；隔离 `{view['runtime']['isolation_status']}`；"
         f"可复核来源 {view['runtime']['unique_source_count']}；一级来源 "
         f"{view['runtime']['primary_source_count']}。",
         f"- 报告等级 **{grade.get('report_grade', 'UNKNOWN')}**；"
@@ -2144,10 +2240,10 @@ def render_facts_box(view):
         f"**断言分档**: VERIFIED={facts_text(tier_text('VERIFIED'))} | "
         f"SINGLE_SOURCE={facts_text(tier_text('SINGLE_SOURCE'))} | "
         f"HYPOTHESIS={facts_text(tier_text('HYPOTHESIS'))}",
-        f"**运行证据覆盖**: {runtime['round_count']} 轮辩论 | "
-        f"{ev.get('valid_citations', 0)} 条有效引用 | "
+        f"**运行证据覆盖**: {_execution_round_label(runtime)} | "
+        f"{runtime.get('evidence_plane', {}).get('canonical_evidence_item_count', ev.get('valid_citations', 0))} 条正式证据 | "
         f"{runtime['unique_source_count']} 去重来源 URL | "
-        f"{ev.get('unique_publishers', 0)} 家独立出版方 | "
+        f"{runtime.get('independent_publisher_count', ev.get('unique_publishers', 0))} 家独立出版方 | "
         f"{runtime['primary_source_count']} 一级来源 | "
         f"隔离={facts_text(runtime['isolation_status'])}",
         f"**载荷采纳**: 提交 {py.get('submitted', 0)} | 采纳 {py.get('accepted', 0)} | "
@@ -2202,30 +2298,844 @@ def render_facts_box(view):
     return "\n".join(lines)
 
 
-def render(state, view="full"):
-    """Render a facts box, legacy brief, candidate cards, audit, or full report."""
-    model = build_report_view_model(state)
-    if view == "facts_box":
-        return render_facts_box(model)
-    if view == "brief":
-        return _render_decision_brief(model)
-    if view == "cards":
-        return _render_candidate_cards(model)
-    if view == "audit":
-        return render_audit(state)
-    if view != "full":
-        raise ValueError(
-            "unknown report view: expected facts_box, brief, cards, audit, or full"
+def _candidate_name(item):
+    ticker = _clean(item.get("ticker"))
+    return (
+        f"{_clean(item.get('candidate'))}（{ticker}）"
+        if ticker != "—"
+        else _clean(item.get("candidate"))
+    )
+
+
+def _setup_gap_text(item):
+    checks = item.get("setup_checks") if isinstance(item, dict) else {}
+    if not isinstance(checks, dict) or not checks:
+        return "未声明可核验设置"
+    gaps = []
+    for setup_type, check in checks.items():
+        if not isinstance(check, dict) or check.get("ready") is True:
+            continue
+        parts = []
+        if check.get("missing_content"):
+            parts.append("缺字段=" + ",".join(check["missing_content"]))
+        if check.get("missing_evidence"):
+            parts.append("缺字段证据=" + ",".join(check["missing_evidence"]))
+        if check.get("conflicting_fields"):
+            parts.append("字段冲突=" + ",".join(check["conflicting_fields"]))
+        if "INVALID_OR_STALE_CATALYST_WINDOW" in check.get("reason_codes", []):
+            parts.append("事件窗口无效或已过期")
+        gaps.append(f"{setup_type}: " + ("；".join(parts) or "待核验"))
+    return " / ".join(gaps) if gaps else "条件与字段证据完整"
+
+
+def _setup_lines(items):
+    if not items:
+        return ["- 当前没有满足完整条件描述的具名载体；保留为探索，不把空白误写成机会。"]
+    lines = []
+    for item in items:
+        window = item.get("catalyst_window") or {}
+        expected_by = _clean(window.get("expected_by")) if isinstance(window, dict) else "—"
+        lines.extend([
+            f"### {item.get('attention_order', '—')}. {_candidate_name(item)}",
+            f"- **角色 / 边界**：`{_clean(item.get('market_role'))}` / "
+            f"`{_clean(item.get('evidence_boundary'))}`",
+            f"- **为何会动**：{_clean(item.get('mechanism'))}",
+            f"- **兑现路径**：{_clean(item.get('economic_exposure'))}",
+            f"- **触发 / 窗口**：{_clean(item.get('catalyst'))} / {expected_by}",
+            f"- **价格与筹码**：{_clean(item.get('price_or_expectation'))}；"
+            f"{_clean(item.get('crowding_or_position'))}",
+            f"- **失效条件**：{_clean(item.get('invalidation'))}",
+            f"- **最强替代解释**：{_clean(item.get('strongest_alternative_explanation'))}",
+            "",
+        ])
+    return lines
+
+
+def _render_opportunity_brief(view):
+    """Render the bounded discovery product; it stops at conditional setups."""
+    candidate_map = view.get("candidate_map", {})
+    candidates = candidate_map.get("candidates", [])
+    result_type = candidate_map.get("result_type", "EXPLORE")
+    setup_count = sum(
+        item.get("attention_band") == "SETUP_CANDIDATE" for item in candidates
+    )
+    if result_type == "SETUP_READY":
+        judgment = (
+            f"发现 {setup_count} 个条件描述完整的具名机会；当前顺序只代表优先核验，"
+            "成立与否取决于各自触发、失效和价格/筹码条件。"
         )
-    return "\n\n".join([
-        _render_decision_brief(model),
-        _render_insight_cards(model),
-        _render_candidate_cards(model),
-        "# Audit Appendix\n"
-        "<details><summary>展开完整证据、状态、来源与运行审计</summary>\n\n"
-        + _render_audit(state, include_title=False)
-        + "\n\n</details>",
+    elif result_type == "NO_USABLE_SETUP":
+        judgment = (
+            "在具名载体、替代路径、价格/筹码和事件窗口均已覆盖的范围内，"
+            "没有形成可用的条件型机会。"
+        )
+    else:
+        judgment = (
+            "已经形成市场路径或具名线索，但关键触发、失效、价格或筹码仍有缺口；"
+            "当前应继续低成本判别，不把线索包装成结论。"
+        )
+
+    lines = [
+        "# Opportunity Brief",
+        "",
+        f"> **一句话判断｜`{result_type}`**：{judgment}",
+        "",
+        f"- **主题**：{_clean(view.get('topic'))}",
+        f"- **观察时点**：{_clean(view.get('as_of_date'))}",
+        f"- **研究视野**：{_clean(view.get('horizon'))}",
+        "",
+        "## 1. 市场如何运行",
+        "",
+    ]
+    mechanics = candidate_map.get("market_mechanics", [])
+    mechanics_fields = [
+        ("event_change", "事件变化"),
+        ("narrative", "市场叙事"),
+        ("capital_flow", "资金扩散"),
+        ("carrier_selection", "载体选择"),
+        ("crowding_path", "价格与拥挤"),
+        ("realization_path", "经济兑现"),
+        ("strongest_alternative", "替代解释"),
+    ]
+    if mechanics:
+        for field, label in mechanics_fields:
+            values = []
+            for item in mechanics:
+                value = _clean(item.get(field))
+                if value != "—" and value not in values:
+                    values.append(value)
+            if values:
+                lines.append(f"- **{label}**：{'；'.join(values[:2])}")
+    else:
+        lines.append("- 尚未形成结构化的事件 → 叙事 → 资金 → 载体 → 兑现链；这是当前首要缺口。")
+
+    lines.extend([
+        "",
+        "## 2. 具体候选地图",
+        "",
+        "| 核验序 | 具名载体 | 市场角色 | 设置类型 | 作用机制 | 证据边界 | 完整度 | 关键缺口 |",
+        "|---:|---|---|---|---|---|---|---|",
     ])
+    if candidates:
+        for item in candidates:
+            lines.append(
+                f"| {item.get('attention_order', '—')} | {_cell(_candidate_name(item))} | "
+                f"{_cell(' / '.join(item.get('market_roles') or [item.get('market_role')]))} | "
+                f"{_cell(' / '.join(item.get('setup_types') or ['仅观察']))} | "
+                f"{_cell(item.get('mechanism'))} | `{_cell(item.get('evidence_boundary'))}` | "
+                f"`{_cell(item.get('attention_band'))}` | {_cell(_setup_gap_text(item))} |"
+            )
+    else:
+        lines.append("| — | 未发现具名载体 | — | — | — | `HYPOTHESIS` | `EXPLORE` | 具名映射缺失 |")
+
+    event_items = [
+        item for item in candidate_map.get("event_setups", [])
+        if item.get("attention_band") == "SETUP_CANDIDATE"
+    ]
+    economic_items = [
+        item for item in candidate_map.get("economic_setups", [])
+        if item.get("attention_band") == "SETUP_CANDIDATE"
+    ]
+    lines.extend(["", "## 3. 事件驱动设置", ""])
+    lines.extend(_setup_lines(event_items))
+    lines.extend(["## 4. 产业兑现设置", ""])
+    lines.extend(_setup_lines(economic_items))
+
+    lines.extend(["## 5. 情景树", ""])
+    scenario_rows = []
+    scenario = view.get("scenario_paths", {})
+    for path in scenario.get("paths", []) if isinstance(scenario, dict) else []:
+        scenario_rows.append({
+            "name": path.get("path_type"),
+            "outcome": path.get("summary"),
+            "trigger": path.get("trigger_event"),
+            "transmission": path.get("transmission_chain"),
+            "falsifier": path.get("falsifier"),
+        })
+    if not scenario_rows:
+        # Candidate-specific scenario labels support event shapes such as full
+        # success / partial success / failure / delay without forcing odds.
+        seen = set()
+        for item in candidates:
+            for name, outcome in (item.get("scenario_fit") or {}).items():
+                key = (_clean(name), _clean(outcome))
+                if key in seen or key[1] == "—":
+                    continue
+                seen.add(key)
+                scenario_rows.append({
+                    "name": name,
+                    "outcome": outcome,
+                    "trigger": item.get("catalyst"),
+                    "transmission": item.get("mechanism"),
+                    "falsifier": item.get("invalidation"),
+                })
+    if scenario_rows:
+        lines.extend([
+            "| 情景 | 可观察结果 | 触发 | 市场传导 | 失效/反证 |",
+            "|---|---|---|---|---|",
+        ])
+        for row in scenario_rows[:8]:
+            lines.append(
+                f"| {_cell(row.get('name'))} | {_cell(row.get('outcome'))} | "
+                f"{_cell(row.get('trigger'))} | {_cell(row.get('transmission'))} | "
+                f"{_cell(row.get('falsifier'))} |"
+            )
+    else:
+        lines.append("- 情景尚未结构化；不得用单一路径代替成功、部分兑现、失败与延期分支。")
+
+    lines.extend([
+        "",
+        "## 6. 触发与失效总表",
+        "",
+        "| 具名载体 | 触发 | 失效 | 价格/预期 | 筹码/拥挤 |",
+        "|---|---|---|---|---|",
+    ])
+    if candidates:
+        for item in candidates:
+            lines.append(
+                f"| {_cell(_candidate_name(item))} | {_cell(item.get('catalyst'))} | "
+                f"{_cell(item.get('invalidation'))} | {_cell(item.get('price_or_expectation'))} | "
+                f"{_cell(item.get('crowding_or_position'))} |"
+            )
+    else:
+        lines.append("| — | — | — | — | — |")
+
+    lines.extend([
+        "",
+        "## 7. 证据边界",
+        "",
+        "- `FACT`：至少两个独立发布方的有效来源直接支持该映射。",
+        "- `SINGLE_SOURCE`：只有一个有效发布方，尚未交叉核验。",
+        "- `INFERENCE`：来源支持事实底座，但从事实到载体的映射仍是推断。",
+        "- `HYPOTHESIS`：尚无有效来源；保留为待验证线索。",
+    ])
+    for item in candidates:
+        citations = item.get("evidence", [])
+        if not citations:
+            continue
+        links = []
+        for citation in citations[:3]:
+            source = _clean(citation.get("source"))
+            url = _clean(citation.get("url"))
+            date = _clean(citation.get("date"))
+            links.append(f"[{source}（{date}）]({url})")
+        lines.append(
+            f"- **{_candidate_name(item)}** `{_clean(item.get('evidence_boundary'))}`："
+            + "；".join(links)
+        )
+
+    coverage = candidate_map.get("coverage", {})
+    research_grade = view.get("research_grade", {})
+    framing = view.get("framing", {})
+    verdict = view.get("verdict", {})
+    lines.extend([
+        "",
+        "## 8. 最便宜的下一项检验",
+        "",
+        f"- { _clean(candidate_map.get('cheapest_next_test')) }",
+        "",
+        "## 9. 审计附录",
+        "",
+        f"- **结果类型**：`{result_type}`",
+        f"- **具名载体数**：{len(candidates)}",
+        f"- **完整条件设置数**：{setup_count}",
+        f"- **覆盖检查**：具名载体={'是' if coverage.get('concrete_instrument_search') else '否'}；"
+        f"替代路径={'是' if coverage.get('alternative_paths') else '否'}；"
+        f"价格/筹码={'是' if coverage.get('price_and_crowding') else '否'}；"
+        f"事件窗口={'是' if coverage.get('event_window') else '否'}",
+        f"- **执行真实性**：`{_clean(view.get('runtime', {}).get('execution_integrity', {}).get('execution_mode'))}`；"
+        f"{_execution_round_label(view.get('runtime', {}))}",
+        f"- **研究底座等级**：`{_clean(research_grade.get('report_grade'))}`；"
+        f"未满足项={_clean(', '.join(research_grade.get('unmet_gates', [])))}",
+        f"- **证据姿态**：{_clean(verdict.get('edge_state'))} / "
+        f"{_clean(verdict.get('evidence_direction'))} / {_clean(verdict.get('actionability'))}",
+        f"- **立题质量**：`{_clean(framing.get('quality_status'))}`",
+        "- **边界**：本报告止于条件型机会摘要；核验序不是收益排序，也不构成操作建议。",
+    ])
+    for premise in framing.get("premise_audit", [])[:5]:
+        lines.append(
+            f"- **立题前提** `{_clean(premise.get('status'))}`："
+            f"{_clean(premise.get('claim'))}（as-of={_clean(premise.get('as_of'))}）"
+        )
+    notes = candidate_map.get("coverage_notes", [])
+    for note in notes[:3]:
+        lines.append(f"- **覆盖备注**：{_clean(note)}")
+    for route in candidate_map.get("coverage_routes", [])[:8]:
+        lines.append(
+            f"- **覆盖路径 `{_clean(route.get('coverage_field'))}`**："
+            f"{_clean(route.get('query'))} -> `{_clean(route.get('outcome'))}`；"
+            f"检查={_clean(', '.join(route.get('checked_urls', [])))}"
+        )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_deep_research_report(view):
+    """Render the topic-led research product with explicit, bounded advice."""
+    agenda = view.get("research_agenda", {})
+    questions = agenda.get("questions", [])
+    directions = agenda.get("research_directions", [])
+    evidence_items = agenda.get("evidence_items", [])
+    blind_spots = agenda.get("blind_spots", [])
+    candidate_map = view.get("candidate_map", {})
+    market_bridge = view.get("market_bridge", {})
+    candidates = candidate_map.get("candidates", [])
+    setup_candidates = [
+        item for item in candidates
+        if item.get("attention_band") == "SETUP_CANDIDATE"
+    ]
+    answered = [item for item in questions if item.get("answer_status") == "ANSWERED"]
+    addressed = [item for item in questions if research_kernel.answer_has_progress(item)]
+    unresolved = [item for item in questions if item.get("answer_status") != "ANSWERED"]
+    initial_questions = [
+        item for item in questions if int(item.get("first_seen_round", 0) or 0) == 0
+    ]
+    derived_questions = sorted(
+        [item for item in questions if int(item.get("first_seen_round", 0) or 0) > 0],
+        key=lambda item: (
+            0 if research_kernel.answer_has_progress(item) else 1,
+            0 if item.get("blocks_current_recommendation") is True else 1,
+            {"HIGH": 0, "MEDIUM": 1, "LOW": 2}.get(item.get("decision_impact"), 3),
+            -int(item.get("first_seen_round", 0) or 0),
+            item.get("question_id", ""),
+        ),
+    )
+    display_questions = initial_questions + derived_questions[
+        :max(0, 10 - len(initial_questions))
+    ]
+    display_directions = sorted(
+        directions,
+        key=lambda item: (
+            0 if item.get("origin") == "ROUND_DISCOVERY" else 1,
+            0 if item.get("next_move") == "OPEN_NEW_DIRECTION" else 1,
+            0 if item.get("load_bearing") is True else 1,
+            item.get("direction_id", ""),
+        ),
+    )[:8]
+    display_blind_spots = sorted(
+        blind_spots,
+        key=lambda item: (
+            0 if item.get("blocks_current_recommendation") is True else 1,
+            {"HIGH": 0, "MEDIUM": 1, "LOW": 2}.get(item.get("decision_impact"), 3),
+            0 if item.get("research_cost") == "LOW" else 1,
+            -int(item.get("first_seen_round", 0) or 0),
+            item.get("blind_spot_id", ""),
+        ),
+    )[:8]
+    display_candidates = candidates[:10]
+    result_type = candidate_map.get("result_type", "EXPLORE")
+    research_grade = view.get("research_grade", {})
+    research_control = view.get("research_control", {})
+    mechanics = candidate_map.get("market_mechanics", [])
+    priorities_by_horizon = market_bridge.get("priorities_by_horizon", {})
+    bridge_priority_count = int(market_bridge.get("priority_count", 0) or 0)
+    bridge_result_type = market_bridge.get("result_type", "NO_CANDIDATE_MAP")
+
+    if bridge_priority_count:
+        conclusion = (
+            f"课题已形成 {bridge_priority_count} 个按时间视野区分的横向条件性优先项；"
+            "它们同时说明产业价值路径、市场载体选择、最接近替代项和切换条件，"
+            "不再由字段完整度自动生成推荐。"
+        )
+    elif setup_candidates:
+        conclusion = (
+            f"已有 {len(setup_candidates)} 个字段和证据较完整的具名设置，但尚未形成"
+            "有效的产业—市场横向比较；完整性不等于吸引力，因此当前不输出条件性优先项。"
+        )
+    elif result_type == "NO_USABLE_SETUP":
+        conclusion = (
+            "在具名载体、替代路径、价格/筹码和事件窗口已覆盖的范围内，"
+            "没有形成可用的条件型机会；应报告负结果，同时保留新盲点带来的重开条件。"
+        )
+    elif candidates:
+        conclusion = (
+            f"课题已映射 {len(candidates)} 个具名载体，但尚未形成条件完整的设置；"
+            "当前最有价值的动作是补齐价格/筹码、催化或失效条件，而不是停止机会挖掘。"
+        )
+    else:
+        conclusion = (
+            "当前轮次尚未形成可信的具名载体映射；这表示研究仍有结构性空白，"
+            "不表示课题没有潜在市场机会。"
+        )
+
+    lines = [
+        "# Deep Research Report",
+        "",
+        f"> **核心判断｜`{bridge_result_type}`**：{conclusion}",
+        "",
+        f"- **研究课题**：{_clean(agenda.get('research_objective') or view.get('decision_question'))}",
+        f"- **主题 / 时点 / 视野**：{_clean(view.get('topic'))} / "
+        f"{_clean(view.get('as_of_date'))} / {_clean(view.get('horizon'))}",
+        f"- **进展**：完整回答 {len(answered)}；已有证据边界的阶段性答案 "
+        f"{len(addressed)}；问题总数 {len(questions)}；"
+        f"研究方向 {len(directions)}（活跃 {agenda.get('active_direction_count', 0)}）；"
+        f"正式证据 {len(evidence_items)}；新增盲点 {len(blind_spots)}；交付状态 "
+        f"`{_clean(research_control.get('product_readiness'))}`",
+        f"- **是否建议续研**："
+        f"{'是（需额外授权）' if research_control.get('more_research_recommended') else '否'}；"
+        f"原因={_clean(', '.join(research_control.get('reason_codes', [])))}",
+        f"- **候选字段完整性**：`{_clean(result_type)}`；它不决定推荐权。",
+        "",
+        "## 1. 结论与建议",
+        "",
+    ]
+    if bridge_priority_count:
+        horizon_labels = {
+            "EVENT_DAYS": "事件窗口",
+            "TACTICAL_WEEKS": "战术数周",
+            "EARNINGS_QUARTERS": "财报季度",
+            "STRUCTURAL_YEARS": "长期产业",
+        }
+        rendered = 0
+        for horizon in (
+            "EVENT_DAYS", "TACTICAL_WEEKS", "EARNINGS_QUARTERS", "STRUCTURAL_YEARS"
+        ):
+            for item in priorities_by_horizon.get(horizon, []):
+                if rendered >= 8:
+                    break
+                bridge = item.get("bridge", {})
+                alternative = bridge.get("closest_alternative", {})
+                alternative_name = _candidate_name(alternative) if alternative else "—"
+                phase = market_bridge.get("phase_by_horizon", {}).get(horizon, {})
+                rendered += 1
+                lines.extend([
+                    f"### {horizon_labels.get(horizon, horizon)}：条件性优先关注 {_candidate_name(item)}",
+                    f"- **产业 × 市场投影**：`{_clean(bridge.get('projection'))}` / "
+                    f"`{_clean(bridge.get('recommendation_level'))}`；当前阶段="
+                    f"`{_clean(phase.get('phase'))}`（{_clean(phase.get('status'))}）",
+                    f"- **产业依据**：{_clean(bridge.get('economic_exposure_strength', {}).get('rationale'))}",
+                    f"- **市场选择依据**：{_clean(bridge.get('market_recognition', {}).get('rationale'))}",
+                    f"- **相对选择**：当前相对 {alternative_name} 优先，因为"
+                    f"{_clean(bridge.get('why_prefer_now'))}",
+                    f"- **切换条件**：{_clean(bridge.get('switch_condition'))}",
+                    f"- **失效 / 边界**：{_clean(item.get('invalidation'))}；"
+                    f"产业强度={_clean(bridge.get('economic_exposure_strength', {}).get('effective'))}；"
+                    f"市场确认={_clean(bridge.get('market_recognition', {}).get('effective'))}",
+                    "",
+                ])
+            if rendered >= 8:
+                break
+    elif setup_candidates:
+        lines.append(
+            "- **当前无横向条件性优先项**：以下完整 setup 仍缺价值路径、时间阶段或"
+            "有效替代比较，不能仅凭字段齐全升级为推荐："
+            + "、".join(_candidate_name(item) for item in setup_candidates[:5]) + "。"
+        )
+    elif candidates:
+        for index, item in enumerate(candidates[:5], start=1):
+            bridge = item.get("bridge", {})
+            lines.extend([
+                f"- **研究优先级 {index}｜{_candidate_name(item)}**："
+                f"{_clean(item.get('mechanism'))}。产业×市场投影="
+                f"`{_clean(bridge.get('projection'))}`；下一步先验证"
+                f"{_clean(item.get('cheap_discriminating_test'))}；当前缺口="
+                f"{_clean(_setup_gap_text(item))} / "
+                f"{_clean(', '.join(bridge.get('issues', [])))}。",
+            ])
+    else:
+        lines.append(
+            "- **建议**：按 Research Agenda 的未回答问题继续搜索，并强制完成具体载体、"
+            "替代路径、价格/筹码和事件窗口四类映射。"
+        )
+
+    lines.extend([
+        "",
+        "## 2. 课题拆解与逐轮答案",
+        "",
+        "| 状态 | 研究问题 | 当前答案 | 最强质证 | 尚缺信息 | 证据边界 |",
+        "|---|---|---|---|---|---|",
+    ])
+    if display_questions:
+        for item in display_questions:
+            lines.append(
+                f"| `{_cell(item.get('answer_status'))}` | {_cell(item.get('question'))} | "
+                f"{_cell(item.get('current_answer'))} | {_cell(item.get('strongest_challenge'))} | "
+                f"{_cell(item.get('missing_information'))} | "
+                f"`{_cell(item.get('evidence_boundary'))}` |"
+            )
+    else:
+        lines.append("| `OPEN` | 归档运行未记录 Research Agenda | — | — | 需重建立题工作单 | `HYPOTHESIS` |")
+    if len(questions) > len(display_questions):
+        lines.append(
+            f"\n> 默认正文仅显示初始问题及最有信息量的新问题；另有 "
+            f"{len(questions) - len(display_questions)} 项保留在审计视图。"
+        )
+
+    lines.extend([
+        "",
+        "## 3. 研究方向判断与新观点",
+        "",
+        "| 判断 | 证据边界 | 类型 | 待质证论点/方向 | 本轮结论 | 下一研究动作 | 最强反例 |",
+        "|---|---|---|---|---|---|---|",
+    ])
+    if display_directions:
+        for item in display_directions:
+            lines.append(
+                f"| `{_cell(item.get('research_judgment'))}` | "
+                f"`{_cell(item.get('evidence_boundary'))}` | "
+                f"{_cell(item.get('direction_kind'))} | {_cell(item.get('proposition'))} | "
+                f"{_cell(item.get('rationale'))} | `{_cell(item.get('next_move'))}` | "
+                f"{_cell(item.get('strongest_challenge'))} |"
+            )
+    else:
+        lines.append("| `UNRESOLVED` | `HYPOTHESIS` | — | 归档运行未记录研究方向 | — | `CONTINUE` | — |")
+    if len(directions) > len(display_directions):
+        lines.append(f"\n> 另有 {len(directions) - len(display_directions)} 条方向保留在审计视图。")
+    new_directions = [
+        item for item in directions if item.get("origin") == "ROUND_DISCOVERY"
+    ]
+    if new_directions:
+        lines.extend(["", "### 由质证产生的新观点", ""])
+        for item in new_directions[:5]:
+            lines.append(
+                f"- **{_clean(item.get('proposition'))}**：来源="
+                f"{_clean(item.get('origin_reason'))}；会改变="
+                f"{_clean(item.get('why_it_matters'))}；判别测试="
+                f"{_clean(item.get('discriminating_test'))}。"
+            )
+        if len(new_directions) > 5:
+            lines.append(f"- 其余 {len(new_directions) - 5} 条新方向保留在审计视图。")
+
+    lines.extend(["", "## 4. 产业价值转移与市场时间结构", ""])
+    value_paths = market_bridge.get("value_paths", [])
+    if value_paths:
+        lines.extend(["### 产业价值转移", ""])
+        for item in value_paths[:8]:
+            lines.append(
+                f"- **`{_clean(item.get('path_id'))}`｜{_clean(item.get('realization_horizon'))}**："
+                f"{_clean(item.get('state_change'))} → {_clean(item.get('constraint_change'))} → "
+                f"{_clean(item.get('profit_pool_shift'))}；证伪={_clean(item.get('falsifier'))}；"
+                f"边界=`{_clean(item.get('evidence_boundary'))}`。"
+            )
+    else:
+        lines.append("- 尚未形成可回指 Research Agenda 的价值转移路径。")
+
+    universe_by_horizon = market_bridge.get("universe_by_horizon", {})
+    lines.extend(["", "### 经济暴露池 × 市场交易池", ""])
+    if universe_by_horizon:
+        lines.extend([
+            "| 时间视野 | 双池覆盖 | 经济暴露池 | 市场交易池 | 构造规则 |",
+            "|---|---|---|---|---|",
+        ])
+        for horizon in (
+            "EVENT_DAYS", "TACTICAL_WEEKS", "EARNINGS_QUARTERS", "STRUCTURAL_YEARS"
+        ):
+            universe = universe_by_horizon.get(horizon)
+            if not universe:
+                continue
+            economic = universe.get("types", {}).get("ECONOMIC_EXPOSURE", {})
+            market = universe.get("types", {}).get("MARKET_TRADING", {})
+            economic_snapshots = economic.get("snapshots", [])
+            market_snapshots = market.get("snapshots", [])
+            economic_first = economic_snapshots[0] if economic_snapshots else {}
+            market_first = market_snapshots[0] if market_snapshots else {}
+            rules = "；".join(filter(None, [
+                _clean(economic_first.get("construction_rule")),
+                _clean(market_first.get("construction_rule")),
+            ]))
+            lines.append(
+                f"| `{_cell(horizon)}` | {'完整' if universe.get('complete') else '不足'} | "
+                f"{_cell(economic_first.get('universe_name'))} "
+                f"({len(economic.get('member_identities', []))}) | "
+                f"{_cell(market_first.get('universe_name'))} "
+                f"({len(market.get('member_identities', []))}) | {_cell(rules)} |"
+            )
+    else:
+        lines.append("- 尚未冻结经济暴露池与市场交易池；两只候选互相比不能证明方向覆盖。")
+
+    phase_by_horizon = market_bridge.get("phase_by_horizon", {})
+    lines.extend(["", "### 市场时间结构", ""])
+    if phase_by_horizon:
+        lines.extend([
+            "| 时间视野 | 阶段判断 | 状态 | 当前主要定价变量 | 产业时钟 | 市场时钟 | 最强替代解释 |",
+            "|---|---|---|---|---|---|---|",
+        ])
+        for horizon in (
+            "EVENT_DAYS", "TACTICAL_WEEKS", "EARNINGS_QUARTERS", "STRUCTURAL_YEARS"
+        ):
+            phase = phase_by_horizon.get(horizon)
+            if not phase:
+                continue
+            snapshots = phase.get("snapshots", [])
+            first = snapshots[0] if snapshots else {}
+            alternatives = "；".join(
+                _clean(item.get("strongest_alternative_phase"))
+                for item in snapshots[:2]
+            )
+            lines.append(
+                f"| `{_cell(horizon)}` | `{_cell(phase.get('phase'))}` | "
+                f"`{_cell(phase.get('status'))}` | {_cell(first.get('dominant_pricing_variable'))} | "
+                f"{_cell(first.get('industry_clock'))} | {_cell(first.get('market_clock'))} | "
+                f"{_cell(alternatives)} |"
+            )
+    else:
+        lines.append("- 尚未形成带 as-of 和证据的市场阶段判断；不得用固定天数假装阶段推进。")
+
+    lines.extend(["", "### 事件—资金—载体运行链", ""])
+    mechanics_fields = [
+        ("event_change", "事件变化"),
+        ("narrative", "叙事形成"),
+        ("capital_flow", "资金扩散"),
+        ("carrier_selection", "载体选择"),
+        ("crowding_path", "价格与筹码反馈"),
+        ("realization_path", "产业兑现"),
+        ("strongest_alternative", "最强替代解释"),
+    ]
+    if mechanics:
+        for field, label in mechanics_fields:
+            values = []
+            for item in mechanics:
+                value = _clean(item.get(field))
+                if value != "—" and value not in values:
+                    values.append(value)
+            if values:
+                lines.append(f"- **{label}**：{'；'.join(values[:3])}")
+    else:
+        lines.append("- 尚未形成事件 → 叙事 → 资金 → 载体 → 产业兑现链；应作为下一轮首要任务。")
+
+    lines.extend([
+        "",
+        "## 5. 具体载体与机会结构",
+        "",
+        "| 核验序 | 具名载体 | 产业×市场投影 | 市场角色 | 时间视野 | 作用机制 | 相对替代 | 边界 |",
+        "|---:|---|---|---|---|---|---|---|",
+    ])
+    if display_candidates:
+        for item in display_candidates:
+            bridge = item.get("bridge", {})
+            alternative = bridge.get("closest_alternative", {})
+            lines.append(
+                f"| {item.get('attention_order', '—')} | {_cell(_candidate_name(item))} | "
+                f"`{_cell(bridge.get('projection'))}` / "
+                f"`{_cell(bridge.get('recommendation_level'))}` | "
+                f"{_cell(' / '.join(item.get('market_roles') or [item.get('market_role')]))} | "
+                f"{_cell(' / '.join(bridge.get('horizon_fit') or ['未建立']))} | "
+                f"{_cell(item.get('mechanism'))} | "
+                f"{_cell(_candidate_name(alternative) if alternative else '—')}；"
+                f"{_cell(bridge.get('why_prefer_now'))} | "
+                f"`{_cell(item.get('evidence_boundary'))}`；"
+                f"{_cell(', '.join(bridge.get('issues', [])))} |"
+            )
+    else:
+        lines.append("| — | 尚无具名载体 | — | — | — | — | — | `HYPOTHESIS` |")
+    if len(candidates) > len(display_candidates):
+        lines.append(f"\n> 另有 {len(candidates) - len(display_candidates)} 个探索候选保留在审计视图。")
+
+    event_items = [item for item in candidate_map.get("event_setups", []) if item in setup_candidates]
+    economic_items = [item for item in candidate_map.get("economic_setups", []) if item in setup_candidates]
+    lines.extend(["", "## 6. 事件驱动与产业链兑现", "", "### 事件驱动", ""])
+    lines.extend(_setup_lines(event_items))
+    lines.extend(["### 产业链兑现", ""])
+    lines.extend(_setup_lines(economic_items))
+
+    lines.extend(["## 7. 新盲点与前瞻推演", ""])
+    if display_blind_spots:
+        for item in display_blind_spots:
+            lines.extend([
+                f"### {_clean(item.get('statement'))}",
+                f"- **为何此前容易漏掉**：{_clean(item.get('why_missed'))}",
+                f"- **可能改变什么**：{_clean(item.get('potential_impact'))}",
+                f"- **最低成本验证**：{_clean(item.get('cheapest_test'))}",
+                "",
+            ])
+    else:
+        lines.append("- 尚未记录新盲点；下一轮必须追问二阶影响、失败受益者、替代解释与价格反身性。")
+    if len(blind_spots) > len(display_blind_spots):
+        lines.append(f"- 其余 {len(blind_spots) - len(display_blind_spots)} 项盲点保留在审计视图。")
+
+    lines.extend(["## 8. 情景、触发与失效", ""])
+    scenario = view.get("scenario_paths", {})
+    paths = scenario.get("paths", []) if isinstance(scenario, dict) else []
+    if paths:
+        lines.extend([
+            "| 情景 | 可观察结果 | 触发 | 传导 | 失效/反证 |",
+            "|---|---|---|---|---|",
+        ])
+        for path in paths[:8]:
+            lines.append(
+                f"| {_cell(path.get('path_type'))} | {_cell(path.get('summary'))} | "
+                f"{_cell(path.get('trigger_event'))} | {_cell(path.get('transmission_chain'))} | "
+                f"{_cell(path.get('falsifier'))} |"
+            )
+    else:
+        candidate_paths = []
+        seen_paths = set()
+        for item in candidates[:5]:
+            for name, outcome in (item.get("scenario_fit") or {}).items():
+                key = (_clean(name), _clean(outcome), _candidate_name(item))
+                if key in seen_paths or key[1] == "—":
+                    continue
+                seen_paths.add(key)
+                candidate_paths.append((item, name, outcome))
+        if candidate_paths:
+            lines.extend([
+                "| 载体 | 情景 | 可观察结果 | 触发 | 失效/反证 |",
+                "|---|---|---|---|---|",
+            ])
+            for item, name, outcome in candidate_paths[:12]:
+                lines.append(
+                    f"| {_cell(_candidate_name(item))} | {_cell(name)} | {_cell(outcome)} | "
+                    f"{_cell(item.get('catalyst'))} | {_cell(item.get('invalidation'))} |"
+                )
+        else:
+            for item in candidates[:5]:
+                lines.append(
+                    f"- **{_candidate_name(item)}**：触发={_clean(item.get('catalyst'))}；"
+                    f"失效={_clean(item.get('invalidation'))}；"
+                    f"替代解释={_clean(item.get('strongest_alternative_explanation'))}。"
+                )
+            if not candidates:
+                lines.append("- 情景尚未结构化。")
+
+    lines.extend([
+        "",
+        "## 9. 未回答问题与下一轮研究",
+        "",
+    ])
+    next_question_ids = {
+        item.get("question_id")
+        for item in research_control.get("next_questions", [])
+        if isinstance(item, dict)
+    }
+    next_questions = [
+        item for item in unresolved if item.get("question_id") in next_question_ids
+    ] or unresolved[:5]
+    if next_questions:
+        for item in next_questions[:5]:
+            lines.append(
+                f"- `{_clean(item.get('answer_status'))}` **{_clean(item.get('question'))}**："
+                f"{_clean(item.get('next_question') or item.get('missing_information') or item.get('success_condition'))}"
+            )
+    elif questions:
+        lines.append("- 当前工作单问题均已回答；仅在新事实或盲点改变结论时继续扩展。")
+    else:
+        lines.append("- 归档运行未记录 Research Agenda；需先重建课题工作单，不能视为问题均已回答。")
+    active_directions = [
+        item for item in directions if item.get("next_move") != "ANSWER"
+    ]
+    for item in active_directions[:5]:
+        lines.append(
+            f"- **方向 `{_clean(item.get('direction_id'))}`｜"
+            f"{_clean(item.get('next_move'))}**："
+            f"{_clean(item.get('unresolved_question') or item.get('discriminating_test'))}"
+        )
+    lines.append(f"- **最便宜的总体下一检验**：{_clean(candidate_map.get('cheapest_next_test'))}")
+    for note in candidate_map.get("coverage_notes", [])[:5]:
+        lines.append(f"- **覆盖备注**：{_clean(note)}")
+    for route in candidate_map.get("coverage_routes", [])[:8]:
+        lines.append(
+            f"- **覆盖路径 `{_clean(route.get('coverage_field'))}`**："
+            f"{_clean(route.get('query'))} -> `{_clean(route.get('outcome'))}`；"
+            f"检查={_clean(', '.join(route.get('checked_urls', [])))}"
+        )
+
+    lines.extend([
+        "",
+        "## 10. 证据边界与方法限制",
+        "",
+        "- `FACT`：至少两个独立发布方的有效来源直接支持；`SINGLE_SOURCE`：单一发布方；",
+        "  `INFERENCE`：事实底座存在但结论仍含映射推断；`HYPOTHESIS`：待验证研究线索。",
+        f"- **未满足研究闸**：{_clean(', '.join(research_grade.get('unmet_gates', [])))}",
+        f"- **兼容审计等级**：`{_clean(research_grade.get('report_grade'))}`；"
+        "它衡量旧证据工作流完成度，不衡量机会质量。",
+        f"- **研究控制**：`{_clean(research_control.get('recommended_action'))}`；"
+        "该状态由 Agenda 的可回答性与高影响低成本盲点决定；"
+        "FORMAL/PROVISIONAL 仅为兼容审计等级。",
+        f"- **执行真实性 / 证据**："
+        f"`{_clean(view.get('runtime', {}).get('execution_integrity', {}).get('execution_mode'))}`；"
+        f"{_execution_round_label(view.get('runtime', {}))} / "
+        f"{view.get('runtime', {}).get('evidence_plane', {}).get('canonical_evidence_item_count', 0)} 条 canonical evidence / "
+        f"{view.get('runtime', {}).get('unique_source_count', 0)} 个去重 URL / "
+        f"{view.get('runtime', {}).get('independent_publisher_count', 0)} 家独立发布方。",
+        "- **边界**：报告可以给出条件性优先级与研究建议，但不自动产生订单、仓位、"
+        "目标收益、候选晋级或任何外部执行。支持度是研究控制指标，不是成功概率。",
+        "- **排序语义**：核验序不是收益排序；条件性建议不构成操作建议。",
+    ])
+    verdict = view.get("verdict", {})
+    framing = view.get("framing", {})
+    lines.extend([
+        f"- **证据姿态**：{_clean(verdict.get('edge_state'))} / "
+        f"{_clean(verdict.get('evidence_direction'))} / {_clean(verdict.get('actionability'))}",
+        f"- **立题质量**：`{_clean(framing.get('quality_status'))}`",
+    ])
+    for premise in framing.get("premise_audit", [])[:5]:
+        lines.append(
+            f"- **立题前提** `{_clean(premise.get('status'))}`："
+            f"{_clean(premise.get('claim'))}（as-of={_clean(premise.get('as_of'))}）"
+        )
+    evidence_rows = []
+    seen_evidence = set()
+    for citation in evidence_items:
+        if not isinstance(citation, dict):
+            continue
+        key = (_clean(citation.get("url")), _clean(citation.get("claim")))
+        if key in seen_evidence:
+            continue
+        seen_evidence.add(key)
+        evidence_rows.append((
+            f"Evidence {_clean(citation.get('evidence_id'))}", citation
+        ))
+    for question in questions:
+        for citation in question.get("evidence", []):
+            if not isinstance(citation, dict):
+                continue
+            key = (_clean(citation.get("url")), _clean(citation.get("claim")))
+            if key in seen_evidence:
+                continue
+            seen_evidence.add(key)
+            evidence_rows.append((
+                f"Research Agenda {question.get('question_id', '—')}", citation
+            ))
+    for item in candidates:
+        for citation in item.get("evidence", []):
+            if not isinstance(citation, dict):
+                continue
+            key = (_clean(citation.get("url")), _clean(citation.get("claim")))
+            if key in seen_evidence:
+                continue
+            seen_evidence.add(key)
+            evidence_rows.append((_candidate_name(item), citation))
+    if evidence_rows:
+        lines.extend(["", "### 证据索引", ""])
+        for subject, citation in evidence_rows[:20]:
+            lines.append(
+                f"- **{subject}**：{_clean(citation.get('claim'))} — "
+                f"[{_clean(citation.get('source'))}（{_clean(citation.get('date'))}）]"
+                f"({_clean(citation.get('url'))})"
+            )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render(state, view="research"):
+    """Render the Deep Research Report by default; legacy views stay explicit."""
+    model = build_report_view_model(state)
+    audit = model["runtime"]["execution_integrity"]
+    if view == "research":
+        rendered = _render_deep_research_report(model)
+    elif view == "opportunity":
+        rendered = _render_opportunity_brief(model)
+    elif view == "facts_box":
+        rendered = render_facts_box(model)
+    elif view == "brief":
+        rendered = _render_decision_brief(model)
+    elif view == "insights":
+        rendered = _render_insight_cards(model)
+    elif view == "cards":
+        rendered = _render_candidate_cards(model)
+    elif view == "audit":
+        rendered = render_audit(state)
+    elif view != "full":
+        raise ValueError(
+            "unknown report view: expected research, opportunity, facts_box, brief, insights, cards, audit, or full"
+        )
+    else:
+        rendered = "\n\n".join([
+            _render_deep_research_report(model),
+            "# Audit Appendix\n"
+            "<details><summary>展开完整证据、状态、来源与运行审计</summary>\n\n"
+            + _render_audit(state, include_title=False)
+            + "\n\n</details>",
+        ])
+    return _attach_execution_marker(rendered, audit)
 
 
 if __name__ == "__main__":
@@ -2234,8 +3144,8 @@ if __name__ == "__main__":
     ap.add_argument("--state", default="", help="path to a v2 state json")
     ap.add_argument(
         "--view",
-        default="full",
-        choices=["facts_box", "brief", "cards", "audit", "full"],
+        default="research",
+        choices=["research", "opportunity", "facts_box", "brief", "insights", "cards", "audit", "full"],
         help="report view to render",
     )
     ap.add_argument("--selftest", action="store_true")

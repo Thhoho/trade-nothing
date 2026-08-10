@@ -562,7 +562,7 @@ class CandidateScreenOrchestratorTests(unittest.TestCase):
         orchestrator._save(topic, st)
         self.assertEqual(orchestrator.cmd_screen(topic, AS_OF)["status"], "blocked_unconverged")
 
-    def test_opportunity_report_gates_ranking_but_still_delivers_report(self):
+    def test_opportunity_report_delivers_without_automatic_screen_dispatch(self):
         topic = "candidate screen default continuation"
         st = state_with_seed()
         st["question_type"] = "UNIVERSE_SEARCH"
@@ -571,21 +571,18 @@ class CandidateScreenOrchestratorTests(unittest.TestCase):
         self.assertEqual(result["status"], "report_data_ready")
         # Ranking named securities stays hard-gated until the screen completes,
         # but CandidateScreen is a separate lifecycle and does not lower the
-        # research report grade. This fixture also lacks its required Landscape.
+        # research report grade. Opportunity work no longer requires a Landscape
+        # unless the frame explicitly declared one.
         self.assertFalse(result["ranking_allowed"])
         self.assertNotIn("CANDIDATE_SCREEN", result["unmet_gates"])
-        self.assertIn("LANDSCAPE_COVERAGE", result["unmet_gates"])
-        self.assertIn(
-            "CANDIDATE_SCREEN",
-            result["candidate_lifecycle"]["pending_steps"],
-        )
-        self.assertEqual(
-            result["candidate_screen_dispatch"]["status"], "dispatch_candidate_screeners"
-        )
+        self.assertNotIn("LANDSCAPE_COVERAGE", result["unmet_gates"])
+        self.assertEqual(result["candidate_lifecycle"]["pending_steps"], [])
+        self.assertNotIn("candidate_screen_dispatch", result)
+        self.assertTrue(result["report_markdown"].startswith("# Deep Research Report"))
         stored = orchestrator._load(topic)
-        self.assertEqual(stored["candidate_screen_dispatches"][0]["max_batch"], 3)
+        self.assertNotIn("candidate_screen_dispatches", stored)
 
-    def test_final_research_submit_immediately_dispatches_default_screeners(self):
+    def test_final_research_submit_goes_directly_to_deep_research_report(self):
         topic = "candidate screen direct continuation"
         st = state_with_seed()
         st["question_type"] = "UNIVERSE_SEARCH"
@@ -631,10 +628,12 @@ class CandidateScreenOrchestratorTests(unittest.TestCase):
             {"crux_attacks": [], "opportunity_seeds": []},
             {"crux_signals": {}, "new_cruxes": []},
         )
-        self.assertEqual(result["status"], "dispatch_candidate_screeners")
+        self.assertEqual(result["status"], "ready_for_report")
         self.assertTrue(result["research_converged"])
-        self.assertTrue(result["formal_report_deferred"])
-        self.assertEqual(result["candidate_seed_ids"], ["OS-TEST"])
+        self.assertNotIn("formal_report_deferred", result)
+        self.assertTrue(result["verification_available"])
+        stored = orchestrator._load(topic)
+        self.assertNotIn("candidate_screen_dispatches", stored)
 
 
 class CandidateScreenReportTests(unittest.TestCase):
@@ -653,7 +652,7 @@ class CandidateScreenReportTests(unittest.TestCase):
             st, analyst, skeptic, AS_OF, isolation_status="verified",
             isolation_receipt=receipt,
         )
-        md = report_v2.render(st, view="cards")
+        md = report_v2.render(st, view="cards") + "\n" + report_v2.render(st, view="audit")
         self.assertIn("反向风险暴露", md)
         self.assertNotIn("SHORT_CANDIDATE", md)
         self.assertIn("首要筛选缺口**: EXPECTATION_GAP", md)
@@ -672,7 +671,7 @@ class CandidateScreenReportTests(unittest.TestCase):
             st, analyst, skeptic, AS_OF, isolation_status="verified",
             isolation_receipt=receipt,
         )
-        md = report_v2.render(st)
+        md = report_v2.render(st, view="cards") + "\n" + report_v2.render(st, view="audit")
         self.assertIn("THESIS_CANDIDATE", md)
         self.assertIn("CandidateScreen", md)
         self.assertIn("DRAFT_REQUIRES_SOURCE_VERIFICATION", md)
@@ -681,7 +680,8 @@ class CandidateScreenReportTests(unittest.TestCase):
             "https://fixture-analyst-economic-exposure.org/screen/analyst-economic_exposure",
             md,
         )
-        self.assertLess(md.index("# Candidate Cards"), md.index("# Audit Appendix"))
+        self.assertTrue(md.startswith("# Candidate Cards"))
+        self.assertLess(md.index("# Candidate Cards"), md.index("## A · 证明账本"))
         model = report_v2.build_report_view_model(st)
         self.assertEqual(model["candidate_cards"][0]["candidate_state"], "THESIS_CANDIDATE")
         self.assertEqual(

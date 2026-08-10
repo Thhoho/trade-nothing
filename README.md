@@ -4,19 +4,18 @@
   <img src="assets/images/hero_banner.jpg" alt="Trade Nothing — looking beyond consensus" width="900" />
 </p>
 
-<p align="center"><strong>Propose boldly. Trace faint signals. Promote only what survives evidence.</strong></p>
+<p align="center"><strong>Frame the topic. Answer the questions. Find the blind spots. Explain the market.</strong></p>
 
 <p align="center">
   <a href="README_zh.md">中文</a> ·
   <a href="SKILL.md">Runtime contract</a> ·
-  <a href="docs/release-v0.14.0.md">v0.14.0 release</a> ·
+  <a href="docs/release-v0.15.0.md">v0.15.0 release</a> ·
   <a href="docs/hypothesis-led-research-v0.10.md">v0.10 foundation design</a>
 </p>
 
-Trade Nothing is an adversarial investment-research skill for agent runtimes. It is neither a
-falsification machine nor a story generator. It lets bold, non-consensus ideas enter a
-non-promotable exploration ledger, follows observable proxy trails and alternative explanations,
-and keeps formal conclusions behind deterministic evidence and human-review gates.
+Trade Nothing is a topic-led, adversarial investment-research skill for agent runtimes. It turns a
+research topic into an answerable Agenda, searches and challenges those questions over bounded
+rounds, surfaces new blind spots, explains market transmission, and maps concrete securities.
 
 The objective is not minimum risk. It is to search actively for asymmetric opportunity while
 making downside friction, invalidation, evidence gaps, and the price already paid impossible to
@@ -25,45 +24,78 @@ hide.
 It is a research workflow, not an automated trading system. It does not produce an automatic
 buy/sell instruction, target price, expected return, Kelly allocation, or position size.
 
-## v0.14.0: hypothesis-led, time-bounded research
+> **v0.15 product shape implemented.** The Research Agenda is the primary object, opportunity
+> discovery remains central, heavy verification is explicit and selective, and the skill ends at a
+> Deep Research Report with conditional advice. Thesis,
+> Decision, order, position, portfolio, publication workflow, and cross-product handoff are outside
+> the product boundary. CandidateMap, discovery-first dispatch and the new default renderer are now
+> wired; real-theme effectiveness remains unbenchmarked. See
+> [the topic-led product baseline](docs/topic-led-research-product.md).
 
-> **Imagination proposes. Evidence promotes. Risk control governs execution.**
+## v0.15.0: discovery first, verification on demand
+
+> **The topic defines the work. Each round answers, challenges, and discovers what was missed.**
 
 ```mermaid
 flowchart LR
-    A["Research intent"] --> B["Exploration track<br/>Hypothesis Garden → WildHypothesis → ProxyTrail"]
-    A --> C["Formal track<br/>Crux → accepted evidence → root verdict"]
-    B -. "a new seed must pass fresh evidence admission" .-> D["OpportunitySeed"]
-    C --> D
-    D --> E["CandidateScreen → snapshot claim verification → human review"]
-    B --> F["One bounded exploration action<br/>design → plan → explicit authorization → receipt"]
-    F -. "cannot promote, size, or trade" .-> B
+    A["Research topic"] --> B["Research Agenda"]
+    B --> C["Search + challenge current questions"]
+    C --> X["Answers + new blind spots"]
+    X --> B
+    X --> M["Market mechanics"]
+    M --> D["CandidateMap<br/>named carrier + ticker + role"]
+    D --> E["EVENT_SETUP"]
+    D --> F["ECONOMIC_SETUP"]
+    E --> G["Scenario tree + trigger + invalidation"]
+    F --> G
+    G -. "explicit request only" .-> H["Focused verification"]
+    G --> I["Deep Research Report + advice"]
+    H --> I
 ```
 
-The two tracks are deliberately asymmetric. A bold hypothesis may be recorded before it has a
-citation. It cannot change a crux score, root verdict, CandidateScreen result, Thesis, Decision,
-order, or position. To cross into the formal track, a newly drafted `OpportunitySeed` must
-independently pass the existing same-agent, same-round, same-crux evidence gate.
+Discovery and verification are deliberately asymmetric. A mechanism hypothesis may be recorded before
+it has a citation; a concrete named carrier may enter CandidateMap with a `HYPOTHESIS` or
+`INFERENCE` label. Only shortlisted claims need the stricter evidence path. Neither route creates
+an automatic downstream action.
 
-v0.14.0 retains the v0.10 hypothesis-led foundation and makes asymmetric opportunity discovery,
+v0.15.0 retains the v0.10 hypothesis-led foundation and makes asymmetric opportunity discovery,
 decision-discriminating evidence, research allocation, and bounded stopping explicit contracts.
+
+### What changed from v0.14
+
+- **The research kernel is question-native.** Research Agenda, canonical evidence, answer merging,
+  and named-instrument identity now share deterministic contracts without turning the workflow into
+  another state machine.
+- **Industry logic now reaches market choice.** `ValueTransferPath` connects state and constraint
+  changes to profit-pool transfer; economic-exposure and observed trading-carrier universes remain
+  separate; recommendations are projected independently for event days, tactical weeks, earnings
+  quarters, and structural years.
+- **Recommendation authority is fail-closed.** A concrete priority requires path-aligned evidence,
+  a closest-alternative comparison, current reasons and switch conditions, a payload-bound
+  multi-role phase receipt, and a host-ingested market artifact with benchmark-relative strength
+  plus activity. Model-authored quotes and valuation-only snapshots cannot self-authorize.
+- **A-share data is reproducible and secret-safe.** Tushare Pro, BaoStock, AKShare Tencent, and CSV
+  feed one frozen adapter contract. Acquisition and adapter receipts bind the candidate, benchmark,
+  session, observations, and derived snapshot; Tushare credentials never enter role prompts, state,
+  receipts, reports, or installed skill copies.
+
 The current method includes:
 
 - **Time semantics are fail-closed.** `as_of_date` is the evidence cutoff, `horizon` is the
   relative decision window, and `forecast_target_date` is an optional exact future target. A
   future target can never masquerade as evidence coverage.
-- **Reports have a locked facts layer.** Every new Decision Brief begins with the exact
-  deterministic Facts Box; the Evidence Ledger and Candidate Cards are separate, content-addressed
-  artifacts. Free narrative may improve readability but cannot rewrite state, citations, or action
-  gates.
+- **Deep Research Report is the default artifact.** It leads with conclusions and conditional
+  advice, then shows Agenda answers, challenges, blind spots, market mechanics, concrete carriers,
+  event versus economic capture, price/crowding, triggers and evidence labels. Opportunity Brief,
+  Facts Box, Decision Brief and Candidate Cards remain explicit compatibility views.
 - **Report grade is independent of candidate promotion.** `FORMAL` requires convergence, required
   Landscape completion, and independent sourcing for every crux. CandidateScreen gates ranking of
   named securities; snapshot claim verification gates candidate promotion. Zero candidates is a
   valid formal research outcome.
-- **Bold conjecture is a first-class research object.** `OPPORTUNITY_DISCOVERY` and `HYBRID`
-  frames begin with 5–7 entity-agnostic paths. Each `WildHypothesis` records a causal chain,
-  consensus blind spot, upside and downside mechanisms, catalyst, expiry, alternative
-  explanation, and falsifier.
+- **Research Agenda is the first-class object.** Every new frame asks 4–8 answerable factual,
+  causal, market, candidate, pricing, risk, or forward-looking questions. Each round preserves
+  answers, disputes, missing information, new blind spots and new questions. Hypothesis gardens are
+  optional tools; a full 5–7-path Landscape is required only when explicitly declared.
 - **Faint clues become auditable trails.** A `ProxyTrail` binds an observable clue to its
   direction, causal link, alternative explanation, source lineage, bounded query, and stop
   condition. The system does not jump from an interesting clue to an investable claim.
@@ -78,28 +110,31 @@ The current method includes:
   needed for directional settlement or sourced bilateral exhaustion under the two-crux dispatch
   capacity. Source collection and dry probing may overlap; only a frame that cannot fit a complete
   route is rejected before a run starts.
-- **Candidate-local research may start before root convergence.** Evidence-backed seeds may receive
-  bounded pricing, catalyst, falsifier, and snapshot gap tasks in parallel. This cannot repair a
-  root crux, satisfy Landscape coverage, unlock ranking, or bypass CandidateScreen.
-- **A formal stop no longer erases exploratory value.** Every report has exactly one deterministic
-  `formal_action` and at most one separately authorized `exploration_action`. The latter can
-  gather information; it cannot override a stop or promote a candidate.
+- **CandidateMap is lightweight.** It requires a ticker for listed equities and preserves concrete
+  leads even when price, crowding or evidence is still unknown. It does not create a parallel
+  lifecycle, confidence score or expected-return rank.
+- **Recommendation authority has a separate trusted data plane.** Model-authored market metrics,
+  valuation-only snapshots, hypothesis-only value paths, and single-role phase views cannot unlock
+  a conditional priority. A host-ingested receipt must carry relative strength and market activity.
+- **A strict evidence stop no longer erases exploratory value.** `NO_USABLE_SETUP` is allowed only
+  after bounded carrier, alternative-path, price/crowding and event-window coverage. Otherwise the
+  result stays `EXPLORE` with the cheapest next test.
 - **Evidence exhaustion can converge honestly.** Repeated zero-signal rounds do not move debate
   support. A sufficiently sourced, bilaterally probed crux may become `MONITORABLE` only after
   bounded research adds no new evidence. Never-probed, one-sided, source-thin, or newly introduced
   cruxes remain fail-closed.
 
-Read the [v0.14.0 release note](docs/release-v0.14.0.md), the historical
+Read the [v0.15.0 release note](docs/release-v0.15.0.md), the historical
 [v0.10 foundation design](docs/hypothesis-led-research-v0.10.md),
 [hypothesis protocol](references/hypothesis-protocol.md), and
 [report contract](references/report-contract.md).
 
 > [!IMPORTANT]
-> **Calibration status:** v0.14.0 is implemented and passes the deterministic engineering safety
+> **Calibration status:** v0.15.0 is implemented and passes the deterministic engineering safety
 > gates, but `scripts/benchmark_current.py --check` currently returns
 > `UNBENCHMARKED_METHOD_CHANGE`. The operational method differs from the last calibrated v0.9.9
 > identity. Existing closed-packet and discovery suites remain historical controls; they are not
-> evidence that v0.14.0 improves opportunity recall, lead quality, alpha, return, or risk-adjusted
+> evidence that v0.15.0 improves opportunity recall, lead quality, alpha, return, or risk-adjusted
 > return. Engineering correctness, research effectiveness, and investment performance are three
 > separate claims.
 
@@ -138,7 +173,7 @@ be labelled `degraded` and cannot claim physical multi-agent isolation.
 Paste the following into Codex, Claude Code, Gemini CLI, Antigravity, or another coding agent:
 
 ```text
-Install Trade Nothing v0.14.0 from https://github.com/Thhoho/trade-nothing.git for this agent runtime.
+Install Trade Nothing v0.15.0 from https://github.com/Thhoho/trade-nothing.git for this agent runtime.
 
 Safety and verification requirements:
 1. Do not start a research run. This request authorizes installation only.
@@ -149,9 +184,10 @@ Safety and verification requirements:
    configured skill root; if that cannot be verified, stop and ask me instead of guessing.
 3. Before writing, inspect any existing checkout and target. Never reset, delete, or overwrite a
    dirty checkout, runtime state, scratch data, personal research memory, or target metadata.
-4. Clone or fetch the repository in a new temporary or user-approved source directory, check out
-   the exact annotated tag `v0.14.0`, verify that `git cat-file -t v0.14.0` prints `tag`, and report
-   the commit from `git rev-parse 'v0.14.0^{commit}'`. Do not install from an untagged branch tip.
+4. Clone or fetch `origin/main` in a new temporary or user-approved source directory, detach at the
+   exact fetched commit, and report `git rev-parse HEAD`. Do not install from a moving branch while
+   leaving the installed commit unidentified. If an annotated release tag is explicitly requested,
+   verify that tag separately; this instruction does not authorize creating one.
 5. From that checkout, run `python3 scripts/version.py` and `make test`. Do not install third-party
    packages unless a required check fails and I explicitly approve the dependency change.
 6. Install with `python3 scripts/install_skill.py --source <checkout> --targets <target>`; do not
@@ -160,7 +196,7 @@ Safety and verification requirements:
 7. Preserve `Methodology_Evolution.md`, `scripts/.state`, `.git`, and everything under
    `~/.trade-nothing/`. Let the installer move stale managed code to its recoverable quarantine.
 8. Request permission before network access or writes outside the current workspace when the host
-   requires it. Finish by reporting the tag, commit, install target, test result, sync result, and
+   requires it. Finish by reporting the commit, install target, test result, sync result, and
    any quarantined files.
 ```
 
@@ -171,10 +207,10 @@ checkout into the default Gemini, Codex, and Claude directories, explicitly ask 
 ### Shell installation
 
 ```bash
-git clone --branch v0.14.0 --depth 1 https://github.com/Thhoho/trade-nothing.git
+git clone --branch main --depth 1 https://github.com/Thhoho/trade-nothing.git
 cd trade-nothing
-test "$(git cat-file -t v0.14.0)" = tag
-git rev-parse 'v0.14.0^{commit}'
+git switch --detach
+git rev-parse HEAD
 python3 scripts/version.py
 make test
 ```
@@ -206,13 +242,54 @@ The recommended `-deepthink2` path is:
    Inquisitor roles on the selected open cruxes.
 3. Let Judge score only the cited formal evidence. The engine—not the LLM—updates support and
    decides whether the run continues, converges, or fuse-breaks.
-4. For opportunity work, mature and screen evidence-backed seeds before snapshot-bound claim
-   verification and human review.
+4. For opportunity work, advance the Research Agenda and CandidateMap first. CandidateScreen and
+   snapshot-bound claim verification run only when explicitly requested for a short list.
 5. If useful, design one bounded exploration action. Planning does not authorize execution; only
    explicit authorization for the exact action ID permits one query and one receipt.
 
 Read [SKILL.md](SKILL.md) completely before driving the low-level commands. The exact runtime,
 resume, CandidateScreen, claim-verification, and exploration schemas are normative there.
+
+When bounded A-share observations are needed, acquire and adapt them first, then explicitly attach
+the complete artifact to the registered run with `--ingest-market-snapshot --market-snapshot PATH`.
+This is a data injection step, not a candidate lifecycle transition.
+
+### Tushare Pro configuration
+
+Trade Nothing reads one credential, `TUSHARE_TOKEN`, from the **parent acquisition process**. Do
+not put the token in this repository, request JSON, `.env` files committed to Git, role prompts, or
+the three installed skill directories. Codex, Claude Code, and Gemini CLI do not need three copies
+of the token; they only need to inherit the same host environment.
+
+For terminal-launched runtimes on macOS or Linux, export it in the shell that launches the agent
+(optionally persist the same export in your private shell profile):
+
+```bash
+export TUSHARE_TOKEN="replace-with-your-own-token"
+python3 -c 'import os; print("TUSHARE_TOKEN configured" if os.environ.get("TUSHARE_TOKEN") else "TUSHARE_TOKEN missing")'
+```
+
+For a macOS GUI app that does not inherit the terminal environment, inject the already-exported
+value into the user launch environment, then fully restart the app:
+
+```bash
+launchctl setenv TUSHARE_TOKEN "$TUSHARE_TOKEN"
+```
+
+Run one explicitly bounded request; the adapter never scans the whole market and never silently
+falls back to another provider:
+
+```bash
+python3 scripts/free_market_observations.py --input tushare-request.json \
+  --output market-observations.json
+python3 scripts/market_snapshot_adapter.py --input market-observations.json \
+  --output market-snapshot.json
+```
+
+Set `"provider": "TUSHARE"` in `tushare-request.json`; the complete request schema and ingestion
+command are in [`references/data-sources.md`](references/data-sources.md). A successful data call
+proves acquisition and deterministic transformation, not issuer fundamentals, recommendation
+quality, or expected return.
 
 ## Minimal manual workflow
 
@@ -233,10 +310,10 @@ python3 scripts/deepthink_orchestrator_v2.py --submit \
 python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET"
 ```
 
-The report command returns a locked `facts_box_markdown`, a separate
-`evidence_ledger_markdown`, optional Candidate Cards, and the structured view model. New hosts
-place the Facts Box verbatim at the top of a content-driven Decision Brief and persist the Evidence
-Ledger separately. The deterministic `brief` and `full` views remain compatibility fallbacks.
+The report command returns `deep_research_report_markdown`, a separate
+`evidence_ledger_markdown`, compatibility views, and the structured view model. New hosts deliver
+the Deep Research Report by default. `opportunity`, `brief`, `cards`, and `audit` remain explicit
+compatibility views.
 
 Common terminal or continuation states include:
 
@@ -254,11 +331,11 @@ Report grade and the two hard gates:
   of deleting the research.
 - Its only inputs are convergence, required Landscape completion, and independent crux sourcing.
   CandidateScreen and claim verification appear under `candidate_lifecycle` and do not lower it.
-- `publication_allowed` (`FORMAL` only) is the single gate on externally distributed writing.
-- `ranking_allowed` (requires a completed CandidateScreen) gates ordering or recommendation
-  language over named securities and is limited to `candidate_lifecycle.rankable_seed_ids`.
-- Claims carry a tier: `VERIFIED` may be asserted plainly, `SINGLE_SOURCE` must be marked as
-  uncorroborated, and `HYPOTHESIS` must be labelled but is explicitly allowed in the body.
+- Report grades do not create publication permission or own any downstream workflow.
+- Conditional research and market recommendations may compare named securities when trigger,
+  invalidation, price/crowding, alternative explanation, and evidence boundary are visible.
+- Claims carry a tier: `FACT` may be asserted plainly, `SINGLE_SOURCE` must be marked as
+  uncorroborated, and `INFERENCE` / `HYPOTHESIS` must be labelled but are allowed in the body.
   Stripping the label is the violation.
 
 The older `-deepthink` single-posterior/LFI pipeline was retired in v0.13.0. Its uncalibrated
@@ -293,6 +370,7 @@ invented Judge citations are rejected.
 | `TRADE_NOTHING_VAULT_DIR` | `~/trade-nothing-vault` | Research vault |
 | `TRADE_NOTHING_EVOLUTION_PATH` | `<vault>/Methodology/Evolution.md` | Negative-prior memory |
 | `TRADE_NOTHING_MODEL_DEEP` | host default | Quality-critical roles and Judge |
+| `TUSHARE_TOKEN` | unset | Parent-only Tushare Pro credential for bounded A-share acquisition |
 
 ## Verification and maintenance
 
@@ -322,7 +400,7 @@ verification is unavailable there. Run `--source-repo .` only from the canonical
 ```text
 agents/       Isolated role contracts
 scripts/      Orchestrators, deterministic engines, validators, and tests
-references/   Normative research and handoff protocols
+references/   Normative research and report protocols; legacy handoff files are compatibility only
 docs/         Architecture and design notes
 benchmarks/   Frozen evaluation packets and method bindings
 assets/       Report templates and README illustrations
