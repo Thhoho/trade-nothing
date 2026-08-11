@@ -88,12 +88,149 @@ def citation(source="项目方"):
     }
 
 
+def frame_with_baseline():
+    value = frame()
+    value["research_workplan"]["baseline_findings"] = [{
+        "finding_id": "BF1",
+        "claim": "既有官方先例改变事件稀缺性判断",
+        "why_it_matters": "可能改变市场载体与竞争路线判断",
+        "source_url": "https://official-project.com.cn/history/2026/precedent.html",
+        "source_date": "2026-07-10",
+        "linked_question_ids": ["RQ1"],
+        "decision_impact": "HIGH",
+    }]
+    return value
+
+
 class ResearchAgendaTests(unittest.TestCase):
     def test_explicit_workplan_becomes_primary_agenda(self):
         agenda = research_agenda_engine.initialize(frame())
         self.assertEqual(agenda["agenda_source"], "EXPLICIT_WORKPLAN")
         self.assertEqual(len(agenda["questions"]), 3)
         self.assertTrue(all(item["answer_status"] == "OPEN" for item in agenda["questions"]))
+
+    def test_prior_finding_is_a_lead_and_boosts_linked_question(self):
+        agenda = research_agenda_engine.initialize(frame_with_baseline())
+        finding = agenda["baseline_findings"][0]
+        self.assertEqual(finding["disposition"], "UNREVIEWED")
+        self.assertEqual(finding["evidence_ids"], [])
+        state = {"research_agenda": agenda}
+        agenda["questions"][0]["answer_status"] = "ANSWERED"
+        agenda["questions"][0]["current_answer"] = "已有答案"
+        agenda["questions"][0]["evidence_boundary"] = "FACT"
+        focus = research_agenda_engine.focus_questions(state, limit=1)
+        self.assertEqual(focus[0]["question_id"], "RQ1")
+        self.assertTrue(focus[0]["research_priority"]["baseline_boost"])
+        control = research_agenda_engine.control_decision(state, round_num=1)
+        self.assertTrue(control["more_research_recommended"])
+        self.assertIn("UNDISPOSED_BASELINE_FINDINGS", control["reason_codes"])
+
+    def test_baseline_source_after_as_of_is_rejected(self):
+        value = frame_with_baseline()
+        value["research_workplan"]["questions"].append({
+            "question_id": "RQ4",
+            "question": "资本关系是什么？",
+            "question_type": "CANDIDATE",
+            "why_it_matters": "改变候选空间",
+            "success_condition": "核对官方披露",
+            "initial_search_routes": ["交易所公告"],
+            "linked_crux_id": "",
+        })
+        value["research_workplan"]["baseline_findings"][0][
+            "source_date"
+        ] = "2026-08-11"
+        issues = research_agenda_engine.validate_frame(value)
+        self.assertIn("baseline_finding_1_source_after_as_of", issues)
+
+    def test_baseline_reverification_requires_current_linked_evidence(self):
+        state = {"research_agenda": research_agenda_engine.initialize(frame_with_baseline())}
+        payload = {
+            "evidence_items": [{
+                "evidence_id": "EV-R1-D-BASELINE",
+                "question_ids": ["RQ1"],
+                "direction_ids": [],
+                "stance": "CONTEXT",
+                **citation(),
+            }],
+            "baseline_finding_updates": [{
+                "finding_id": "BF1",
+                "disposition": "REVERIFIED",
+                "rationale": "本轮重新检查官方页面，先例仍成立",
+                "evidence_ids": ["EV-R1-D-BASELINE"],
+            }],
+        }
+        audit = research_agenda_engine.harvest_round(state, 1, payload, {})
+        finding = state["research_agenda"]["baseline_findings"][0]
+        self.assertEqual(finding["disposition"], "REVERIFIED")
+        self.assertEqual(finding["evidence_ids"], ["EV-R1-D-BASELINE"])
+        self.assertEqual(len(audit["accepted_baseline_updates"]), 1)
+        later = research_agenda_engine.harvest_round(state, 2, {
+            "baseline_finding_updates": [{
+                "finding_id": "BF1",
+                "disposition": "OUT_OF_SCOPE",
+                "rationale": "后续角色试图擦除已处置结论",
+                "evidence_ids": [],
+            }],
+        }, {})
+        self.assertEqual(finding["disposition"], "REVERIFIED")
+        self.assertEqual(
+            later["rejected_baseline_updates"][0]["reason"],
+            "BASELINE_FINDING_ALREADY_DISPOSED",
+        )
+
+        rejected_state = {
+            "research_agenda": research_agenda_engine.initialize(frame_with_baseline())
+        }
+        rejected = research_agenda_engine.harvest_round(
+            rejected_state, 1, {
+                "baseline_finding_updates": [{
+                    "finding_id": "BF1",
+                    "disposition": "REVERIFIED",
+                    "rationale": "只沿用旧报告",
+                    "evidence_ids": [],
+                }],
+            }, {},
+        )
+        self.assertEqual(
+            rejected_state["research_agenda"]["baseline_findings"][0]["disposition"],
+            "UNREVIEWED",
+        )
+        self.assertEqual(
+            rejected["rejected_baseline_updates"][0]["reason"],
+            "DISPOSITION_REQUIRES_CURRENT_LINKED_EVIDENCE",
+        )
+
+    def test_conflicting_baseline_dispositions_remain_unresolved(self):
+        state = {"research_agenda": research_agenda_engine.initialize(frame_with_baseline())}
+
+        def role_payload(role, disposition):
+            evidence_id = f"EV-R1-{role}-BASELINE"
+            return {
+                "evidence_items": [{
+                    "evidence_id": evidence_id,
+                    "question_ids": ["RQ1"],
+                    "direction_ids": [],
+                    "stance": "CONTEXT",
+                    **citation(f"来源{role}"),
+                }],
+                "baseline_finding_updates": [{
+                    "finding_id": "BF1",
+                    "disposition": disposition,
+                    "rationale": f"{role} 当前判断",
+                    "evidence_ids": [evidence_id],
+                }],
+            }
+
+        research_agenda_engine.harvest_round(
+            state, 1,
+            role_payload("D", "REVERIFIED"),
+            role_payload("I", "SUPERSEDED"),
+        )
+        finding = state["research_agenda"]["baseline_findings"][0]
+        self.assertEqual(finding["disposition"], "UNRESOLVED")
+        control = research_agenda_engine.control_decision(state, round_num=1)
+        self.assertFalse(control["more_research_recommended"])
+        self.assertNotIn("UNDISPOSED_BASELINE_FINDINGS", control["reason_codes"])
 
     def test_round_preserves_answer_challenge_and_blind_spot(self):
         state = {"research_agenda": research_agenda_engine.initialize(frame())}

@@ -73,6 +73,9 @@ Evaluate the target through these three sequential layers:
    complete. Prefer updating `next_question` on the existing item. Add at most one genuinely new
    blind spot and one new research question per role. A new question must name its existing
    `parent_question_id`, exact `decision_change`, success condition, and bounded route.
+   If the Work Window supplies prior-run baseline findings, dispose every relevant item explicitly.
+   Treat it as a search lead, not inherited evidence: `REVERIFIED` and `SUPERSEDED` require a
+   same-response `evidence_id`; otherwise use `OUT_OF_SCOPE` with a reason or `UNRESOLVED`.
 
 9. **Exploration track (optional tool; max 3 sparks and 3 trails per round)**:
    Treat abductive discovery as first-class output. A weak anomaly, analogy, supplier clue,
@@ -215,6 +218,14 @@ Your response must be a valid JSON matching this schema exactly:
       "strongest_challenge": "<best evidence or mechanism against this answer>",
       "missing_information": "<specific missing datum>",
       "next_question": "<question this answer creates>"
+    }
+  ],
+  "baseline_finding_updates": [
+    {
+      "finding_id": "BF1",
+      "disposition": "REVERIFIED|SUPERSEDED|OUT_OF_SCOPE|UNRESOLVED",
+      "rationale": "<current-round disposition>",
+      "evidence_ids": ["EV-R1-D-001"]
     }
   ],
   "direction_updates": [
@@ -515,6 +526,7 @@ Your response must be a valid JSON matching this schema exactly:
     "routes": [
       {
         "coverage_field": "concrete_instrument_search|alternative_paths|price_and_crowding|event_window",
+        "route_kind": "ECONOMIC_CHAIN|MARKET_CARRIER|COMPETITOR_OR_SUBSTITUTE|FAILURE_OR_ADVERSE|OWNERSHIP_OR_CAPITAL",
         "query": "<bounded query actually run>",
         "checked_urls": ["<concrete URL actually checked>"],
         "outcome": "FOUND|NO_RESULT|INSUFFICIENT"

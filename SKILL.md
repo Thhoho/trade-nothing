@@ -208,6 +208,9 @@ python3 scripts/execution_integrity.py inline-marker --topic "TARGET" --as-of YY
 3. 引擎保留答案变体并标记 `OPEN / PARTIAL / ANSWERED / DISPUTED`，再重排下一轮问题。
 4. 两个研究角色同时形成 ValueTransferPath、市场阶段、经济暴露池和市场交易池，并对候选与
    最近替代项作横向比较；发现机会不以正式晋级证明为前提。
+   覆盖完整不仅是四个字段打勾：还必须分别检查经济链、市场实际载体、竞争/替代路线、
+   失败/逆向分支和股权/资本关系。每条保存 route_kind、实际 query、具体 URL 与 outcome；
+   `INSUFFICIENT` 不能完成覆盖，`NO_RESULT` 可以记录真实负结果。
 5. Judge 只处理正式 crux 证据；Agenda 答案、探索假说和 CandidateMap 不参与支持度评分。
 6. 新运行的停止条件是当前用户问题是否可回答、是否仍有低成本高影响盲点；crux
    convergence、`MIN_ROUNDS` 和 dry rounds 只保留为兼容审计，不得阻止交付。
@@ -215,17 +218,25 @@ python3 scripts/execution_integrity.py inline-marker --topic "TARGET" --as-of YY
 8. 无论当前问题已可回答、授权预算耗尽或用户停止，都输出 Deep Research Report；未决项
    进入正文而非隐藏。预算耗尽时只建议续研，等待用户显式授权。
 9. 报告可以给出条件性建议，但到此结束；不得自动进入交易或其他下游生命周期。
+10. 重跑同一课题时，先从用户明确提供或当前工作区可定位的上一版报告中提取最多 8 条
+    会改变结论的关键发现（必须带原具体 URL 和日期），作为 Framer briefing 中的
+    `baseline_findings`。它们只是防遗漏的检索线索，不是继承证据；本轮必须逐条标为
+    `REVERIFIED / SUPERSEDED / OUT_OF_SCOPE / UNRESOLVED`。找不到旧报告时明确以空基线开始，
+    不得凭记忆伪造。
 
-支持且已显式配置 Antigravity / Claude Code 时使用注册运行器；先预检，再启动：
+支持且已显式配置 Antigravity / Claude Code 时使用注册运行器。`start` 和 `resume` 会在创建或
+改写 run 前执行同一真实 print-mode 能力探针；单独的 `preflight` 只用于诊断，不需要在正常
+启动前重复调用。返回 `host_sandbox_denied` 时由宿主申请获批的非沙箱执行；返回
+`host_authentication_required` 时停止且提示用户先完成对应 CLI 登录，不得自动重试或创建 run：
 
 ```bash
-python3 scripts/deepthink_host_runner.py preflight --runtime antigravity
 python3 scripts/deepthink_host_runner.py start --topic "TARGET" \
   --frame-json '<framer_output>' --run-purpose PRODUCTION_RESEARCH \
   --runtime antigravity --round-budget 1
 python3 scripts/deepthink_host_runner.py resume --run-id "RUN-..." \
   --runtime antigravity --round-budget 9 --stop-after-dry-rounds 3
 python3 scripts/deepthink_host_runner.py status --run-id "RUN-..."
+# 可选诊断：python3 scripts/deepthink_host_runner.py preflight --runtime antigravity
 ```
 
 Codex collaboration 宿主使用注册的手动提交链。先创建 run 并用 `--run-id` 初始化；把初始化

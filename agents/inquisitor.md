@@ -77,6 +77,9 @@ Test the Detective's nodes through three paired vectors:
    or `DISPUTED`. Prefer updating `next_question` on the existing item. Add at most one new blind
    spot and one new research question per role. A new question must name its existing
    `parent_question_id`, exact `decision_change`, success condition, and bounded route.
+   If the Work Window supplies prior-run baseline findings, challenge every relevant item explicitly.
+   They are leads, not evidence: `REVERIFIED` and `SUPERSEDED` require a same-response
+   `evidence_id`; otherwise use `OUT_OF_SCOPE` with a reason or `UNRESOLVED`.
 
 8. **Exploration track (optional tool; max 3 sparks and 3 trails per round)**:
    Preserve counter-mechanisms, analogies, anomalies, substitutes, and indirect clues as
@@ -232,6 +235,14 @@ Your response must be a valid JSON matching this schema exactly:
       "strongest_challenge": "<best challenge to this answer>",
       "missing_information": "<specific missing datum>",
       "next_question": "<question this challenge creates>"
+    }
+  ],
+  "baseline_finding_updates": [
+    {
+      "finding_id": "BF1",
+      "disposition": "REVERIFIED|SUPERSEDED|OUT_OF_SCOPE|UNRESOLVED",
+      "rationale": "<current-round disposition after challenge>",
+      "evidence_ids": ["EV-R1-I-001"]
     }
   ],
   "direction_updates": [
@@ -527,6 +538,7 @@ Your response must be a valid JSON matching this schema exactly:
     "routes": [
       {
         "coverage_field": "concrete_instrument_search|alternative_paths|price_and_crowding|event_window",
+        "route_kind": "ECONOMIC_CHAIN|MARKET_CARRIER|COMPETITOR_OR_SUBSTITUTE|FAILURE_OR_ADVERSE|OWNERSHIP_OR_CAPITAL",
         "query": "<bounded query actually run>",
         "checked_urls": ["<concrete URL actually checked>"],
         "outcome": "FOUND|NO_RESULT|INSUFFICIENT"

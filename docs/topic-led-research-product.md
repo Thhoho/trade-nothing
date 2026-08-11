@@ -281,7 +281,9 @@ Judge 的 crux 结论只进入审计副轨，不拥有新运行的停止权。�
 - 默认报告为 `Deep Research Report`，旧 Opportunity Brief 仅显式兼容；
 - 报告回放包含答案、质证、新盲点、具体载体、场景和条件性建议；
 - 上市标的使用 exchange+ticker 身份；无字段证据、无效窗口或字段冲突不得成为
-  `SETUP_READY`；无实际 coverage route 不得声称 `NO_USABLE_SETUP`；
+  `SETUP_READY`；无实际 coverage route 不得声称 `NO_USABLE_SETUP`。coverage route 同时声明
+  搜索字段与候选构造类型（经济链、市场载体、竞争替代、失败分支、资本关系），
+  `INSUFFICIENT` 不算完成；
 - 探索账本不得改变正式 crux 信号或外部执行边界；
 - 一轮已形成条件性建议时，即使旧 crux convergence 仍为 `continue`，报告也必须交付；
 - 全量 `make test`、版本一致性和方法身份校验通过。

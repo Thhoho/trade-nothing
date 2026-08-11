@@ -1026,7 +1026,8 @@ def frame_prompt(topic, start_context=None, briefing_context=None):
             "立题：输出 frame_schema_version=trade-nothing.frame.v2 / decision_question / "
             "question_type / logic_graph / horizon / as_of_date / "
             "forecast_target_date / "
-            "research_intent / unit_of_analysis / thesis_seed / research_workplan(4–8个待回答问题) / premise_audit / "
+            "research_intent / unit_of_analysis / thesis_seed / research_workplan(4–8个待回答问题；"
+            "重跑且显式提供旧报告时另含最多8条 baseline_findings) / premise_audit / "
             "candidate_cruxes（Agenda-native 默认 []；仅显式 legacy crux audit 才输出 1–5 条）/ "
             "forbidden_consensus / no_edge_precheck / suggested_max_rounds。"
             "hypothesis_garden 是可选机制工具；只有显式 landscape_required=true 时才输出"
@@ -1052,7 +1053,9 @@ def frame_prompt(topic, start_context=None, briefing_context=None):
             + json.dumps(briefing_context, ensure_ascii=False, indent=2)
             + "\n使用 briefing 中的信息来定义更精准的 crux、evidence_plan 和"
             "Research Agenda、crux 和可选机制假说。所有 briefing 内容仍必须在 premise_audit 中标记为"
-            "HYPOTHESIS。briefing 中的 URL 不能直接当作 SOURCED 引用。"
+            "HYPOTHESIS。若 briefing 明确来自旧报告，可把其中带具体 URL/日期且会改变结论的"
+            "关键发现放入 research_workplan.baseline_findings；它们仍只是待重新处置的检索线索。"
+            "briefing 中的 URL 不能直接当作 SOURCED 引用。"
         )
     return prompt
 
@@ -1140,6 +1143,11 @@ def dispatch_prompts(state, round_num):
         )
     )
     research_directions = policy.get("selected_research_directions", [])
+    baseline_findings = research_agenda_engine.dispatch_baseline_findings(
+        state,
+        [item.get("question_id") for item in research_questions],
+        limit=8,
+    )
     candidate_focus = market_map_engine.focus_candidates(state, limit=4)
     bridge_context = market_bridge_engine.dispatch_context(state)
     landscape_plan = landscape_engine.ensure_round_plan(
@@ -1180,6 +1188,11 @@ def dispatch_prompts(state, round_num):
         f"{json.dumps(research_questions, ensure_ascii=False)}\n"
         "\n🧩 本轮研究方向/待质证论点:\n"
         f"{json.dumps(research_directions, ensure_ascii=False)}\n"
+        "\n🧭 既有关键发现待处置（前次线索，不是本轮证据）:\n"
+        f"{json.dumps(baseline_findings, ensure_ascii=False)}\n"
+        "每条必须输出 baseline_finding_updates：用本轮 evidence_items 将其标为 "
+        "REVERIFIED 或 SUPERSEDED；若与当前问题无关则 OUT_OF_SCOPE 并说明理由；"
+        "仍不能判断则 UNRESOLVED。不得静默遗漏，也不得把旧 URL 直接继承为证据。\n"
         "先提交 evidence_items，再让 question_updates/evidence_ids 和 "
         "direction_updates/evidence_ids 引用同轮证据。每个方向必须判断为 "
         "SUPPORTED、CHALLENGED 或 UNRESOLVED，并选择 ANSWER、CONTINUE 或 "
@@ -1281,7 +1294,7 @@ def dispatch_prompts(state, round_num):
         _work_window(
             "AGENDA_RESEARCH_ROUND", "detective",
             "Advance the selected questions, map value transfer to market carriers, and compare concrete alternatives by horizon.",
-            ["selected Research Agenda questions", "selected directions", "as-of boundary", "existing Market Bridge", "candidate completion queue"],
+            ["selected Research Agenda questions", "selected directions", "prior-finding leads", "as-of boundary", "existing Market Bridge", "candidate completion queue"],
             "one detective round JSON; canonical evidence, value paths and phase snapshot, then compared candidates",
             ["unselected questions", "automatic continuation", "trade outputs", "invented evidence", "recursive candidate expansion"],
             "Agenda projection, Market Bridge, CandidateMap projection, then evidence-only legacy Judge",
@@ -1320,7 +1333,7 @@ def dispatch_prompts(state, round_num):
         _work_window(
             "AGENDA_RESEARCH_ROUND", "inquisitor",
             "Challenge the selected answers, value-transfer paths, market phase and candidate preference with discriminating evidence.",
-            ["selected Research Agenda questions", "selected directions", "as-of boundary", "existing Market Bridge", "candidate completion queue"],
+            ["selected Research Agenda questions", "selected directions", "prior-finding leads", "as-of boundary", "existing Market Bridge", "candidate completion queue"],
             "one inquisitor round JSON; distinguish contradiction, phase dispute and uncertainty",
             ["unselected questions", "automatic continuation", "trade outputs", "rhetorical veto", "recursive candidate expansion"],
             "Agenda projection, Market Bridge, CandidateMap projection, then evidence-only legacy Judge",

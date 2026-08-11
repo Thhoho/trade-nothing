@@ -125,6 +125,7 @@ class HostRunnerTests(unittest.TestCase):
         safe = runner._command("agy", "p", 60)
         unsafe = runner._command("agy", "p", 60, allow_agent_tools=True)
         self.assertNotIn("--dangerously-skip-permissions", safe)
+        self.assertIn("--disable-slash-commands", safe)
         self.assertIn("--dangerously-skip-permissions", unsafe)
 
         claude_safe = runner._command(
@@ -139,6 +140,125 @@ class HostRunnerTests(unittest.TestCase):
         self.assertIn("--no-session-persistence", claude_safe)
         self.assertNotIn("--dangerously-skip-permissions", claude_safe)
         self.assertIn("--dangerously-skip-permissions", claude_unsafe)
+
+    def test_runtime_preflight_exercises_print_mode_not_version(self):
+        completed = runner.subprocess.CompletedProcess(
+            args=[], returncode=0, stdout='{"ok":true}\n', stderr=""
+        )
+        with mock.patch.object(runner.os.path, "isfile", return_value=True), \
+             mock.patch.object(runner.os, "access", return_value=True), \
+             mock.patch.object(runner.subprocess, "run", return_value=completed) as run:
+            result = runner._runtime_preflight("antigravity", "/opt/bin/agy")
+        self.assertEqual(result["status"], "runtime_preflight_ready")
+        command = run.call_args.args[0]
+        self.assertIn("--print", command)
+        self.assertIn(runner.PREFLIGHT_PROMPT, command)
+        self.assertNotIn("--version", command)
+
+    def test_runtime_preflight_fails_closed_on_sandbox_and_redacts_secret(self):
+        secret = "top-secret-token-value"
+        completed = runner.subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr=(
+                "failed to create log file: operation not permitted\n"
+                f"authorization={secret}\n"
+                "failed to bind to address 127.0.0.1:0"
+            )
+        )
+        with mock.patch.object(runner.os.path, "isfile", return_value=True), \
+             mock.patch.object(runner.os, "access", return_value=True), \
+             mock.patch.object(runner.subprocess, "run", return_value=completed):
+            result = runner._runtime_preflight("antigravity", "/opt/bin/agy")
+        self.assertEqual(result["error_code"], "host_sandbox_denied")
+        self.assertTrue(result["requires_escalated_execution"])
+        self.assertNotIn(secret, json.dumps(result))
+        self.assertTrue(result["diagnostic_sha256"])
+
+    def test_runtime_preflight_classifies_oauth_timeout_without_leaking_query_state(self):
+        timeout = runner.subprocess.TimeoutExpired(
+            cmd=["agy"], timeout=35,
+            output=(
+                b"Authentication required. Please visit "
+                b"https://accounts.google.com/o/oauth2/auth?client_id=private-client"
+                b"&code_challenge=private-challenge&state=private-state\n"
+                b"Waiting for authentication (timeout 60s)..."
+            ),
+            stderr=b"",
+        )
+        with mock.patch.object(runner.os.path, "isfile", return_value=True), \
+             mock.patch.object(runner.os, "access", return_value=True), \
+             mock.patch.object(runner.subprocess, "run", side_effect=timeout):
+            result = runner._runtime_preflight("antigravity", "/opt/bin/agy")
+        rendered = json.dumps(result)
+        self.assertEqual(result["error_code"], "host_authentication_required")
+        self.assertFalse(result["requires_escalated_execution"])
+        self.assertIn("OAuth", result["instruction"])
+        for secret in ("private-client", "private-challenge", "private-state"):
+            self.assertNotIn(secret, rendered)
+
+    def test_claude_login_failure_is_actionable_and_session_is_redacted(self):
+        completed = runner.subprocess.CompletedProcess(
+            args=[], returncode=1, stderr="", stdout=json.dumps({
+                "type": "result",
+                "is_error": True,
+                "session_id": "private-session-id",
+                "uuid": "private-uuid",
+                "result": "Not logged in · Please run /login",
+            })
+        )
+        with mock.patch.object(runner.os.path, "isfile", return_value=True), \
+             mock.patch.object(runner.os, "access", return_value=True), \
+             mock.patch.object(runner.subprocess, "run", return_value=completed):
+            result = runner._runtime_preflight("claude-code", "/opt/bin/claude")
+        rendered = json.dumps(result)
+        self.assertEqual(result["error_code"], "host_authentication_required")
+        self.assertIn("/login", result["instruction"])
+        self.assertNotIn("private-session-id", rendered)
+        self.assertNotIn("private-uuid", rendered)
+
+    def test_failed_role_checkpoint_keeps_sanitized_root_cause(self):
+        secret = "never-persist-this-token"
+
+        class FailedProcess:
+            pid = 4242
+            returncode = 1
+
+            def communicate(self, timeout=None):
+                return "", (
+                    "operation not permitted while binding 127.0.0.1:0\n"
+                    f"token={secret}"
+                )
+
+        with mock.patch.object(runner.subprocess, "Popen", return_value=FailedProcess()):
+            raw = runner._run_role(
+                "detective", "prompt", "agy", 60,
+                workdir=self.tmp.name, host_runtime="antigravity",
+            )
+        public = runner._public_result(raw)
+        self.assertEqual(public["error_code"], "host_sandbox_denied")
+        self.assertTrue(public["requires_escalated_execution"])
+        self.assertNotIn(secret, json.dumps(public))
+        self.assertIn("operation not permitted", public["diagnostic_excerpt"])
+        self.assertTrue(public["diagnostic_sha256"])
+
+    def test_start_does_not_create_manifest_when_live_preflight_fails(self):
+        argv = [
+            "deepthink_host_runner.py", "start",
+            "--topic", "preflight gate fixture",
+            "--frame-json", "{}",
+            "--run-purpose", "CONTROLLED_FIXTURE",
+            "--runtime", "antigravity",
+        ]
+        failed = {
+            "status": "runtime_preflight_failed",
+            "error_code": "host_sandbox_denied",
+            "formal_report_allowed": False,
+        }
+        with mock.patch.object(runner.sys, "argv", argv), \
+             mock.patch.object(runner, "_runtime_preflight", return_value=failed), \
+             mock.patch.object(runner.run_registry, "create_manifest") as create, \
+             mock.patch("builtins.print"):
+            runner.main()
+        create.assert_not_called()
 
     def test_claude_code_result_envelope_returns_structured_payload(self):
         role_payload = {"crux_evidence": [], "landscape_findings": []}

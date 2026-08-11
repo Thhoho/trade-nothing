@@ -108,6 +108,17 @@ authorized round; any additional round requires an explicit caller budget or lat
   "thesis_seed": "<one-sentence provisional initial view, including 'direction unknown' when appropriate>",
   "research_workplan": {
     "research_objective": "<what this topic must ultimately explain and advise>",
+    "baseline_findings": [
+      {
+        "finding_id": "BF1",
+        "claim": "<decision-relevant finding from an explicitly supplied prior report>",
+        "why_it_matters": "<which answer or recommendation it could change>",
+        "source_url": "<concrete URL recorded by the prior report>",
+        "source_date": "YYYY-MM-DD",
+        "linked_question_ids": ["RQ1"],
+        "decision_impact": "HIGH | MEDIUM | LOW"
+      }
+    ],
     "questions": [
       {
         "question_id": "RQ1",
@@ -237,6 +248,10 @@ requested legacy audit and do not change the Agenda-native answer aggregation.
 
 Every researchable frame must use `trade-nothing.frame.v2` and return 4–8 Research Agenda
 questions. `hypothesis_garden` is optional and must be omitted entirely when unused.
+`baseline_findings` is optional and may contain at most eight items. Use it only when the caller
+explicitly supplies a prior report or its findings during a rerun. It is an anti-regression search
+ledger, not inherited evidence: preserve the prior concrete URL/date, link each finding to a current
+question, and never pre-mark it as true. If no prior material is supplied, return an empty array.
 If `landscape_required=true`, return 5–7 `wild_hypotheses` and include each archetype
 exactly once or more across the garden. Every hypothesis must link to an existing crux, start as
 `HYPOTHESIS_ONLY`, contain 3–6 value-transfer nodes, 1–3 proxy-plan routes, a symmetric scenario set,

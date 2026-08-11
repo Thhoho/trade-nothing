@@ -4,6 +4,8 @@ import argparse
 import hashlib
 from pathlib import Path
 
+import method_identity
+
 
 ROOT_FILES = (
     "SKILL.md", "README.md", "README_zh.md", "CONTRIBUTING.md",
@@ -29,8 +31,8 @@ FORBIDDEN_PUBLISHED_PATHS = frozenset({
 
 def controlled_files(root: Path):
     files = [root / name for name in ROOT_FILES]
-    files.extend(sorted((root / "agents").glob("*.md")))
-    files.extend(sorted((root / "agents").glob("*.yaml")))
+    files.extend(sorted((root / "agents").rglob("*.md")))
+    files.extend(sorted((root / "agents").rglob("*.yaml")))
     files.extend(sorted((root / "references").glob("*")))
     files.extend(sorted((root / "docs").glob("*.md")))
     files.extend(sorted((root / "scripts").glob("*.py")))
@@ -60,8 +62,8 @@ def controlled_candidates(root: Path):
     if not root.is_dir():
         return []
     files = [root / name for name in ROOT_FILES if (root / name).is_file()]
-    files.extend(sorted((root / "agents").glob("*.md")))
-    files.extend(sorted((root / "agents").glob("*.yaml")))
+    files.extend(sorted((root / "agents").rglob("*.md")))
+    files.extend(sorted((root / "agents").rglob("*.yaml")))
     files.extend(sorted((root / "references").glob("*")))
     files.extend(sorted((root / "docs").glob("*.md")))
     files.extend(sorted((root / "scripts").glob("*.py")))
@@ -97,6 +99,15 @@ def compare(source: Path, target: Path):
         rel = dst.relative_to(target)
         if rel not in expected:
             issues.append(f"EXTRA_CONTROLLED {target}: {rel}")
+    if not issues:
+        source_identity = method_identity.build_method_identity(source)
+        target_identity = method_identity.build_method_identity(target)
+        if target_identity != source_identity:
+            issues.append(
+                f"METHOD_IDENTITY_DIFF {target}: "
+                f"{target_identity['contract_sha256']} != "
+                f"{source_identity['contract_sha256']}"
+            )
     return issues
 
 

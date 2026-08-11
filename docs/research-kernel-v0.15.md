@@ -51,7 +51,11 @@ Research Agenda 和 CandidateMap 面向不同用户问题，但不能各自发�
 - 关键字段的自然补充使用 `REFINE`，纠错覆盖使用 `REPLACE`；只有角色显式声明互斥且未裁决
   的 `CHALLENGE` 才形成字段冲突并保持 `EXPLORE`；
 - catalyst window 必须有未过期的 ISO 日期；
-- `NO_USABLE_SETUP` 必须为四个覆盖维度各保存实际 query、检查过的具体 URL 和 outcome。
+- `NO_USABLE_SETUP` 必须为四个覆盖维度各保存实际 query、检查过的具体 URL 和 outcome，
+  并覆盖经济链、市场载体、竞争替代、失败分支和资本关系五种候选构造路径；
+  `INSUFFICIENT` 不得算完成。
+- 同题重跑可携带最多 8 条带 URL/日期的既有关键发现作为检索线索；本轮证据必须逐条处置，
+  旧结论不得静默消失，也不得直接继承为事实。
   勾选框和一句说明不能证明“已经搜完”。
 
 直接收益：减少伪具名候选、伪 setup 和没有搜索轨迹的负结论。
@@ -91,7 +95,7 @@ Research Agenda 和 CandidateMap 面向不同用户问题，但不能各自发�
 - 无证据 `ANSWERED` 的可用答案数为 0，但报告仍可交付；
 - `UNKNOWN` 上市 ticker 接受数为 0；
 - 未绑定关键字段证据、事件窗口无效或字段冲突时，setup-ready 数为 0；
-- 没有四类可检查 coverage route 时，`NO_USABLE_SETUP` 数为 0；
+- 没有四个可检查搜索字段或五种候选构造 route kind 时，`NO_USABLE_SETUP` 数为 0；
 - 全部现有离线安全门与历史兼容回放继续通过。
 - 没有完整三角色收据时，可声明完成轮次数为 0；method drift 时当前方法运行声明为 false；
 - runtime preflight 失败时不创建新 manifest；暂停/报告状态必须出现在 manifest 顶层；

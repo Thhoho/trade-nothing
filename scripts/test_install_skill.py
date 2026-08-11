@@ -7,6 +7,7 @@ from pathlib import Path
 
 import check_source_sync
 import install_skill
+import method_identity
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -54,6 +55,14 @@ class InstallSkillTests(unittest.TestCase):
                 (target / install_skill.MANIFEST_NAME).read_text(encoding="utf-8")
             )
             self.assertFalse(manifest["runtime_state_touched"])
+            self.assertEqual(
+                manifest["method_identity"],
+                method_identity.build_method_identity(REPO_ROOT),
+            )
+            self.assertEqual(
+                method_identity.build_method_identity(target),
+                method_identity.build_method_identity(REPO_ROOT),
+            )
             quarantined = Path(outcome["quarantine_path"]) / "scripts" / "retired_engine.py"
             self.assertTrue(quarantined.is_file())
 
@@ -63,6 +72,18 @@ class InstallSkillTests(unittest.TestCase):
             for path in check_source_sync.controlled_files(REPO_ROOT)
         }
         self.assertTrue(check_source_sync.FORBIDDEN_PUBLISHED_PATHS.isdisjoint(paths))
+
+    def test_published_bundle_contains_every_method_identity_input(self):
+        published = {
+            path.relative_to(REPO_ROOT).as_posix()
+            for path in check_source_sync.controlled_files(REPO_ROOT)
+        }
+        operational = {
+            path.relative_to(REPO_ROOT).as_posix()
+            for path in method_identity._operational_paths(REPO_ROOT)
+        }
+        self.assertTrue(operational.issubset(published))
+        self.assertIn("agents/runtime/research-round.md", published)
 
 
 if __name__ == "__main__":

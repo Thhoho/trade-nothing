@@ -7,6 +7,7 @@ and which blind spots should change the next round's priorities.  It does not
 promote securities, alter crux signals, or authorize any downstream action.
 """
 from copy import deepcopy
+from datetime import date
 import hashlib
 
 import crux_engine
@@ -35,6 +36,12 @@ DIRECTION_KINDS = {
 DIRECTION_JUDGMENTS = {"UNRESOLVED", "SUPPORTED", "CHALLENGED"}
 DIRECTION_NEXT_MOVES = {"ANSWER", "CONTINUE", "OPEN_NEW_DIRECTION"}
 EVIDENCE_STANCES = {"SUPPORT", "CHALLENGE", "CONTEXT"}
+BASELINE_DISPOSITIONS = {
+    "UNREVIEWED", "REVERIFIED", "SUPERSEDED", "OUT_OF_SCOPE", "UNRESOLVED",
+}
+SUBMITTED_BASELINE_DISPOSITIONS = BASELINE_DISPOSITIONS - {"UNREVIEWED"}
+MAX_BASELINE_FINDINGS = 8
+MAX_BASELINE_UPDATES_PER_ROLE = 8
 
 
 def _text(value):
@@ -150,6 +157,50 @@ def validate_frame(frame):
         _text(item.get("question_id"))
         for item in questions if isinstance(item, dict)
     }
+    baseline_findings = workplan.get("baseline_findings", [])
+    if baseline_findings is not None and not isinstance(baseline_findings, list):
+        issues.append("research_workplan_baseline_findings_must_be_list")
+        baseline_findings = []
+    elif len(baseline_findings or []) > MAX_BASELINE_FINDINGS:
+        issues.append("research_workplan_baseline_findings_max_8")
+    seen_baseline_ids = set()
+    for index, raw in enumerate(baseline_findings or []):
+        prefix = f"baseline_finding_{index + 1}"
+        if not isinstance(raw, dict):
+            issues.append(f"{prefix}_must_be_object")
+            continue
+        finding_id = _text(raw.get("finding_id"))
+        if not finding_id:
+            issues.append(f"{prefix}_missing_finding_id")
+        elif finding_id in seen_baseline_ids:
+            issues.append(f"{prefix}_duplicate_finding_id")
+        seen_baseline_ids.add(finding_id)
+        for field in ("claim", "why_it_matters", "source_url", "source_date"):
+            if not _text(raw.get(field)):
+                issues.append(f"{prefix}_missing_{field}")
+        if _text(raw.get("source_url")) and not crux_engine.is_concrete_url(
+            raw.get("source_url")
+        ):
+            issues.append(f"{prefix}_invalid_source_url")
+        try:
+            source_date = date.fromisoformat(_text(raw.get("source_date")))
+        except ValueError:
+            issues.append(f"{prefix}_invalid_source_date")
+        else:
+            try:
+                frame_as_of = date.fromisoformat(_text(frame.get("as_of_date")))
+            except ValueError:
+                frame_as_of = None
+            if frame_as_of and source_date > frame_as_of:
+                issues.append(f"{prefix}_source_after_as_of")
+        linked = raw.get("linked_question_ids")
+        if not isinstance(linked, list) or not linked:
+            issues.append(f"{prefix}_requires_linked_question_ids")
+        elif any(_text(qid) not in question_ids for qid in linked):
+            issues.append(f"{prefix}_unknown_linked_question_id")
+        impact = _text(raw.get("decision_impact")).upper()
+        if impact and impact not in DECISION_IMPACTS:
+            issues.append(f"{prefix}_invalid_decision_impact")
     seen_directions = set()
     for index, raw in enumerate(directions or []):
         prefix = f"research_direction_{index + 1}"
@@ -402,6 +453,30 @@ def initialize(frame):
         ],
         "evidence_items": [],
         "evidence_aliases": {},
+        "baseline_findings": [
+            {
+                "finding_id": _text(raw.get("finding_id")),
+                "claim": _text(raw.get("claim")),
+                "why_it_matters": _text(raw.get("why_it_matters")),
+                "source_url": _text(raw.get("source_url")),
+                "source_date": _text(raw.get("source_date")),
+                "linked_question_ids": list(dict.fromkeys(
+                    _text(qid) for qid in raw.get("linked_question_ids", [])
+                    if _text(qid)
+                )),
+                "decision_impact": _enum(
+                    raw.get("decision_impact"), DECISION_IMPACTS, "HIGH"
+                ),
+                # Prior findings are routing leads, never inherited evidence.
+                "disposition": "UNREVIEWED",
+                "rationale": "",
+                "evidence_ids": [],
+                "disposition_history": [],
+                "last_seen_round": 0,
+            }
+            for raw in _workplan(frame).get("baseline_findings", [])
+            if isinstance(raw, dict) and _text(raw.get("finding_id"))
+        ],
         "blind_spots": [],
         "round_summaries": [],
         "capability_boundary": {
@@ -449,6 +524,14 @@ def _evidence_by_id(agenda):
         item.get("evidence_id"): item
         for item in agenda.get("evidence_items", [])
         if isinstance(item, dict) and item.get("evidence_id")
+    }
+
+
+def _baseline_by_id(agenda):
+    return {
+        item.get("finding_id"): item
+        for item in agenda.get("baseline_findings", [])
+        if isinstance(item, dict) and item.get("finding_id")
     }
 
 
@@ -669,6 +752,136 @@ def _ingest_role_updates(
             "submitted_answer_status": status,
             "answer_status": normalized_status if answer else "OPEN",
             "evidence_boundary": current_boundary or "HYPOTHESIS",
+        })
+
+
+def _ingest_baseline_updates(
+    agenda, round_num, role, payload, audit, accepted_evidence=None
+):
+    """Dispose prior-run leads using only evidence observed in this role/round."""
+    updates = (
+        payload.get("baseline_finding_updates", [])
+        if isinstance(payload, dict) else []
+    )
+    if not isinstance(updates, list):
+        audit["rejected_baseline_updates"].append({
+            "role": role, "reason": "BASELINE_UPDATES_NOT_LIST",
+        })
+        return
+    by_id = _baseline_by_id(agenda)
+    accepted_evidence = accepted_evidence or {}
+    for raw in updates[:MAX_BASELINE_UPDATES_PER_ROLE]:
+        if not isinstance(raw, dict):
+            audit["rejected_baseline_updates"].append({
+                "role": role, "reason": "NOT_OBJECT",
+            })
+            continue
+        finding_id = _text(raw.get("finding_id"))
+        finding = by_id.get(finding_id)
+        disposition = _text(raw.get("disposition")).upper()
+        rationale = _text(raw.get("rationale"))
+        if (
+            not finding
+            or disposition not in SUBMITTED_BASELINE_DISPOSITIONS
+            or not rationale
+        ):
+            audit["rejected_baseline_updates"].append({
+                "role": role, "finding_id": finding_id,
+                "reason": "UNKNOWN_FINDING_OR_INVALID_DISPOSITION",
+            })
+            continue
+        if finding.get("disposition", "UNREVIEWED") != "UNREVIEWED":
+            audit["rejected_baseline_updates"].append({
+                "role": role, "finding_id": finding_id,
+                "reason": "BASELINE_FINDING_ALREADY_DISPOSED",
+            })
+            continue
+        submitted_ids = raw.get("evidence_ids", [])
+        if not isinstance(submitted_ids, list):
+            submitted_ids = []
+        linked_questions = set(finding.get("linked_question_ids", []))
+        evidence_ids = []
+        for submitted_id in submitted_ids:
+            evidence = accepted_evidence.get(submitted_id)
+            if not isinstance(evidence, dict):
+                continue
+            if not linked_questions.intersection(evidence.get("question_ids", [])):
+                continue
+            canonical_id = evidence.get("evidence_id")
+            if canonical_id and canonical_id not in evidence_ids:
+                evidence_ids.append(canonical_id)
+        if disposition in {"REVERIFIED", "SUPERSEDED"} and not evidence_ids:
+            audit["rejected_baseline_updates"].append({
+                "role": role, "finding_id": finding_id,
+                "reason": "DISPOSITION_REQUIRES_CURRENT_LINKED_EVIDENCE",
+            })
+            continue
+        record = {
+            "round": int(round_num),
+            "role": role,
+            "disposition": disposition,
+            "rationale": rationale,
+            "evidence_ids": evidence_ids,
+        }
+        if record not in finding.setdefault("disposition_history", []):
+            finding["disposition_history"].append(record)
+        finding["last_seen_round"] = int(round_num)
+        audit["accepted_baseline_updates"].append({
+            "role": role,
+            "finding_id": finding_id,
+            "disposition": disposition,
+            "evidence_ids": evidence_ids,
+        })
+
+
+def _reconcile_baseline_updates(agenda, round_num, audit):
+    for finding in agenda.get("baseline_findings", []):
+        if not isinstance(finding, dict):
+            continue
+        records = [
+            item for item in finding.get("disposition_history", [])
+            if isinstance(item, dict) and int(item.get("round", 0) or 0) == round_num
+        ]
+        if not records:
+            continue
+        evidence_statuses = {
+            item.get("disposition") for item in records
+            if item.get("disposition") in {"REVERIFIED", "SUPERSEDED"}
+        }
+        if len(evidence_statuses) > 1:
+            disposition = "UNRESOLVED"
+            rationale = "Current-round roles conflict on whether the prior finding still holds."
+            evidence_ids = sorted({
+                evidence_id for item in records
+                for evidence_id in item.get("evidence_ids", [])
+            })
+        else:
+            rank = {
+                "SUPERSEDED": 0,
+                "REVERIFIED": 1,
+                "OUT_OF_SCOPE": 2,
+                "UNRESOLVED": 3,
+            }
+            selected = sorted(
+                records,
+                key=lambda item: (
+                    rank.get(item.get("disposition"), 9),
+                    -len(item.get("evidence_ids", [])),
+                    item.get("role", ""),
+                ),
+            )[0]
+            disposition = selected.get("disposition", "UNRESOLVED")
+            rationale = selected.get("rationale", "")
+            evidence_ids = list(selected.get("evidence_ids", []))
+        finding.update({
+            "disposition": disposition,
+            "rationale": rationale,
+            "evidence_ids": evidence_ids,
+        })
+        audit["baseline_reconciliations"].append({
+            "finding_id": finding.get("finding_id"),
+            "disposition": disposition,
+            "evidence_ids": evidence_ids,
         })
 
 
@@ -1119,8 +1332,11 @@ def harvest_round(state, round_num, detective=None, inquisitor=None):
         "rejected_evidence_items": [],
         "accepted_direction_updates": [],
         "rejected_direction_updates": [],
+        "accepted_baseline_updates": [],
+        "rejected_baseline_updates": [],
         "answer_reconciliations": [],
         "direction_reconciliations": [],
+        "baseline_reconciliations": [],
         "new_direction_ids": [],
         "rejected_new_directions": [],
         "new_question_ids": [],
@@ -1137,6 +1353,9 @@ def harvest_round(state, round_num, detective=None, inquisitor=None):
         _ingest_role_updates(
             agenda, round_num, role, payload, audit, accepted_evidence
         )
+        _ingest_baseline_updates(
+            agenda, round_num, role, payload, audit, accepted_evidence
+        )
         _ingest_direction_updates(
             agenda, round_num, role, payload, audit, accepted_evidence
         )
@@ -1144,6 +1363,7 @@ def harvest_round(state, round_num, detective=None, inquisitor=None):
     _ingest_new_questions(agenda, round_num, submissions, audit)
     _reconcile_question_updates(agenda, round_num, audit)
     _reconcile_direction_updates(agenda, round_num, audit)
+    _reconcile_baseline_updates(agenda, round_num, audit)
     counts = summary(state)
     audit["counts"] = counts
     agenda.setdefault("round_summaries", []).append(deepcopy(audit))
@@ -1251,6 +1471,13 @@ def _priority_projection(item, agenda, dispatch):
         or direction.get("load_bearing") is True
         for direction in active_directions
     )
+    pending_baseline = [
+        finding for finding in agenda.get("baseline_findings", [])
+        if isinstance(finding, dict)
+        and item.get("question_id") in finding.get("linked_question_ids", [])
+        and finding.get("disposition", "UNREVIEWED") == "UNREVIEWED"
+    ]
+    baseline_boost = bool(pending_baseline)
     impact = _enum(
         item.get("decision_impact"),
         DECISION_IMPACTS,
@@ -1261,6 +1488,7 @@ def _priority_projection(item, agenda, dispatch):
     priority_key = (
         0 if item.get("blocks_current_recommendation") is True else 1,
         impact_rank[impact],
+        0 if baseline_boost else 1,
         0 if blind_spot_boost else 1,
         0 if direction_boost else 1,
         status_rank.get(status, 3),
@@ -1278,11 +1506,17 @@ def _priority_projection(item, agenda, dispatch):
         reasons.insert(0, "NEW_BLIND_SPOT")
     if direction_boost:
         reasons.insert(0, "ACTIVE_RESEARCH_DIRECTION")
+    if baseline_boost:
+        reasons.insert(0, "UNDISPOSED_BASELINE_FINDING")
     return priority_key, {
         "decision_impact": impact,
         "research_cost": cost,
         "blind_spot_boost": blind_spot_boost,
         "direction_boost": direction_boost,
+        "baseline_boost": baseline_boost,
+        "baseline_finding_ids": [
+            finding.get("finding_id") for finding in pending_baseline
+        ],
         "reason_codes": reasons,
     }
 
@@ -1290,9 +1524,20 @@ def _priority_projection(item, agenda, dispatch):
 def focus_questions(state, dispatch_cruxes=None, limit=5):
     agenda = state.get("research_agenda", {})
     dispatch = set(dispatch_cruxes or [])
+    pending_baseline_question_ids = {
+        question_id
+        for finding in agenda.get("baseline_findings", [])
+        if isinstance(finding, dict)
+        and finding.get("disposition", "UNREVIEWED") == "UNREVIEWED"
+        for question_id in finding.get("linked_question_ids", [])
+    }
     questions = [
         item for item in agenda.get("questions", [])
-        if isinstance(item, dict) and not research_kernel.answer_is_usable(item)
+        if isinstance(item, dict)
+        and (
+            not research_kernel.answer_is_usable(item)
+            or item.get("question_id") in pending_baseline_question_ids
+        )
     ]
     ranked = [
         (*_priority_projection(item, agenda, dispatch), item)
@@ -1414,6 +1659,36 @@ def dispatch_directions(state, question_ids=None, limit=5):
     } for item in focus_directions(state, question_ids, limit)]
 
 
+def dispatch_baseline_findings(state, question_ids=None, limit=8):
+    """Return only prior-run leads relevant to the selected work window."""
+    selected = set(question_ids or [])
+    items = []
+    for raw in state.get("research_agenda", {}).get("baseline_findings", []):
+        if not isinstance(raw, dict):
+            continue
+        if raw.get("disposition", "UNREVIEWED") != "UNREVIEWED":
+            continue
+        linked = set(raw.get("linked_question_ids", []))
+        if selected and not linked.intersection(selected):
+            continue
+        items.append({
+            "finding_id": raw.get("finding_id"),
+            "claim": _clip(raw.get("claim"), 700),
+            "why_it_matters": _clip(raw.get("why_it_matters"), 500),
+            "source_url": raw.get("source_url"),
+            "source_date": raw.get("source_date"),
+            "linked_question_ids": deepcopy(raw.get("linked_question_ids", [])),
+            "decision_impact": raw.get("decision_impact"),
+            "disposition": raw.get("disposition", "UNREVIEWED"),
+            "rationale": _clip(raw.get("rationale"), 500),
+        })
+    items.sort(key=lambda item: (
+        {"HIGH": 0, "MEDIUM": 1, "LOW": 2}.get(item.get("decision_impact"), 3),
+        item.get("finding_id", ""),
+    ))
+    return items[:max(0, limit)]
+
+
 def is_agenda_native(state):
     return (
         state.get("frame_contract", {}).get("control_mode") == "AGENDA_NATIVE"
@@ -1485,6 +1760,11 @@ def control_decision(state, round_num=None):
     )
     agenda = state.get("research_agenda", {})
     unresolved = focus_questions(state, limit=999)
+    pending_baseline = [
+        item for item in agenda.get("baseline_findings", [])
+        if isinstance(item, dict)
+        and item.get("disposition", "UNREVIEWED") == "UNREVIEWED"
+    ]
     updates = [
         item
         for summary_item in agenda.get("round_summaries", [])
@@ -1492,6 +1772,14 @@ def control_decision(state, round_num=None):
         for item in summary_item.get("accepted_updates", [])
         if isinstance(item, dict)
     ]
+    baseline_updates = [
+        item
+        for summary_item in agenda.get("round_summaries", [])
+        if isinstance(summary_item, dict)
+        for item in summary_item.get("accepted_baseline_updates", [])
+        if isinstance(item, dict)
+    ]
+    has_progress = bool(updates or baseline_updates)
     material = [
         item for item in unresolved
         if (
@@ -1539,10 +1827,12 @@ def control_decision(state, round_num=None):
     reasons = []
     if rounds_completed <= 0:
         reasons.append("NO_COMPLETED_ROUND")
-    if rounds_completed > 0 and not updates:
+    if rounds_completed > 0 and not has_progress:
         reasons.append("NO_AGENDA_PROGRESS")
     if material:
         reasons.append("MATERIAL_UNRESOLVED_QUESTIONS")
+    if pending_baseline:
+        reasons.append("UNDISPOSED_BASELINE_FINDINGS")
     if blind_spots:
         reasons.append("CHEAP_HIGH_IMPACT_BLIND_SPOT")
     if any(
@@ -1556,8 +1846,11 @@ def control_decision(state, round_num=None):
     more_research_recommended = (
         rounds_completed <= 0
         or (
-            bool(updates)
-            and bool(material or blind_spots or material_directions)
+            bool(pending_baseline)
+            or (
+                has_progress
+                and bool(material or blind_spots or material_directions)
+            )
         )
     )
     runtime = state.get("research_runtime", {})
@@ -1587,7 +1880,7 @@ def control_decision(state, round_num=None):
             "NOT_STARTED"
             if not report_deliverable
             else "DELIVERABLE_LIMIT_REACHED_NO_PROGRESS"
-            if not updates
+            if not has_progress
             else "DELIVERABLE_MORE_RESEARCH_RECOMMENDED"
             if more_research_recommended
             else "DELIVERABLE_CURRENT_QUESTION_ANSWERABLE"
@@ -1600,6 +1893,9 @@ def control_decision(state, round_num=None):
         "material_blind_spot_ids": [item.get("blind_spot_id") for item in blind_spots],
         "material_direction_ids": [
             item.get("direction_id") for item in material_directions
+        ],
+        "undisposed_baseline_finding_ids": [
+            item.get("finding_id") for item in pending_baseline
         ],
         "next_questions": deepcopy(unresolved[:3]),
         "next_directions": deepcopy(material_directions[:3]),
@@ -1645,6 +1941,10 @@ def summary(state):
         item for item in agenda.get("research_directions", [])
         if isinstance(item, dict)
     ]
+    baseline_findings = [
+        item for item in agenda.get("baseline_findings", [])
+        if isinstance(item, dict)
+    ]
     direction_counts = {
         "supported_direction_count": 0,
         "challenged_direction_count": 0,
@@ -1665,6 +1965,11 @@ def summary(state):
         "blind_spot_count": len(agenda.get("blind_spots", [])),
         "research_direction_count": len(directions),
         "evidence_item_count": len(agenda.get("evidence_items", [])),
+        "baseline_finding_count": len(baseline_findings),
+        "undisposed_baseline_finding_count": sum(
+            item.get("disposition", "UNREVIEWED") == "UNREVIEWED"
+            for item in baseline_findings
+        ),
         "usable_answer_count": usable_answer_count,
         **direction_counts,
         **counts,
@@ -1712,6 +2017,10 @@ def report_view(state):
         ]),
         "evidence_items": deepcopy([
             item for item in agenda.get("evidence_items", [])
+            if isinstance(item, dict)
+        ]),
+        "baseline_findings": deepcopy([
+            item for item in agenda.get("baseline_findings", [])
             if isinstance(item, dict)
         ]),
         "blind_spots": deepcopy([

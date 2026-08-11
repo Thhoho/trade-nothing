@@ -90,6 +90,10 @@ the brief must show that research covered:
 - the declared catalyst window;
 - the strongest surviving hypothesis and the missing observation.
 
+上述覆盖还必须显式显示经济链、市场载体、竞争/替代、失败/逆向和股权/资本关系五种候选
+构造路径。`INSUFFICIENT` 不算完成覆盖。四个搜索字段全为 true 但缺少任一候选路径时，结果仍是
+`EXPLORE`，不能写成 `NO_USABLE_SETUP`。
+
 Bibliographic or process exhaustion alone cannot justify a zero-opportunity claim.
 
 ## 6. Research Agenda and blind spots
@@ -102,6 +106,9 @@ The progress header distinguishes fully answered questions from evidence-bounded
 disputed answers. The default body shows all initial questions plus only the most decision-relevant
 derived questions, directions, blind spots and candidates. The exhaustive append-only history stays
 in the explicit audit view; omission from the default body is counted and disclosed.
+
+同题重跑且提供旧报告时，正文必须显示既有关键发现处置表。旧结论不继承证据等级：每条必须
+用本轮证据重新验证、推翻，或明确判为无关/未决。静默消失属于报告回归。
 
 Blind spots belong in the main report when they could change the conclusion, timing, candidate map,
 pricing/crowding judgment, or advice. Each blind spot names the cheapest discriminating test. A

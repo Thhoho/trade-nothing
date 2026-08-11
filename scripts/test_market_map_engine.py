@@ -193,25 +193,147 @@ def attach_verified_round(st, round_num, detective, inquisitor):
 
 
 def full_coverage():
+    route_specs = [
+        ("concrete_instrument_search", "ECONOMIC_CHAIN"),
+        ("alternative_paths", "COMPETITOR_OR_SUBSTITUTE"),
+        ("price_and_crowding", "MARKET_CARRIER"),
+        ("event_window", "FAILURE_OR_ADVERSE"),
+        ("concrete_instrument_search", "OWNERSHIP_OR_CAPITAL"),
+    ]
     return {
         "concrete_instrument_search": True,
         "alternative_paths": True,
         "price_and_crowding": True,
         "event_window": True,
-        "note": "已覆盖具名载体、替代路径、价格筹码和事件窗口",
+        "note": "已覆盖搜索字段及五类候选构造路径",
         "routes": [
             {
                 "coverage_field": field,
-                "query": f"fixture bounded query for {field}",
-                "checked_urls": [f"https://coverage-source.org/research/{field}"],
+                "route_kind": route_kind,
+                "query": f"fixture bounded query for {field} {route_kind}",
+                "checked_urls": [
+                    f"https://coverage-source.org/research/{field}/{route_kind.lower()}"
+                ],
                 "outcome": "FOUND",
             }
-            for field in market_map_engine.COVERAGE_FIELDS
+            for field, route_kind in route_specs
         ],
     }
 
 
 class CandidateMapTests(unittest.TestCase):
+    def test_zhuque_rerun_preserves_precedent_and_capital_route(self):
+        """Controlled replay of the two omissions found in the 2026-08-11 audit."""
+        st = state()
+        questions = []
+        for index, text in enumerate((
+            "官方事件状态是什么？",
+            "可回收先例如何改变稀缺性？",
+            "产业经济暴露如何映射？",
+            "市场载体和资本关系如何映射？",
+        ), 1):
+            questions.append({
+                "question_id": f"RQ{index}",
+                "question": text,
+                "question_type": "FACT" if index <= 2 else "CANDIDATE",
+                "why_it_matters": "改变朱雀三号商业航天映射",
+                "success_condition": "形成带来源的有界答案",
+                "initial_search_routes": ["官方公告或上市公司披露"],
+                "decision_impact": "HIGH",
+                "research_cost": "LOW",
+                "blocks_current_recommendation": True,
+                "linked_crux_id": "",
+            })
+        replay_frame = {
+            "decision_question": st["decision_question"],
+            "as_of_date": "2026-08-09",
+            "research_workplan": {
+                "research_objective": "复核朱雀三号事件、竞争先例与A股资本映射",
+                "questions": questions,
+                "baseline_findings": [
+                    {
+                        "finding_id": "BF-ZQ-CZ10B",
+                        "claim": "长征十号乙已完成受控回收先例",
+                        "why_it_matters": "改变朱雀三号回收的技术稀缺性叙事",
+                        "source_url": "https://www.cnsa.gov.cn/n6758823/n6758838/c10761540/content.html",
+                        "source_date": "2026-07-10",
+                        "linked_question_ids": ["RQ2"],
+                        "decision_impact": "HIGH",
+                    },
+                    {
+                        "finding_id": "BF-ZQ-GOLDWIND",
+                        "claim": "金风科技与蓝箭航天存在待复核资本关系映射",
+                        "why_it_matters": "可能扩展直接供应链之外的A股资本载体",
+                        "source_url": "https://www.szse.cn/disclosure/listed/bulletinDetail/index.html",
+                        "source_date": "2026-04-30",
+                        "linked_question_ids": ["RQ4"],
+                        "decision_impact": "HIGH",
+                    },
+                ],
+            },
+            "candidate_cruxes": [],
+        }
+        st["research_agenda"] = research_agenda_engine.initialize(replay_frame)
+        evidence = [
+            {
+                "evidence_id": "EV-ZQ-CZ10B",
+                "question_ids": ["RQ2"],
+                "direction_ids": [],
+                "stance": "CONTEXT",
+                "claim": "官方记录受控回收先例",
+                "number": None,
+                "source": "国家航天局",
+                "url": "https://www.cnsa.gov.cn/n6758823/n6758838/c10761540/content.html",
+                "date": "2026-07-10",
+                "source_tier": "primary",
+            },
+            {
+                "evidence_id": "EV-ZQ-GOLDWIND",
+                "question_ids": ["RQ4"],
+                "direction_ids": [],
+                "stance": "CONTEXT",
+                "claim": "上市公司披露提供资本关系复核入口",
+                "number": None,
+                "source": "深圳证券交易所",
+                "url": "https://www.szse.cn/disclosure/listed/bulletinDetail/index.html",
+                "date": "2026-04-30",
+                "source_tier": "primary",
+            },
+        ]
+        research_agenda_engine.harvest_round(st, 1, {
+            "evidence_items": evidence,
+            "baseline_finding_updates": [
+                {
+                    "finding_id": "BF-ZQ-CZ10B",
+                    "disposition": "REVERIFIED",
+                    "rationale": "本轮重新绑定国家航天局页面",
+                    "evidence_ids": ["EV-ZQ-CZ10B"],
+                },
+                {
+                    "finding_id": "BF-ZQ-GOLDWIND",
+                    "disposition": "UNRESOLVED",
+                    "rationale": "已定位披露入口，但经济权益仍需逐项核验",
+                    "evidence_ids": [],
+                },
+            ],
+        }, {})
+        market_map_engine.harvest_round(
+            st, 1, {"market_map_coverage": full_coverage()}, {}
+        )
+        view = market_map_engine.report_view(st)
+        self.assertEqual(view["result_type"], "NO_USABLE_SETUP")
+        self.assertEqual(view["missing_route_kinds"], [])
+        dispositions = {
+            item["finding_id"]: item["disposition"]
+            for item in research_agenda_engine.report_view(st)["baseline_findings"]
+        }
+        self.assertEqual(dispositions["BF-ZQ-CZ10B"], "REVERIFIED")
+        self.assertEqual(dispositions["BF-ZQ-GOLDWIND"], "UNRESOLVED")
+        report = report_v2.render(st)
+        self.assertIn("长征十号乙", report)
+        self.assertIn("金风科技", report)
+        self.assertIn("OWNERSHIP_OR_CAPITAL", report)
+
     def test_uncited_concrete_candidate_is_preserved_as_hypothesis(self):
         st = state()
         audit = market_map_engine.harvest_round(
@@ -311,6 +433,35 @@ class CandidateMapTests(unittest.TestCase):
         self.assertTrue(all(view["coverage_claims"].values()))
         self.assertFalse(any(view["coverage"].values()))
 
+    def test_old_four_field_coverage_cannot_hide_missing_candidate_routes(self):
+        st = state()
+        claimed = full_coverage()
+        claimed["routes"] = [
+            route for route in claimed["routes"]
+            if route["route_kind"] in {
+                "ECONOMIC_CHAIN", "MARKET_CARRIER",
+                "COMPETITOR_OR_SUBSTITUTE", "FAILURE_OR_ADVERSE",
+            }
+        ]
+        market_map_engine.harvest_round(
+            st, 1, {"market_map_coverage": claimed}, {}
+        )
+        view = market_map_engine.report_view(st)
+        self.assertEqual(view["result_type"], "EXPLORE")
+        self.assertIn("OWNERSHIP_OR_CAPITAL", view["missing_route_kinds"])
+        self.assertFalse(view["coverage_complete"])
+
+    def test_insufficient_route_does_not_count_as_completed_coverage(self):
+        st = state()
+        claimed = full_coverage()
+        claimed["routes"][3]["outcome"] = "INSUFFICIENT"
+        market_map_engine.harvest_round(
+            st, 1, {"market_map_coverage": claimed}, {}
+        )
+        view = market_map_engine.report_view(st)
+        self.assertEqual(view["result_type"], "EXPLORE")
+        self.assertFalse(view["coverage"]["event_window"])
+
     def test_coverage_route_requires_a_concrete_non_reserved_url(self):
         st = state()
         audit = market_map_engine.harvest_round(st, 1, {
@@ -319,6 +470,7 @@ class CandidateMapTests(unittest.TestCase):
                 "note": "仅声称查过，但没有可审计页面",
                 "routes": [{
                     "coverage_field": "concrete_instrument_search",
+                    "route_kind": "MARKET_CARRIER",
                     "query": "fixture query",
                     "checked_urls": ["https://example.com"],
                     "outcome": "NO_RESULT",

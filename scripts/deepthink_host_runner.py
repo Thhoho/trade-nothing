@@ -12,6 +12,7 @@ import concurrent.futures
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -40,6 +41,83 @@ CLAUDE_PARENT_ENV_MARKERS = (
     "CLAUDE_CODE_ENTRYPOINT",
     "CLAUDE_CODE_SESSION_ID",
 )
+
+PREFLIGHT_PROMPT = (
+    'Return exactly this JSON object and nothing else: {"ok":true}'
+)
+_SANDBOX_DENIAL_MARKERS = (
+    "operation not permitted",
+    "failed to bind to address",
+    "cannot assign requested address",
+    "failed to create log file",
+    "failed to create crash log",
+)
+_AUTH_REQUIRED_MARKERS = (
+    "authentication required",
+    "waiting for authentication",
+    "oauth-callback",
+    "not logged in",
+    "please run /login",
+)
+_SECRET_ASSIGNMENT = re.compile(
+    r"(?i)(token|api[_ -]?key|authorization|password|secret|bearer|"
+    r"credential|signature|session[_ -]?id|uuid)"
+    r"([\"']?\s*[:=]\s*[\"']?|\s+)([^\s,;\]\}\"']+)"
+)
+_SENSITIVE_QUERY_PARAMETER = re.compile(
+    r"(?i)([?&](?:client_id|code_challenge|state|access_token|refresh_token|"
+    r"signature|credential)=)[^&\s]+"
+)
+
+
+def _sanitize_diagnostic(*parts, limit=1200):
+    """Retain actionable runtime evidence without persisting credentials."""
+    def render(part):
+        if isinstance(part, bytes):
+            return part.decode("utf-8", errors="replace")
+        return str(part or "")
+
+    text = "\n".join(render(part) for part in parts)
+    text = _SENSITIVE_QUERY_PARAMETER.sub(r"\1[REDACTED]", text)
+    text = _SECRET_ASSIGNMENT.sub(lambda match: f"{match.group(1)}=[REDACTED]", text)
+    user_home = os.path.expanduser("~")
+    if user_home and user_home != "/":
+        text = text.replace(user_home, "[USER_HOME]")
+    # Long opaque strings are more likely to be credentials/session IDs than
+    # useful diagnostics. Hashes emitted by this runner are stored separately.
+    text = re.sub(r"\b[A-Za-z0-9_\-./+=]{64,}\b", "[REDACTED_OPAQUE]", text)
+    text = "\n".join(line.strip() for line in text.splitlines() if line.strip())
+    return text[-limit:]
+
+
+def _diagnostic_fingerprint(diagnostic):
+    return hashlib.sha256(str(diagnostic or "").encode("utf-8")).hexdigest()
+
+
+def _authentication_instruction(host_runtime):
+    if _normalize_host_runtime(host_runtime) == "claude-code":
+        return "先在交互式终端运行 claude，输入 /login 完成登录，再重跑原 start 或 resume 命令。"
+    return "先在交互式终端运行 agy 并完成 Google OAuth 登录，再重跑原 start 或 resume 命令。"
+
+
+def _runtime_error_code(diagnostic, *, timed_out=False, parse_error="", exit_code=0):
+    normalized = str(diagnostic or "").lower()
+    if any(marker in normalized for marker in _SANDBOX_DENIAL_MARKERS):
+        return "host_sandbox_denied"
+    if any(marker in normalized for marker in _AUTH_REQUIRED_MARKERS):
+        return "host_authentication_required"
+    if any(
+        marker in normalized.upper()
+        for marker in ("RESOURCE_EXHAUSTED", "CODE 429", 'ERROR_CODE\":429', "QUOTA")
+    ):
+        return "resource_exhausted_429"
+    if timed_out:
+        return "timeout"
+    if parse_error:
+        return "invalid_json"
+    if exit_code:
+        return "process_exit"
+    return ""
 
 
 def _normalize_host_runtime(value):
@@ -86,7 +164,13 @@ def _default_host_bin(host_runtime):
 
 
 def _runtime_preflight(host_runtime, host_bin):
-    """Check the selected adapter before creating or mutating a run."""
+    """Exercise the selected adapter before creating or mutating a run.
+
+    ``--version`` only proves that a file can start.  The real host path also
+    needs its config/log directories, authentication, localhost transport and
+    print-mode JSON envelope.  The probe deliberately uses the same command and
+    environment as a research role, but no tools or project data.
+    """
     runtime = _normalize_host_runtime(host_runtime)
     requested = str(host_bin or _default_host_bin(runtime))
     resolved = (
@@ -104,34 +188,121 @@ def _runtime_preflight(host_runtime, host_bin):
         }
     try:
         completed = subprocess.run(
-            [resolved, "--version"],
+            _command(
+                resolved, PREFLIGHT_PROMPT, 20,
+                allow_agent_tools=False, host_runtime=runtime,
+            ),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            timeout=10,
+            timeout=35,
             check=False,
             env=_host_environment(runtime),
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+    except subprocess.TimeoutExpired as exc:
+        diagnostic = _sanitize_diagnostic(exc.stderr, exc.stdout)
+        error_code = _runtime_error_code(diagnostic, timed_out=True)
         return {
             "status": "runtime_preflight_failed",
             "host_runtime": runtime,
             "host_executable": resolved,
-            "reason": f"host_version_probe_failed:{type(exc).__name__}",
+            "reason": (
+                "host_capability_probe_authentication_required"
+                if error_code == "host_authentication_required"
+                else "host_capability_probe_timeout"
+            ),
+            "error_code": error_code,
+            "diagnostic_excerpt": diagnostic,
+            "diagnostic_sha256": _diagnostic_fingerprint(diagnostic),
+            "requires_escalated_execution": False,
+            "instruction": (
+                _authentication_instruction(runtime)
+                if error_code == "host_authentication_required" else
+                "宿主 print-mode 能力探针超时；检查网络与 CLI 健康后重试。"
+            ),
             "formal_report_allowed": False,
         }
-    if completed.returncode != 0:
+    except OSError as exc:
+        diagnostic = _sanitize_diagnostic(str(exc))
+        error_code = _runtime_error_code(diagnostic, exit_code=1)
+        requires_escalation = error_code == "host_sandbox_denied"
         return {
             "status": "runtime_preflight_failed",
             "host_runtime": runtime,
             "host_executable": resolved,
-            "reason": f"host_version_probe_exit:{completed.returncode}",
+            "reason": "host_capability_probe_failed:OSError",
+            "error_code": error_code,
+            "diagnostic_excerpt": diagnostic,
+            "diagnostic_sha256": _diagnostic_fingerprint(diagnostic),
+            "requires_escalated_execution": requires_escalation,
+            "instruction": (
+                "当前沙箱拒绝宿主所需的配置写入或 localhost 绑定；请以获批的"
+                "非沙箱/提权方式重跑同一 start 或 resume 命令。"
+                if requires_escalation else
+                "检查宿主 CLI 可执行权限和本地配置后重试。"
+            ),
+            "formal_report_allowed": False,
+        }
+    diagnostic = _sanitize_diagnostic(completed.stderr, completed.stdout)
+    if completed.returncode != 0:
+        error_code = _runtime_error_code(
+            diagnostic, exit_code=completed.returncode
+        )
+        requires_escalation = error_code == "host_sandbox_denied"
+        return {
+            "status": "runtime_preflight_failed",
+            "host_runtime": runtime,
+            "host_executable": resolved,
+            "reason": f"host_capability_probe_exit:{completed.returncode}",
+            "error_code": error_code,
+            "diagnostic_excerpt": diagnostic,
+            "diagnostic_sha256": _diagnostic_fingerprint(diagnostic),
+            "requires_escalated_execution": requires_escalation,
+            "instruction": (
+                "当前沙箱拒绝宿主所需的配置写入或 localhost 绑定；请以获批的"
+                "非沙箱/提权方式重跑同一 start 或 resume 命令。"
+                if requires_escalation else
+                _authentication_instruction(runtime)
+                if error_code == "host_authentication_required" else
+                "宿主真实 print-mode 探针失败；按脱敏诊断检查登录、配额、网络或 CLI 配置。"
+            ),
+            "formal_report_allowed": False,
+        }
+    try:
+        payload = _parse_json_output(completed.stdout, host_runtime=runtime)
+    except ValueError as exc:
+        return {
+            "status": "runtime_preflight_failed",
+            "host_runtime": runtime,
+            "host_executable": resolved,
+            "reason": "host_capability_probe_invalid_json",
+            "error_code": "invalid_json",
+            "diagnostic_excerpt": diagnostic,
+            "diagnostic_sha256": _diagnostic_fingerprint(diagnostic),
+            "requires_escalated_execution": False,
+            "parse_error": str(exc),
+            "instruction": "宿主可启动但未遵守结构化 JSON 输出合同；修复 CLI 输出模式后重试。",
+            "formal_report_allowed": False,
+        }
+    if payload != {"ok": True}:
+        return {
+            "status": "runtime_preflight_failed",
+            "host_runtime": runtime,
+            "host_executable": resolved,
+            "reason": "host_capability_probe_semantic_mismatch",
+            "error_code": "invalid_json",
+            "diagnostic_excerpt": diagnostic,
+            "diagnostic_sha256": _diagnostic_fingerprint(diagnostic),
+            "requires_escalated_execution": False,
+            "instruction": "宿主返回了 JSON，但未精确完成能力探针；检查模型/CLI 输出包装。",
             "formal_report_allowed": False,
         }
     return {
         "status": "runtime_preflight_ready",
         "host_runtime": runtime,
         "host_executable": resolved,
+        "probe": "print_mode_exact_json",
+        "requires_escalated_execution": False,
         "formal_report_allowed": False,
     }
 
@@ -189,7 +360,10 @@ def _command(host_bin, prompt, timeout_seconds, allow_agent_tools=False,
              host_runtime="antigravity"):
     runtime = _normalize_host_runtime(host_runtime)
     if runtime == "antigravity":
-        command = [host_bin, "--print", prompt, "--print-timeout", f"{timeout_seconds}s"]
+        command = [
+            host_bin, "--print", prompt, "--print-timeout", f"{timeout_seconds}s",
+            "--disable-slash-commands",
+        ]
     else:
         # --json-schema asks Claude Code to return a machine-readable
         # `structured_output` object inside its --output-format json envelope.
@@ -241,18 +415,14 @@ def _run_role(role, prompt, host_bin, timeout_seconds, allow_agent_tools=False,
             payload = _parse_json_output(stdout, host_runtime=host_runtime)
         except ValueError as exc:
             parse_error = str(exc)
-    diagnostic = (str(stderr or "") + "\n" + str(stdout or ""))[-1000:]
-    resource_exhausted = any(
-        marker in diagnostic.upper()
-        for marker in ("RESOURCE_EXHAUSTED", "CODE 429", "ERROR_CODE\":429", "QUOTA")
+    diagnostic = _sanitize_diagnostic(stderr, stdout)
+    error_code = _runtime_error_code(
+        diagnostic,
+        timed_out=timed_out,
+        parse_error=parse_error,
+        exit_code=process.returncode,
     )
-    error_code = (
-        "resource_exhausted_429" if resource_exhausted
-        else "timeout" if timed_out
-        else "invalid_json" if parse_error
-        else "process_exit" if process.returncode != 0
-        else ""
-    )
+    resource_exhausted = error_code == "resource_exhausted_429"
     return {
         "role": role,
         "host_runtime": host_runtime,
@@ -268,6 +438,9 @@ def _run_role(role, prompt, host_bin, timeout_seconds, allow_agent_tools=False,
         "parse_error": parse_error,
         "resource_exhausted": resource_exhausted,
         "error_code": error_code,
+        "requires_escalated_execution": error_code == "host_sandbox_denied",
+        "diagnostic_excerpt": diagnostic if error_code else "",
+        "diagnostic_sha256": _diagnostic_fingerprint(diagnostic) if error_code else "",
     }
 
 
@@ -278,7 +451,8 @@ def _public_result(result):
             "role", "invocation_id", "process_id", "exit_code", "timed_out",
             "elapsed_seconds", "prompt_sha256", "payload", "payload_sha256",
             "parse_error", "resource_exhausted", "error_code", "host_runtime",
-            "host_executable",
+            "host_executable", "requires_escalated_execution",
+            "diagnostic_excerpt", "diagnostic_sha256",
         )
     }
 

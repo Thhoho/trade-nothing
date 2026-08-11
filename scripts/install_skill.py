@@ -11,6 +11,7 @@ import shutil
 from pathlib import Path
 
 import check_source_sync
+import method_identity
 
 
 MANIFEST_NAME = ".trade-nothing-install-manifest.json"
@@ -82,6 +83,7 @@ def install_target(source, raw_target, *, quarantine_root="", dry_run=False):
                 microsecond=0
             ).isoformat(),
             "controlled_files": _manifest_entries(source),
+            "method_identity": method_identity.build_method_identity(source),
             "quarantined_files": [
                 path.relative_to(target).as_posix() for path in stale
             ],

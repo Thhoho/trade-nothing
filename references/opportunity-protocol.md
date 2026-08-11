@@ -154,5 +154,7 @@ advice, target price, or position size.
 ## 7. Stop semantics
 
 `NO_USABLE_SETUP` is valid only after bounded work covers concrete securities, alternative and
-second-order routes, price/crowding, and the declared event window. Search exhaustion means only
+second-order routes, price/crowding, and the declared event window, and explicitly inspects the
+economic-chain, market-carrier, competitor/substitute, failure/adverse, and ownership/capital
+candidate-construction routes. An `INSUFFICIENT` route remains incomplete. Search exhaustion means only
 that the current route produced no new information. It is not market-negative evidence.

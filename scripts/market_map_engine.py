@@ -46,6 +46,18 @@ COVERAGE_FIELDS = (
 
 COVERAGE_OUTCOMES = {"FOUND", "NO_RESULT", "INSUFFICIENT"}
 
+# Search fields say *what was checked*; route kinds say *which causal branch of
+# the opportunity universe was actually constructed*.  Both are projections
+# over bounded research, not lifecycle states.
+COVERAGE_ROUTE_KINDS = {
+    "ECONOMIC_CHAIN",
+    "MARKET_CARRIER",
+    "COMPETITOR_OR_SUBSTITUTE",
+    "FAILURE_OR_ADVERSE",
+    "OWNERSHIP_OR_CAPITAL",
+}
+REQUIRED_COVERAGE_ROUTE_KINDS = tuple(sorted(COVERAGE_ROUTE_KINDS))
+
 MECHANICS_FIELDS = (
     "event_change",
     "narrative",
@@ -131,6 +143,9 @@ def _normalize_coverage_route(raw):
     outcome = _text(raw.get("outcome")).upper()
     if outcome not in COVERAGE_OUTCOMES:
         return None, "invalid_coverage_outcome"
+    route_kind = _text(raw.get("route_kind")).upper()
+    if route_kind not in COVERAGE_ROUTE_KINDS:
+        return None, "invalid_or_missing_coverage_route_kind"
     urls = raw.get("checked_urls")
     if not isinstance(urls, list) or not urls:
         return None, "coverage_checked_url_required"
@@ -148,6 +163,7 @@ def _normalize_coverage_route(raw):
             checked_urls.append(url)
     return {
         "coverage_field": field,
+        "route_kind": route_kind,
         "query": query,
         "checked_urls": checked_urls,
         "outcome": outcome,
@@ -570,7 +586,7 @@ def _ensure_map(state):
     candidate_map = state.get("candidate_map")
     if not isinstance(candidate_map, dict):
         candidate_map = state["candidate_map"] = {
-            "schema_version": "trade-nothing.candidate-map.v5",
+            "schema_version": "trade-nothing.candidate-map.v6",
             "candidates": [],
             "market_mechanics": [],
             "coverage": {field: False for field in COVERAGE_FIELDS},
@@ -708,12 +724,13 @@ def harvest_round(state, round_num, detective=None, inquisitor=None):
                     audit["coverage_route_rejections"].append(reason)
                     continue
                 route_key = (
-                    route["coverage_field"], route["query"],
+                    route["coverage_field"], route["route_kind"], route["query"],
                     tuple(route["checked_urls"]), route["outcome"],
                 )
                 known_route_keys = {
                     (
-                        item.get("coverage_field"), item.get("query"),
+                        item.get("coverage_field"), item.get("route_kind"),
+                        item.get("query"),
                         tuple(item.get("checked_urls", [])), item.get("outcome"),
                     )
                     for item in candidate_map["coverage_routes"]
@@ -722,7 +739,8 @@ def harvest_round(state, round_num, detective=None, inquisitor=None):
                 if route_key not in known_route_keys:
                     route.update({"source_agent": role, "round": int(round_num)})
                     candidate_map["coverage_routes"].append(route)
-                candidate_map["coverage"][route["coverage_field"]] = True
+                if route["outcome"] in {"FOUND", "NO_RESULT"}:
+                    candidate_map["coverage"][route["coverage_field"]] = True
             note = _text(coverage.get("note") or coverage.get("no_setup_reason"))
             if note and note not in candidate_map["coverage_notes"]:
                 candidate_map["coverage_notes"].append(note)
@@ -794,13 +812,27 @@ def report_view(state):
     coverage_routes = copy.deepcopy(candidate_map.get("coverage_routes", []))
     # Neither a checkbox nor a prose note establishes search coverage. Each
     # coverage dimension needs an inspectable query and concrete checked URL.
+    effective_routes = [
+        route for route in coverage_routes
+        if isinstance(route, dict)
+        and route.get("outcome") in {"FOUND", "NO_RESULT"}
+    ]
     route_fields = {
         route.get("coverage_field") for route in coverage_routes
         if isinstance(route, dict)
+        and route.get("outcome") in {"FOUND", "NO_RESULT"}
     }
+    route_kinds = {
+        route.get("route_kind") for route in effective_routes
+        if route.get("route_kind") in COVERAGE_ROUTE_KINDS
+    }
+    missing_route_kinds = [
+        kind for kind in REQUIRED_COVERAGE_ROUTE_KINDS if kind not in route_kinds
+    ]
     coverage_complete = (
         all(coverage.values())
         and all(field in route_fields for field in COVERAGE_FIELDS)
+        and not missing_route_kinds
         and bool(coverage_notes)
     )
     setups = [item for item in candidates if item.get("attention_band") == "SETUP_CANDIDATE"]
@@ -831,6 +863,8 @@ def report_view(state):
         "coverage": coverage,
         "coverage_claims": copy.deepcopy(candidate_map.get("coverage_claims", {})),
         "coverage_routes": coverage_routes,
+        "covered_route_kinds": sorted(route_kinds),
+        "missing_route_kinds": missing_route_kinds,
         "coverage_complete": coverage_complete,
         "coverage_notes": coverage_notes,
         "cheapest_next_test": cheapest_next_test,

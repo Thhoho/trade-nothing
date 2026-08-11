@@ -108,6 +108,19 @@ Market Bridge 把产业因果翻译为可交易市场表达。它是 Research Ag
 
 ## 5. Candidate BridgeView
 
+候选发现的四个搜索字段只回答“查了什么”，不能证明“候选空间如何构造”。有效的有界负结果
+还必须分别覆盖五种 `route_kind`：
+
+- `ECONOMIC_CHAIN`：直接兑现、瓶颈或二阶经济路径；
+- `MARKET_CARRIER`：由辨识度、流动性和相对强弱实际承载交易的证券；
+- `COMPETITOR_OR_SUBSTITUTE`：竞争技术、替代路线或先例；
+- `FAILURE_OR_ADVERSE`：失败受益、逆向暴露或对冲路径；
+- `OWNERSHIP_OR_CAPITAL`：股权、资本关系、IPO 或私营主体到上市公司的连接。
+
+每条 route 同时保存搜索字段、`route_kind`、实际 query、具体 URL 和
+`FOUND / NO_RESULT / INSUFFICIENT`。`NO_RESULT` 是可审计的负结果；`INSUFFICIENT` 是未完成缺口，
+不得帮助形成 `NO_USABLE_SETUP`。这只是报告投影，不新增状态或生命周期。
+
 宿主已有行情观测时，先冻结候选与基准的同一交易日序列。A股结构化或免费源可先运行
 `scripts/free_market_observations.py`；它只采集显式选择的单一来源，随后由
 `scripts/market_snapshot_adapter.py` 校验采集回执并计算指标：

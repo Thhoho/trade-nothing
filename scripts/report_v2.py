@@ -2562,9 +2562,15 @@ def _render_opportunity_brief(view):
         lines.append(f"- **覆盖备注**：{_clean(note)}")
     for route in candidate_map.get("coverage_routes", [])[:8]:
         lines.append(
-            f"- **覆盖路径 `{_clean(route.get('coverage_field'))}`**："
+            f"- **覆盖路径 `{_clean(route.get('coverage_field'))}` / "
+            f"`{_clean(route.get('route_kind'))}`**："
             f"{_clean(route.get('query'))} -> `{_clean(route.get('outcome'))}`；"
             f"检查={_clean(', '.join(route.get('checked_urls', [])))}"
+        )
+    if candidate_map.get("missing_route_kinds"):
+        lines.append(
+            "- **候选空间尚缺路径**："
+            + _clean(", ".join(candidate_map.get("missing_route_kinds", [])))
         )
     return "\n".join(lines).rstrip() + "\n"
 
@@ -2576,6 +2582,7 @@ def _render_deep_research_report(view):
     directions = agenda.get("research_directions", [])
     evidence_items = agenda.get("evidence_items", [])
     blind_spots = agenda.get("blind_spots", [])
+    baseline_findings = agenda.get("baseline_findings", [])
     candidate_map = view.get("candidate_map", {})
     market_bridge = view.get("market_bridge", {})
     candidates = candidate_map.get("candidates", [])
@@ -2643,7 +2650,8 @@ def _render_deep_research_report(view):
         )
     elif result_type == "NO_USABLE_SETUP":
         conclusion = (
-            "在具名载体、替代路径、价格/筹码和事件窗口已覆盖的范围内，"
+            "在具名载体、价格/筹码、事件窗口及经济链、市场载体、竞争替代、"
+            "失败分支、资本关系五类候选路径均已覆盖的范围内，"
             "没有形成可用的条件型机会；应报告负结果，同时保留新盲点带来的重开条件。"
         )
     elif candidates:
@@ -2734,7 +2742,8 @@ def _render_deep_research_report(view):
     else:
         lines.append(
             "- **建议**：按 Research Agenda 的未回答问题继续搜索，并强制完成具体载体、"
-            "替代路径、价格/筹码和事件窗口四类映射。"
+            "价格/筹码、事件窗口，以及经济链、市场载体、竞争替代、失败分支和"
+            "资本关系五类候选空间映射。"
         )
 
     lines.extend([
@@ -2758,6 +2767,24 @@ def _render_deep_research_report(view):
         lines.append(
             f"\n> 默认正文仅显示初始问题及最有信息量的新问题；另有 "
             f"{len(questions) - len(display_questions)} 项保留在审计视图。"
+        )
+    if baseline_findings:
+        lines.extend([
+            "",
+            "### 既有关键发现处置（仅用于重跑防遗漏）",
+            "",
+            "| 处置 | 既有发现 | 为什么重要 | 本轮理由 | 本轮证据 |",
+            "|---|---|---|---|---|",
+        ])
+        for item in baseline_findings[:8]:
+            lines.append(
+                f"| `{_cell(item.get('disposition'))}` | {_cell(item.get('claim'))} | "
+                f"{_cell(item.get('why_it_matters'))} | {_cell(item.get('rationale'))} | "
+                f"{_cell(', '.join(item.get('evidence_ids', [])))} |"
+            )
+        lines.append(
+            "\n> 既有发现只是检索线索；只有本轮 canonical evidence 才能标记为 "
+            "`REVERIFIED` 或 `SUPERSEDED`。"
         )
 
     lines.extend([
@@ -3023,9 +3050,15 @@ def _render_deep_research_report(view):
         lines.append(f"- **覆盖备注**：{_clean(note)}")
     for route in candidate_map.get("coverage_routes", [])[:8]:
         lines.append(
-            f"- **覆盖路径 `{_clean(route.get('coverage_field'))}`**："
+            f"- **覆盖路径 `{_clean(route.get('coverage_field'))}` / "
+            f"`{_clean(route.get('route_kind'))}`**："
             f"{_clean(route.get('query'))} -> `{_clean(route.get('outcome'))}`；"
             f"检查={_clean(', '.join(route.get('checked_urls', [])))}"
+        )
+    if candidate_map.get("missing_route_kinds"):
+        lines.append(
+            "- **候选空间尚缺路径**："
+            + _clean(", ".join(candidate_map.get("missing_route_kinds", [])))
         )
 
     lines.extend([

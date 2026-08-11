@@ -117,8 +117,12 @@ The current method includes:
   valuation-only snapshots, hypothesis-only value paths, and single-role phase views cannot unlock
   a conditional priority. A host-ingested receipt must carry relative strength and market activity.
 - **A strict evidence stop no longer erases exploratory value.** `NO_USABLE_SETUP` is allowed only
-  after bounded carrier, alternative-path, price/crowding and event-window coverage. Otherwise the
-  result stays `EXPLORE` with the cheapest next test.
+  after bounded search-field coverage plus explicit economic-chain, market-carrier,
+  competitor/substitute, failure/adverse and ownership/capital routes. `INSUFFICIENT` remains open;
+  otherwise the result stays `EXPLORE` with the cheapest next test.
+- **Reruns cannot silently forget decisive findings.** Up to eight prior findings may enter the
+  Agenda as URL/date-bearing search leads. They inherit no truth status and must be reverified,
+  superseded, marked out of scope, or left unresolved with current-round evidence boundaries.
 - **Evidence exhaustion can converge honestly.** Repeated zero-signal rounds do not move debate
   support. A sufficiently sourced, bilaterally probed crux may become `MONITORABLE` only after
   bounded research adds no new evidence. Never-probed, one-sided, source-thin, or newly introduced
@@ -226,6 +230,8 @@ Stale files on the managed code surface are moved to a recoverable quarantine. A
 Claude Code have bounded process adapters; Codex has manual collaboration receipt builders;
 Gemini, Hermes, and OpenHands remain manual/protocol-only integrations in this release. See
 [`references/runtime-compatibility.md`](references/runtime-compatibility.md) for the exact matrix.
+Nested runtime role contracts are part of the controlled bundle, and installation fails closed if
+the installed operational method identity differs from the verified source checkout.
 
 Then ask the agent, for example:
 

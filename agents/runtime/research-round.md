@@ -61,6 +61,7 @@ legacy tracks stay empty when the Work Window does not assign them:
   "round": 1,
   "evidence_items": [],
   "question_updates": [],
+  "baseline_finding_updates": [],
   "direction_updates": [],
   "new_research_directions": [],
   "new_blind_spots": [],
@@ -111,6 +112,12 @@ Core record shapes:
     "strongest_challenge": "best contrary fact or mechanism",
     "missing_information": "specific missing datum",
     "next_question": "next discriminator"
+  },
+  "baseline_finding_update": {
+    "finding_id": "BF1",
+    "disposition": "REVERIFIED|SUPERSEDED|OUT_OF_SCOPE|UNRESOLVED",
+    "rationale": "why this prior-run lead still holds, changed, is irrelevant, or remains open",
+    "evidence_ids": ["EV-R1-D-001"]
   },
   "direction_update": {
     "direction_id": "RD1",
