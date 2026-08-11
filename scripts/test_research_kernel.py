@@ -61,6 +61,32 @@ class EvidenceKernelTests(unittest.TestCase):
         self.assertEqual(counts["unique_source_url_count"], 2)
         self.assertEqual(counts["independent_publisher_count"], 2)
 
+    def test_host_evidence_identity_includes_bound_subject(self):
+        agenda = {"evidence_items": [], "evidence_aliases": {}}
+        base = citation("market.example.cn", "同一观测值")
+        base.update({
+            "origin": "HOST_MARKET_SNAPSHOT",
+            "receipt_id": "receipt",
+        })
+        first, _ = research_kernel.upsert_canonical_evidence(
+            agenda,
+            {**base, "binding": {"candidate_identity": "LISTED_EQUITY|XSHG|600001"}},
+            AS_OF,
+        )
+        second, _ = research_kernel.upsert_canonical_evidence(
+            agenda,
+            {**base, "binding": {"candidate_identity": "LISTED_EQUITY|XSHE|000002"}},
+            AS_OF,
+        )
+        self.assertNotEqual(first["evidence_id"], second["evidence_id"])
+        self.assertEqual(len(agenda["evidence_items"]), 2)
+        self.assertEqual(
+            research_kernel.evidence_plane_counts(agenda["evidence_items"])[
+                "canonical_evidence_item_count"
+            ],
+            2,
+        )
+
 
 class ReconciliationKernelTests(unittest.TestCase):
     def test_answer_reconciliation_is_order_invariant(self):
@@ -100,6 +126,44 @@ class ReconciliationKernelTests(unittest.TestCase):
         self.assertEqual(result["answer_status"], "ANSWERED")
         self.assertEqual(result["evidence_boundary"], "FACT")
         self.assertIn("最终执行仍需观察", result["strongest_challenge"])
+
+    def test_old_open_variant_does_not_dispute_later_answer(self):
+        result = research_kernel.reconcile_answer_variants([
+            {
+                "round": 1, "role": "detective", "answer_status": "OPEN",
+                "answer": "尚未找到足够证据。", "evidence_boundary": "HYPOTHESIS",
+                "evidence": [], "next_test_availability": "SEARCH_NOW",
+            },
+            {
+                "round": 3, "role": "detective", "answer_status": "ANSWERED",
+                "answer": "官方披露已经确认当前窗口。",
+                "evidence_boundary": "SINGLE_SOURCE",
+                "evidence": [normalized("issuer-source.com.cn")],
+                "next_test_availability": "WAIT_FOR_EVENT",
+            },
+        ])
+        self.assertEqual(result["answer_status"], "ANSWERED")
+        self.assertEqual(result["latest_round"], 3)
+        self.assertEqual(result["next_test_availability"], "WAIT_FOR_EVENT")
+        self.assertTrue(result["resolution"].startswith("TEMPORAL_"))
+
+    def test_newer_wait_signal_survives_stronger_answer_preservation(self):
+        result = research_kernel.reconcile_answer_variants([
+            {
+                "round": 1, "role": "detective", "answer_status": "ANSWERED",
+                "answer": "现有证据已回答可观察部分。", "evidence_boundary": "FACT",
+                "evidence": [normalized("one-source.com.cn"), normalized("two-source.org")],
+                "next_test_availability": "SEARCH_NOW",
+            },
+            {
+                "round": 2, "role": "inquisitor", "answer_status": "PARTIAL",
+                "answer": "最终结果尚未发生。", "evidence_boundary": "HYPOTHESIS",
+                "evidence": [], "missing_information": "最终事件结果",
+                "next_test_availability": "WAIT_FOR_EVENT",
+            },
+        ])
+        self.assertEqual(result["answer_status"], "ANSWERED")
+        self.assertEqual(result["next_test_availability"], "WAIT_FOR_EVENT")
 
     def test_same_tier_direction_conflict_is_unresolved(self):
         records = [

@@ -62,12 +62,12 @@ class FreeMarketObservationTests(unittest.TestCase):
                 "source": "broker export",
                 "source_url": "https://market.example/benchmark",
             },
-            "evidence_ids": ["EV-PRICE", "EV-CROWDING"],
         }
 
     def test_csv_vertical_slice_feeds_market_snapshot(self):
         packet = free_market_observations.collect(self.request())
         self.assertEqual(packet["status"], "OBSERVATIONS_READY")
+        self.assertNotIn("evidence_ids", packet)
         self.assertEqual(packet["acquisition_receipt"]["attempted_providers"], ["CSV"])
         snapshot = market_snapshot_adapter.build_snapshot(packet)["market_snapshot"]
         self.assertEqual(snapshot["as_of_date"], "2026-03-14")

@@ -1319,7 +1319,8 @@ class ReportSafetyTests(unittest.TestCase):
             hashlib.sha256(out["facts_box_markdown"].encode("utf-8")).hexdigest(),
         )
         self.assertTrue(out["candidate_cards_markdown"].startswith("# Candidate Cards"))
-        self.assertIn("## A · 证明账本", out["evidence_ledger_markdown"])
+        self.assertIn("# Evidence Ledger", out["evidence_ledger_markdown"])
+        self.assertIn("## 1. Canonical evidence items", out["evidence_ledger_markdown"])
         self.assertTrue(out["report_markdown_deprecated"])
         self.assertIn("deep_research_report_markdown", out["instruction"])
         self.assertEqual(

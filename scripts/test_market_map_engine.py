@@ -477,9 +477,11 @@ class CandidateMapTests(unittest.TestCase):
                 }],
             }
         }, {})
-        self.assertIn(
-            "invalid_coverage_checked_url", audit["coverage_route_rejections"]
-        )
+        self.assertTrue(any(
+            item.get("reason") == "invalid_coverage_checked_url"
+            and item.get("submitted_route_kind") == "MARKET_CARRIER"
+            for item in audit["coverage_route_rejections"]
+        ))
         self.assertFalse(
             market_map_engine.report_view(st)["coverage"]["concrete_instrument_search"]
         )
@@ -504,7 +506,7 @@ class CandidateMapTests(unittest.TestCase):
         self.assertEqual(len(view["event_setups"]), 1)
         self.assertEqual(len(view["economic_setups"]), 1)
 
-    def test_conflicting_mechanisms_do_not_become_setup_ready(self):
+    def test_candidate_challenge_preserves_prose_variant_without_false_conflict(self):
         st = state()
         first = candidate(field_evidence=scoped_field_evidence("first"))
         second = candidate(
@@ -515,9 +517,36 @@ class CandidateMapTests(unittest.TestCase):
         market_map_engine.harvest_round(st, 1, {"market_map_candidates": [first]}, {})
         market_map_engine.harvest_round(st, 2, {}, {"market_map_candidates": [second]})
         item = market_map_engine.report_view(st)["candidates"][0]
+        self.assertEqual(item["attention_band"], "SETUP_CANDIDATE")
+        self.assertNotIn(
+            "UNRESOLVED_FIELD_CONFLICT",
+            item["setup_checks"]["EVENT_SETUP"]["reason_codes"],
+        )
+        self.assertGreaterEqual(len(item["field_variants"]["mechanism"]), 2)
+        current_ids = item["field_evidence_ids"]["mechanism"]
+        self.assertTrue(all("SECOND" not in evidence_id for evidence_id in current_ids))
+        variant_refs = item["field_variant_records"]["mechanism"][0]["evidence_refs"]
+        self.assertTrue(any("second" in ref["url"] for ref in variant_refs))
+
+    def test_replacement_text_cannot_reuse_old_field_evidence(self):
+        st = state()
+        first = candidate(field_evidence=scoped_field_evidence("first"))
+        replacement = candidate(
+            mechanism="全新的替代机制，旧证据不再支持",
+            field_evidence=scoped_field_evidence("replacement"),
+            field_update_modes={"mechanism": "REPLACE"},
+        )
+        replacement["field_evidence"]["mechanism"] = []
+        market_map_engine.harvest_round(st, 1, {"market_map_candidates": [first]}, {})
+        market_map_engine.harvest_round(
+            st, 2, {}, {"market_map_candidates": [replacement]}
+        )
+        item = market_map_engine.report_view(st)["candidates"][0]
+        self.assertEqual(item["mechanism"], "全新的替代机制，旧证据不再支持")
+        self.assertEqual(item["field_evidence_ids"]["mechanism"], [])
         self.assertEqual(item["attention_band"], "EXPLORE")
         self.assertIn(
-            "UNRESOLVED_FIELD_CONFLICT",
+            "MISSING_FIELD_EVIDENCE",
             item["setup_checks"]["EVENT_SETUP"]["reason_codes"],
         )
 
@@ -789,9 +818,9 @@ class DeepResearchReplayTests(unittest.TestCase):
             report_view["runtime"]["evidence_plane"][
                 "canonical_evidence_item_count"
             ],
-            10,
+            14,
         )
-        self.assertEqual(report_view["runtime"]["unique_source_count"], 10)
+        self.assertEqual(report_view["runtime"]["unique_source_count"], 12)
         self.assertEqual(
             report_view["runtime"]["legacy_crux_audit"][
                 "unique_source_url_count"
@@ -812,11 +841,11 @@ class DeepResearchReplayTests(unittest.TestCase):
         self.assertIn("条件性优先关注 超捷股份", md)
         self.assertIn("条件性优先关注 斯瑞新材", md)
         self.assertIn("当前相对 斯瑞新材（688102） 优先", md)
-        self.assertIn("10 条 canonical evidence", md)
+        self.assertIn("14 条 canonical evidence", md)
         full = report_v2.render(st, view="full")
-        self.assertIn("Agenda evidence: 10 条 / 10 个去重 URL", full)
+        self.assertIn("Agenda evidence: 14 条 / 12 个去重 URL", full)
         self.assertIn("旧 crux 审计 URL=0（仅兼容指标）", full)
-        self.assertIn("## 9. 未回答问题与下一轮研究", md)
+        self.assertIn("## 9. 未回答问题与下一验证动作", md)
         self.assertNotIn("# Decision Brief", md)
         self.assertNotIn("CandidateScreen", md)
 

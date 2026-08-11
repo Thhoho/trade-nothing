@@ -267,12 +267,6 @@ def build_snapshot(packet):
         packet, candidate_raw, benchmark_raw, session_date
     )
 
-    evidence_ids = [
-        _text(value) for value in packet.get("evidence_ids", []) if _text(value)
-    ] if isinstance(packet.get("evidence_ids"), list) else []
-    if not evidence_ids:
-        raise ValueError("evidence_ids_required")
-
     metrics = {}
     for window in WINDOWS:
         candidate_return, base_date = _series_return(candidate_rows, window)
@@ -325,7 +319,6 @@ def build_snapshot(packet):
         "theme_basket": theme_name,
         "latest_observed_session_on_or_before_as_of": True,
         **metrics,
-        "evidence_ids": list(dict.fromkeys(evidence_ids)),
     }
     receipt_core = {
         "schema_version": SCHEMA_VERSION,

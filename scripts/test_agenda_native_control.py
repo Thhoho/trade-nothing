@@ -222,6 +222,7 @@ class AgendaNativeReplayTests(unittest.TestCase):
             "decision_impact": "HIGH",
             "research_cost": "LOW",
             "blocks_current_recommendation": True,
+            "next_test_availability": "SEARCH_NOW",
         }]
         payload["new_research_questions"] = [{
             "question": "先发成功是否降低本事件的全国首次稀缺性？",
@@ -236,6 +237,7 @@ class AgendaNativeReplayTests(unittest.TestCase):
             "decision_change": "改变事件稀缺性与候选优先关注顺序",
             "linked_crux_id": "",
             "introduced_by_blind_spot": statement,
+            "next_test_availability": "SEARCH_NOW",
         }]
 
         result = orchestrator.cmd_submit(
@@ -314,6 +316,7 @@ class AgendaNativeReplayTests(unittest.TestCase):
                 "strongest_challenge": "资金可能只交易板块贝塔",
                 "missing_information": "先发与民营事件的相对量价",
                 "next_question": "市场定价的是全国首次还是民营商业闭环？",
+                "next_test_availability": "SEARCH_NOW",
             }],
             "direction_updates": [{
                 "direction_id": "RD-C2",
@@ -323,6 +326,7 @@ class AgendaNativeReplayTests(unittest.TestCase):
                 "evidence_ids": [],
                 "strongest_challenge": "民营闭环可能有不同的政策和资本含义",
                 "unresolved_question": "市场究竟为哪类稀缺性付费？",
+                "next_test_availability": "SEARCH_NOW",
             }],
             "new_research_directions": [{
                 "direction_id": "RD-ZQ-COMMERCIAL-LOOP",
@@ -337,6 +341,7 @@ class AgendaNativeReplayTests(unittest.TestCase):
                 "load_bearing": True,
                 "decision_impact": "HIGH",
                 "research_cost": "LOW",
+                "next_test_availability": "SEARCH_NOW",
             }],
             "new_blind_spots": [],
             "new_research_questions": [],

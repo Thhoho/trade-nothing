@@ -112,6 +112,10 @@ class ProductResetContractTests(unittest.TestCase):
         round_prompts = orchestrator.dispatch_prompts(state, 1)
         self.assertLess(len(round_prompts["detective_prompt"]), 24000)
         self.assertLess(len(round_prompts["inquisitor_prompt"]), 24000)
+        for role in ("detective_prompt", "inquisitor_prompt"):
+            self.assertIn('"coverage_route_kinds"', round_prompts[role])
+            self.assertIn('"next_test_availability"', round_prompts[role])
+            self.assertIn("WAIT_FOR_EVENT", round_prompts[role])
         self.assertNotIn("[BEGIN CONTRACT: agents/detective.md]", round_prompts["detective_prompt"])
         self.assertNotIn("[BEGIN CONTRACT: agents/inquisitor.md]", round_prompts["inquisitor_prompt"])
 

@@ -29,6 +29,18 @@ Kelly 仓位或持仓比例。
 > 有效性仍未完成 benchmark。
 > 详见[课题驱动产品基准](docs/topic-led-research-product.md)。
 
+## 当前能力
+
+| 层次 | 当前版本真正完成的工作 | 硬边界 |
+|---|---|---|
+| 研究 | 把课题拆成问题原生的 Research Agenda，在有界对抗轮次中回答并保留盲点 | 报告完成不等于所有问题都已回答 |
+| 证据 | 模型发现与宿主核验数据进入同一个 canonical evidence ledger，再重算当前答案和问题 | 历史观察可审计，但不会永远支配当前结论 |
+| 产业 → 市场 | 连接因果变化、价值转移、经济暴露池、实际交易载体池和分时间视野 setup | 概念归属或股价强势不能替代经济暴露 |
+| 标的 | 保留具名 A 股候选、比较最近替代项，并在证据允许时给出条件性研究优先级 | 不自动给出买卖、目标价、预期收益或仓位 |
+| 行情 | 冻结 Tushare、BaoStock、AKShare/Tencent 或 CSV 的候选与基准数据并生成回执 | 行情只是上下文，不是公司基本面或推荐质量证明 |
+| 停止 | 只有现在可搜索、低成本且影响决策的检验才建议续研；等待条件留在报告中 | 轮次预算是安全熔断器，不是制造进展的理由 |
+| 输出 | 交付 Deep Research Report 和独立 canonical Evidence Ledger；重型验证按需调用 | 工程门禁与报告渲染不证明 Alpha 或投资收益 |
+
 ## v0.15.0：发现优先，验证按需
 
 > **课题定义工作；每轮回答、质证，并发现此前没意识到的问题。**
@@ -67,6 +79,11 @@ v0.15.0 保留 v0.10 的假说驱动基础，并把非对称机会挖掘、判�
 - **推荐权限改为 fail-closed。** 条件性优先项必须同时具备路径语义对齐证据、最近替代项、
   当前优先理由、切换条件、与原始 payload 绑定的多角色阶段回执，以及同时包含基准超额和
   市场活跃度的宿主行情 artifact。模型自报行情和纯估值快照不能自行获得权限。
+- **所有当前视图共用一个证据面。** 宿主核验的行情 artifact 生成候选绑定的 canonical
+  facts；Agenda 答案、bridge 问题、候选 readiness、报告和 Evidence Ledger 都从当前事实
+  确定性投影，而不是继续叠加旧的派生状态。
+- **停止取决于信息何时可得。** 只有现在可搜索、低成本且高影响的明确检验才能建议下一轮；
+  等待日期、事件或用户数据的条件进入报告，不再静默消耗研究轮次。
 - **A 股数据可回放且不泄露密钥。** Tushare Pro、BaoStock、AKShare 腾讯和 CSV 进入统一
   冻结适配器；采集与 adapter 回执绑定候选、基准、交易日、原始序列和派生快照。Tushare
   凭证不会进入角色 prompt、state、回执、报告或三个 Skill 安装目录。
@@ -149,33 +166,16 @@ Framer 在父上下文内联运行且不浏览。Detective 和 Inquisitor 必须
 
 ### 在 Agent 中用自然语言安装
 
-把下面整段直接发给 Codex、Claude Code、Gemini CLI、Antigravity 或其他编程 Agent：
+把下面这段发给 Codex、Claude Code、Gemini CLI、Antigravity 或其他编程 Agent：
 
 ```text
-请为当前 Agent Runtime 安装 Trade Nothing v0.15.0，源码为：
+请为当前 Runtime 安装或更新 Trade Nothing：
 https://github.com/Thhoho/trade-nothing.git
-
-安全与验收要求：
-1. 不要启动任何研究 run；本次只授权安装。
-2. 先识别当前 Runtime 已配置的 Skill 根目录，并以其中的 `trade-nothing` 为目标。Codex
-   使用 `${CODEX_HOME:-$HOME/.codex}/skills/trade-nothing`，Claude Code 使用
-   `$HOME/.claude/skills/trade-nothing`，Gemini CLI 使用
-   `$HOME/.gemini/skills/trade-nothing`。其他 Runtime 只能使用其文档或配置明确给出的目录；
-   无法确认时停止并询问我，不要猜路径。
-3. 写入前检查已有源码目录和安装目标。不得 reset、删除或覆盖 dirty checkout、运行状态、
-   scratch、个人研究记忆或目标目录元数据。
-4. 在新的临时目录或我批准的源码目录 clone/fetch `origin/main`，detach 到刚拉取的精确
-   commit，并报告 `git rev-parse HEAD`；不得在不说明安装 commit 的情况下直接依赖持续移动
-   的分支。若用户另行明确要求 annotated release tag，再单独核验；这条安装指令不授权建 tag。
-5. 在该 checkout 中运行 `python3 scripts/version.py` 和 `make test`。除非必要检查因缺少
-   依赖失败且我明确批准，否则不要安装第三方依赖。
-6. 使用 `python3 scripts/install_skill.py --source <checkout> --targets <target>` 安装，
-   不要手工复制；然后运行 `python3 scripts/check_source_sync.py --source <checkout>
-   --targets <target>`。
-7. 保留 `Methodology_Evolution.md`、`scripts/.state`、`.git` 和
-   `~/.trade-nothing/` 下的全部内容；旧受控代码交给安装器移入可恢复隔离区。
-8. 宿主要求时，网络访问和工作区外写入必须先申请权限。最后报告 commit、安装目标、
-   测试结果、同步结果和被隔离文件。
+不要启动任何研究 run。用干净 checkout 获取 origin/main，报告 `git rev-parse HEAD`，运行
+`python3 scripts/version.py` 和 `make test`。识别当前 Runtime 已配置的 Skill 目录，不确定
+就询问我。只用 `python3 scripts/install_skill.py --source <checkout> --targets <target>` 安装，
+保留运行状态和目标目录元数据，再用 `scripts/check_source_sync.py` 验证；最后报告安装目录、
+commit、测试、同步结果和被隔离文件。
 ```
 
 这段提示默认只安装到当前 Runtime。若要把同一份已验证 checkout 同步到默认的 Gemini、
@@ -231,11 +231,46 @@ claim 核验和探索执行的精确 schema 都以其中契约为准。
 `--ingest-market-snapshot --market-snapshot PATH` 显式写入注册 run。它只是数据注入，
 不是候选状态迁移。
 
-### 配置 Tushare Pro
+### 配置或替换行情数据源
+
+确定性内核和 CSV 路径只依赖 Python 标准库。只安装实际要调用的可选数据源：
+
+| `provider` | 本地包 / 凭证 | 适用数据 |
+|---|---|---|
+| `TUSHARE` | `tushare==1.4.29` 与 `TUSHARE_TOKEN` | 股票前复权历史、指数、换手率、量比、PE/PB 和市值 |
+| `BAOSTOCK` | `baostock==0.8.9`；无 token | 免费、窗口有界的股票/指数价量历史 |
+| `AKSHARE_TENCENT` | `akshare>=1.14.0`；无 token | 免费、窗口有界的腾讯股票/指数价量历史 |
+| `CSV` | 无额外包；每个资产提供 `csv_path`、上游 `source_url` 和可选 `source` | 券商/数据商导出、MCP 输出或其他本地标准化数据 |
+
+```bash
+python3 -m pip install tushare==1.4.29      # 只选择实际需要的数据源
+# python3 -m pip install baostock==0.8.9
+# python3 -m pip install 'akshare>=1.14.0'
+```
+
+在请求里显式选择数据源；只改 `provider` 就能替换采集源，不需要改快照适配器或研究内核。
+系统没有 `AUTO`，也不会在失败后静默换源：
+
+```json
+{
+  "as_of_date": "2026-08-11",
+  "lookback_calendar_days": 180,
+  "provider": "TUSHARE",
+  "candidate": {"name": "贵州茅台", "ticker": "600519", "exchange": "XSHG", "asset_type": "EQUITY"},
+  "benchmark": {"name": "沪深300", "ticker": "000300", "exchange": "XSHG", "asset_type": "INDEX"}
+}
+```
+
+内置数据源是本地 Python/API 适配器。MCP 服务可以作为上游采集方式，但必须先通过 `CSV`
+契约冻结，或新增一个输出相同候选/基准 observation packet 的 collector。它至少要保留精确
+来源 URL、日期、收盘价和一致的最新交易日；成交量、换手率和估值字段可以缺失。模型转述
+的 MCP 摘要不能直接成为可信行情 artifact。
+
+#### 配置 Tushare Pro
 
 Trade Nothing 只从**父级数据采集进程**读取 `TUSHARE_TOKEN`。不要把 token 写进仓库、
-提交到 Git 的 `.env`、请求 JSON、角色 prompt，或 Codex、Claude、Gemini 的三个 Skill
-目录。三个 Agent 不需要分别保存三份 token；只要它们继承同一个宿主环境即可。
+提交到 Git 的 `.env`、请求 JSON、角色 prompt、报告或 Skill 安装目录。Codex、Claude、
+Gemini 不需要分别保存三份 token；只要继承同一个宿主环境即可。
 
 在 macOS/Linux 终端启动 Agent 时，先在启动它的 shell 中配置；如需持久化，只写入你自己的
 私有 shell profile：
@@ -261,8 +296,9 @@ python3 scripts/market_snapshot_adapter.py --input market-observations.json \
   --output market-snapshot.json
 ```
 
-在 `tushare-request.json` 中设置 `"provider": "TUSHARE"`；完整请求 schema 和写入注册 run
-的命令见 [`references/data-sources.md`](references/data-sources.md)。数据调用成功只证明采集与
+使用 BaoStock、AKShare/Tencent 或 CSV 时保持命令不变，只修改显式请求字段。完整 schema、
+数据源边界、自定义数据源契约和写入注册 run 的命令见
+[`references/data-sources.md`](references/data-sources.md)。数据调用成功只证明有界采集与
 确定性转换完成，不证明公司基本面、推荐质量或预期收益。
 
 ## 最小手动流程

@@ -9,6 +9,8 @@ budgets, reporting and legacy compatibility.
 """
 from copy import deepcopy
 from datetime import date
+import hashlib
+import json
 import re
 
 import crux_engine
@@ -132,7 +134,15 @@ def normalize_evidence(raw, as_of_date=""):
 
 
 def evidence_identity(item):
-    return crux_engine.citation_identity(item) if isinstance(item, dict) else ""
+    if not isinstance(item, dict):
+        return ""
+    identity = crux_engine.citation_identity(item)
+    binding = item.get("binding")
+    if identity and isinstance(binding, dict) and binding:
+        identity += "|binding:" + json.dumps(
+            binding, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+    return identity
 
 
 def unique_evidence(items):
@@ -144,6 +154,77 @@ def unique_evidence(items):
             accepted.append(deepcopy(item))
             seen.add(key)
     return accepted
+
+
+def upsert_canonical_evidence(agenda, raw, as_of_date="", stable_material=None):
+    """Insert one non-model evidence fact into the canonical evidence plane.
+
+    Role payload ingestion needs question/direction lineage.  Host-owned data
+    has a different trust root: its content receipt and subject binding.  This
+    helper keeps both in the same evidence ledger without pretending that a
+    model discovered or authored the observation.
+    """
+    if not isinstance(agenda, dict):
+        return None, "AGENDA_REQUIRED"
+    normalized, reason = normalize_evidence(raw, as_of_date)
+    if reason:
+        return None, reason
+    material = stable_material if stable_material is not None else {
+        "identity": evidence_identity(normalized),
+        "origin": text(raw.get("origin")),
+        "binding": raw.get("binding") if isinstance(raw.get("binding"), dict) else {},
+    }
+    digest = hashlib.sha256(json.dumps(
+        material, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")).hexdigest()[:14].upper()
+    evidence_id = text(raw.get("evidence_id")) or f"EV-HOST-{digest}"
+    identity = evidence_identity({
+        **normalized,
+        "binding": raw.get("binding")
+        if isinstance(raw.get("binding"), dict) else {},
+    })
+    items = agenda.setdefault("evidence_items", [])
+    aliases = agenda.setdefault("evidence_aliases", {})
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if evidence_identity(item) == identity:
+            if evidence_id != item.get("evidence_id"):
+                aliases[evidence_id] = item.get("evidence_id")
+            return item, "IDEMPOTENT"
+        if text(item.get("evidence_id")) == evidence_id:
+            return None, "EVIDENCE_ID_COLLISION"
+    item = {
+        "evidence_id": evidence_id,
+        "question_ids": list(dict.fromkeys(
+            text(value) for value in raw.get("question_ids", []) if text(value)
+        )) if isinstance(raw.get("question_ids"), list) else [],
+        "direction_ids": list(dict.fromkeys(
+            text(value) for value in raw.get("direction_ids", []) if text(value)
+        )) if isinstance(raw.get("direction_ids"), list) else [],
+        "stance": text(raw.get("stance") or "CONTEXT").upper(),
+        "claim": normalized.get("claim"),
+        "number": normalized.get("number"),
+        "source": normalized.get("source"),
+        "url": normalized.get("url"),
+        "date": normalized.get("date"),
+        "source_tier": normalized.get("source_tier"),
+        "publisher_identity": normalized.get("publisher_identity"),
+        "round": 0,
+        "role": "host",
+        "roles": ["host"],
+        "origin": text(raw.get("origin") or "HOST_OBSERVATION"),
+        "binding": deepcopy(raw.get("binding"))
+        if isinstance(raw.get("binding"), dict) else {},
+    }
+    if isinstance(raw.get("supporting_urls"), list):
+        item["supporting_urls"] = list(dict.fromkeys(
+            text(value) for value in raw["supporting_urls"] if text(value)
+        ))
+    if raw.get("receipt_id"):
+        item["receipt_id"] = text(raw.get("receipt_id"))
+    items.append(item)
+    return item, "CREATED"
 
 
 def evidence_plane_counts(items):
@@ -219,8 +300,8 @@ def _join_unique(items, field):
     return "；".join(values)
 
 
-def reconcile_answer_variants(variants):
-    """Resolve same-round role variants without role-order dependence."""
+def _reconcile_answer_peers(variants):
+    """Resolve variants from one research instant without role-order dependence."""
     variants = [deepcopy(item) for item in variants if isinstance(item, dict)]
     if not variants:
         return None
@@ -274,6 +355,9 @@ def reconcile_answer_variants(variants):
         "missing_information": _join_unique(variants, "missing_information"),
         "next_question": text(selected.get("next_question"))
         or _join_unique(variants, "next_question"),
+        "next_test_availability": text(
+            selected.get("next_test_availability") or "UNKNOWN"
+        ).upper(),
         "resolution": "CONFLICTED" if conflict else (
             "SHARED_UNCERTAINTY"
             if selected.get("answer_status") == "DISPUTED" and len(variants) > 1
@@ -281,6 +365,67 @@ def reconcile_answer_variants(variants):
         ),
         "selected_role": text(selected.get("role")),
     }
+
+
+def reconcile_answer_variants(variants):
+    """Project append-only answer history into one current, bounded answer.
+
+    Roles are reconciled symmetrically *within* a round.  Rounds are then folded
+    in time.  Treating every old OPEN answer as a current peer made repaired
+    data gaps permanently dispute later evidence and caused prompts/reports to
+    grow without bound.
+    """
+    rows = [deepcopy(item) for item in variants if isinstance(item, dict)]
+    if not rows:
+        return None
+    by_round = {}
+    for item in rows:
+        try:
+            round_num = int(item.get("round", 0) or 0)
+        except (TypeError, ValueError):
+            round_num = 0
+        by_round.setdefault(round_num, []).append(item)
+    folded = None
+    latest_round = 0
+    for round_num in sorted(by_round):
+        current = _reconcile_answer_peers(by_round[round_num])
+        if not current:
+            continue
+        latest_round = round_num
+        if folded is None:
+            folded = current
+            continue
+        old_rank = BOUNDARY_RANK.get(text(folded.get("evidence_boundary")).upper(), 0)
+        new_rank = BOUNDARY_RANK.get(text(current.get("evidence_boundary")).upper(), 0)
+        preserve_completed = (
+            folded.get("answer_status") == "ANSWERED"
+            and current.get("answer_status") != "ANSWERED"
+            and new_rank < old_rank
+        )
+        if preserve_completed:
+            if text(current.get("strongest_challenge")):
+                folded["strongest_challenge"] = text(
+                    current.get("strongest_challenge")
+                )
+            if text(current.get("missing_information")):
+                folded["missing_information"] = text(
+                    current.get("missing_information")
+                )
+            if text(current.get("next_question")):
+                folded["next_question"] = text(current.get("next_question"))
+            folded["next_test_availability"] = text(
+                current.get("next_test_availability") or "UNKNOWN"
+            ).upper()
+            folded["resolution"] = "TEMPORAL_STRONGER_ANSWER_PRESERVED"
+        else:
+            folded = current
+    if folded:
+        folded["latest_round"] = latest_round
+        if len(by_round) > 1 and not text(folded.get("resolution")).startswith("TEMPORAL_"):
+            folded["resolution"] = "TEMPORAL_" + text(
+                folded.get("resolution") or "SINGLE_VARIANT"
+            )
+    return folded
 
 
 def answer_is_usable(question):
@@ -308,8 +453,8 @@ def answer_has_progress(question):
     )
 
 
-def reconcile_direction_records(records):
-    """Resolve same-round direction judgments conservatively and deterministically."""
+def _reconcile_direction_peers(records):
+    """Resolve one round of direction judgments conservatively."""
     records = [deepcopy(item) for item in records if isinstance(item, dict)]
     if not records:
         return None
@@ -360,10 +505,36 @@ def reconcile_direction_records(records):
         "strongest_challenge": _join_unique(records, "strongest_challenge"),
         "unresolved_question": _join_unique(records, "unresolved_question"),
         "evidence_ids": evidence_ids,
+        "next_test_availability": text(
+            selected.get("next_test_availability") or "UNKNOWN"
+        ).upper(),
         "resolution": "CONFLICTED" if conflict else (
             "CONSISTENT" if len(records) > 1 else "SINGLE_VARIANT"
         ),
     }
+
+
+def reconcile_direction_records(records):
+    """Project append-only direction history into the latest round view."""
+    rows = [deepcopy(item) for item in records if isinstance(item, dict)]
+    if not rows:
+        return None
+    by_round = {}
+    for item in rows:
+        try:
+            round_num = int(item.get("round", 0) or 0)
+        except (TypeError, ValueError):
+            round_num = 0
+        by_round.setdefault(round_num, []).append(item)
+    latest_round = max(by_round)
+    resolved = _reconcile_direction_peers(by_round[latest_round])
+    if resolved:
+        resolved["latest_round"] = latest_round
+        if len(by_round) > 1:
+            resolved["resolution"] = "TEMPORAL_" + text(
+                resolved.get("resolution") or "SINGLE_VARIANT"
+            )
+    return resolved
 
 
 def _infer_a_share_exchange(ticker):

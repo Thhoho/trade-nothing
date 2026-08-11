@@ -199,7 +199,6 @@ def host_snapshot(name, ticker, exchange, snapshot_date="2026-08-10",
         "excess_20d": excess if include_relative else None,
         "volume_ratio_20d": 1.4 if include_activity else None,
         "pe_ttm": 25.0,
-        "evidence_ids": ["EV-PRICE", "EV-CROWD"],
     }
     receipt_core = {
         "schema_version": "trade-nothing.market-snapshot-adapter.v1",
@@ -299,6 +298,45 @@ def attach_verified_round(st, round_num, detective, inquisitor):
 
 
 class MarketBridgeTests(unittest.TestCase):
+    def test_host_snapshot_mints_candidate_bound_canonical_evidence(self):
+        st = state()
+        result = market_bridge_engine.ingest_host_market_snapshot(
+            st, host_snapshot("甲公司", "600001", "XSHG", salt="identity")
+        )
+        self.assertEqual(result["status"], "ACCEPTED")
+        ids = st["market_bridge"]["host_market_snapshots"][0][
+            "canonical_evidence_ids"
+        ]
+        self.assertEqual(len(ids), 2)
+        evidence = {
+            item["evidence_id"]: item
+            for item in st["research_agenda"]["evidence_items"]
+        }
+        for evidence_id in ids:
+            item = evidence[evidence_id]
+            self.assertEqual(item["origin"], "HOST_MARKET_SNAPSHOT")
+            self.assertEqual(
+                item["binding"]["candidate_identity"],
+                "LISTED_EQUITY|XSHG|600001",
+            )
+            self.assertNotIn("000002", item["url"])
+
+        second = market_bridge_engine.ingest_host_market_snapshot(
+            st, host_snapshot("乙公司", "000002", "XSHE", salt="identity-beta")
+        )
+        self.assertEqual(second["status"], "ACCEPTED")
+        beta = st["market_bridge"]["host_market_snapshots"][1]
+        self.assertTrue(set(ids).isdisjoint(beta["canonical_evidence_ids"]))
+        evidence = {
+            item["evidence_id"]: item
+            for item in st["research_agenda"]["evidence_items"]
+        }
+        for evidence_id in beta["canonical_evidence_ids"]:
+            self.assertEqual(
+                evidence[evidence_id]["binding"]["candidate_identity"],
+                "LISTED_EQUITY|XSHE|000002",
+            )
+
     def test_complete_bridge_creates_time_bounded_cross_sectional_priority(self):
         st = state()
         ingest_pair(st)
@@ -322,11 +360,18 @@ class MarketBridgeTests(unittest.TestCase):
         first = view["priorities_by_horizon"]["EARNINGS_QUARTERS"][0]
         self.assertEqual(first["bridge"]["projection"], "CONFIRMED_LEADER")
         self.assertEqual(first["bridge"]["recommendation_level"], "CROSS_SECTIONAL_PRIORITY")
+        self.assertNotIn(
+            "TRUSTED_MARKET_SNAPSHOT_NOT_INGESTED", first["bridge"]["issues"]
+        )
         md = report_v2.render(st)
         self.assertIn("产业价值转移与市场时间结构", md)
         self.assertIn("经济暴露池 × 市场交易池", md)
         self.assertIn("条件性优先关注", md)
         self.assertIn("切换条件", md)
+        ledger = report_v2.render(st, view="evidence")
+        self.assertTrue(ledger.startswith("# Evidence Ledger"))
+        for item in st["research_agenda"]["evidence_items"]:
+            self.assertIn(item["evidence_id"], ledger)
 
     def test_complete_setup_without_bridge_never_becomes_recommendation(self):
         st = state()
@@ -395,9 +440,17 @@ class MarketBridgeTests(unittest.TestCase):
             "TRUSTED_MARKET_SNAPSHOT_NOT_INGESTED",
             first["bridge"]["issues"],
         )
-        self.assertIn(
+        self.assertNotIn(
             "MODEL_MARKET_SNAPSHOT_IGNORED_FOR_AUTHORITY",
             first["bridge"]["issues"],
+        )
+        persisted = next(
+            item for item in st["candidate_map"]["candidates"]
+            if item["ticker"] == "600001"
+        )
+        self.assertIn(
+            "MODEL_MARKET_SNAPSHOT_IGNORED_FOR_AUTHORITY",
+            persisted["bridge"]["issues"],
         )
 
     def test_valuation_only_host_snapshot_is_rejected(self):

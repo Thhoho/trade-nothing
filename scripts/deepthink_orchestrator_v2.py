@@ -88,9 +88,9 @@ def _contract_text(*relative_paths):
 
 
 def _work_window(stage, role, objective, authoritative_inputs, output_product,
-                 forbidden, next_consumer):
+                 forbidden, next_consumer, required_semantics=None):
     """Make every model call a closed, inspectable semantic work window."""
-    return "[WORK WINDOW — AUTHORITATIVE]\n" + json.dumps({
+    packet = {
         "stage": stage,
         "role": role,
         "objective": objective,
@@ -102,7 +102,12 @@ def _work_window(stage, role, objective, authoritative_inputs, output_product,
             "do not perform work owned by the next consumer."
         ),
         "next_consumer": next_consumer,
-    }, ensure_ascii=False, indent=2)
+    }
+    if required_semantics:
+        packet["required_semantics"] = required_semantics
+    return "[WORK WINDOW — AUTHORITATIVE]\n" + json.dumps(
+        packet, ensure_ascii=False, indent=2
+    )
 
 
 
@@ -1148,8 +1153,28 @@ def dispatch_prompts(state, round_num):
         [item.get("question_id") for item in research_questions],
         limit=8,
     )
-    candidate_focus = market_map_engine.focus_candidates(state, limit=4)
-    bridge_context = market_bridge_engine.dispatch_context(state)
+    candidate_focus = market_map_engine.focus_candidates(state, limit=3)
+    bridge_context = market_bridge_engine.dispatch_context(
+        state,
+        max_paths=3,
+        candidate_tickers=[item.get("ticker") for item in candidate_focus],
+    )
+    missing_route_kinds = market_map_engine.report_view(state).get(
+        "missing_route_kinds", []
+    )
+    route_owners = {
+        "ECONOMIC_CHAIN": "detective",
+        "MARKET_CARRIER": "detective",
+        "OWNERSHIP_OR_CAPITAL": "detective",
+        "COMPETITOR_OR_SUBSTITUTE": "inquisitor",
+        "FAILURE_OR_ADVERSE": "inquisitor",
+    }
+    coverage_assignments = {
+        role: [
+            kind for kind in missing_route_kinds if route_owners.get(kind) == role
+        ]
+        for role in ("detective", "inquisitor")
+    }
     landscape_plan = landscape_engine.ensure_round_plan(
         state, round_num, dispatch_cruxes=open_ids
     )
@@ -1200,7 +1225,9 @@ def dispatch_prompts(state, round_num):
         "判别测试及会改变哪个答案。优先更新现有问题的 next_question；每个角色最多"
         "提出 1 个 new_blind_spot 和 1 个 new_research_question。新问题必须给出"
         "parent_question_id、decision_change、success_condition 和有界 search_routes；"
-        "没有这些语义就输出空数组。"
+        "没有这些语义就输出空数组。每个未决检验还必须说明 next_test_availability："
+        "只有 SEARCH_NOW 表示继续搜索现在可能增量；WAIT_FOR_DATE、WAIT_FOR_EVENT、"
+        "NEEDS_USER_DATA 和 UNKNOWN 进入报告，不请求浪费下一轮。"
     )
     # Landscape assignments.
     landscape_by_id = {
@@ -1259,7 +1286,8 @@ def dispatch_prompts(state, round_num):
             "第二轮起先更新上述候选，每个角色最多新增 1 个真正不同的载体。"
         )
         + " 字段只是补充/变精确时 field_update_modes 写 REFINE；旧值错误且被新证据"
-        "取代时写 REPLACE；只有两种表述互斥且尚不能裁决时写 CHALLENGE。"
+        "取代时写 REPLACE；CHALLENGE 只保存另一种表述，真正影响判断的证据矛盾必须"
+        "写入相连 Agenda 问题或方向的 DISPUTED/UNRESOLVED。"
         if landscape_engine.research_intent(state) in {"OPPORTUNITY_DISCOVERY", "HYBRID"}
         else "\n🧭 CandidateMap: 非机会型问题可输出空数组，不得强造标的。"
     )
@@ -1298,6 +1326,18 @@ def dispatch_prompts(state, round_num):
             "one detective round JSON; canonical evidence, value paths and phase snapshot, then compared candidates",
             ["unselected questions", "automatic continuation", "trade outputs", "invented evidence", "recursive candidate expansion"],
             "Agenda projection, Market Bridge, CandidateMap projection, then evidence-only legacy Judge",
+            required_semantics={
+                "coverage_route_kinds": coverage_assignments["detective"],
+                "coverage_route_shape": {
+                    "coverage_field": list(market_map_engine.COVERAGE_FIELDS),
+                    "route_kind": coverage_assignments["detective"],
+                    "outcome": ["FOUND", "NO_RESULT", "INSUFFICIENT"],
+                    "requires_actual_query_and_concrete_checked_urls": True,
+                },
+                "next_test_availability": sorted(
+                    research_agenda_engine.NEXT_TEST_AVAILABILITIES
+                ),
+            },
         )
         + "\n\n" + _contract_text(
             "agents/runtime/research-round.md", "agents/runtime/detective.md"
@@ -1337,6 +1377,18 @@ def dispatch_prompts(state, round_num):
             "one inquisitor round JSON; distinguish contradiction, phase dispute and uncertainty",
             ["unselected questions", "automatic continuation", "trade outputs", "rhetorical veto", "recursive candidate expansion"],
             "Agenda projection, Market Bridge, CandidateMap projection, then evidence-only legacy Judge",
+            required_semantics={
+                "coverage_route_kinds": coverage_assignments["inquisitor"],
+                "coverage_route_shape": {
+                    "coverage_field": list(market_map_engine.COVERAGE_FIELDS),
+                    "route_kind": coverage_assignments["inquisitor"],
+                    "outcome": ["FOUND", "NO_RESULT", "INSUFFICIENT"],
+                    "requires_actual_query_and_concrete_checked_urls": True,
+                },
+                "next_test_availability": sorted(
+                    research_agenda_engine.NEXT_TEST_AVAILABILITIES
+                ),
+            },
         )
         + "\n\n" + _contract_text(
             "agents/runtime/research-round.md", "agents/runtime/inquisitor.md"
@@ -3675,7 +3727,7 @@ def cmd_report(topic, challenge_only=False, report_view="research", include_synt
     research_agenda_counts = research_agenda_engine.summary(state)
     view_model = report_v2.build_report_view_model(state)
     facts_box_markdown = report_v2.render(state, view="facts_box")
-    evidence_ledger_markdown = report_v2.render(state, view="audit")
+    evidence_ledger_markdown = report_v2.render(state, view="evidence")
     candidate_cards_markdown = report_v2.render(state, view="cards")
     out = {"status": "report_data_ready", "topic": topic,
             "convergence": conv,
@@ -3702,7 +3754,7 @@ def cmd_report(topic, challenge_only=False, report_view="research", include_synt
             "rendering_mode": "DETERMINISTIC_NO_LLM_CALL",
             "report_view": report_view,
             "available_report_views": [
-                "research", "opportunity", "facts_box", "brief", "insights", "cards", "audit", "full"
+                "research", "opportunity", "facts_box", "brief", "insights", "cards", "evidence", "audit", "full"
             ],
             "report_view_model": view_model,
             "facts_box_markdown": facts_box_markdown,

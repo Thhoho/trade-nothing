@@ -32,7 +32,6 @@ class MarketSnapshotAdapterTests(unittest.TestCase):
             "as_of_date": "2026-03-14",
             "candidate": series("甲公司", "600001", candidate_closes),
             "benchmark": series("固定行业篮子", "INDEX", benchmark_closes),
-            "evidence_ids": ["EV-PRICE", "EV-CROWD"],
         }
 
     def test_builds_reproducible_relative_strength_snapshot(self):
@@ -67,11 +66,13 @@ class MarketSnapshotAdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "latest_session_mismatch"):
             market_snapshot_adapter.build_snapshot(packet)
 
-    def test_rejects_unbound_snapshot(self):
+    def test_snapshot_does_not_require_model_evidence_ids(self):
         packet = self.packet()
-        packet["evidence_ids"] = []
-        with self.assertRaisesRegex(ValueError, "evidence_ids_required"):
-            market_snapshot_adapter.build_snapshot(packet)
+        result = market_snapshot_adapter.build_snapshot(packet)
+        snapshot = result["market_snapshot"]
+        self.assertNotIn("evidence_ids", snapshot)
+        self.assertEqual(result["candidate"]["ticker"], "600001")
+        self.assertEqual(len(snapshot["adapter_receipt"]["input_sha256"]), 64)
 
 
 if __name__ == "__main__":

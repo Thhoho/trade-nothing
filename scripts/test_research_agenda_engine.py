@@ -7,6 +7,7 @@ import unittest
 import crux_engine
 import deepthink_orchestrator_v2 as orchestrator
 import research_agenda_engine
+import research_kernel
 
 
 def frame():
@@ -103,11 +104,103 @@ def frame_with_baseline():
 
 
 class ResearchAgendaTests(unittest.TestCase):
+    def _host_market_evidence(self, agenda):
+        item, status = research_kernel.upsert_canonical_evidence(
+            agenda,
+            {
+                **citation("宿主行情"),
+                "claim": "甲公司20日相对基准收益为正",
+                "number": "excess_20d=7.5",
+                "origin": "HOST_MARKET_SNAPSHOT",
+                "binding": {
+                    "candidate_identity": "LISTED_EQUITY|XSHG|600001",
+                    "market_session_date": "2026-08-10",
+                },
+                "receipt_id": "receipt-host-market",
+            },
+            "2026-08-10",
+        )
+        self.assertIn(status, {"CREATED", "IDEMPOTENT"})
+        return item
+
     def test_explicit_workplan_becomes_primary_agenda(self):
         agenda = research_agenda_engine.initialize(frame())
         self.assertEqual(agenda["agenda_source"], "EXPLICIT_WORKPLAN")
         self.assertEqual(len(agenda["questions"]), 3)
         self.assertTrue(all(item["answer_status"] == "OPEN" for item in agenda["questions"]))
+
+    def test_market_question_can_reference_host_evidence_without_copying_it(self):
+        agenda = research_agenda_engine.initialize(frame())
+        host = self._host_market_evidence(agenda)
+        state = {"research_agenda": agenda, "rounds": [{}]}
+        payload = {"question_updates": [{
+            "question_id": "RQ2",
+            "answer_status": "ANSWERED",
+            "answer": "当前20日相对强弱已经转正。",
+            "answer_is_inference": False,
+            "evidence_ids": [host["evidence_id"]],
+            "strongest_challenge": "短窗口不代表长期兑现",
+            "missing_information": "后续财务验证",
+            "next_question": "相对强势能否延续？",
+            "next_test_availability": "WAIT_FOR_DATE",
+        }]}
+        research_agenda_engine.harvest_round(state, 1, payload, {})
+        question = next(
+            item for item in research_agenda_engine.projected_questions(state)
+            if item["question_id"] == "RQ2"
+        )
+        self.assertEqual(question["answer_status"], "ANSWERED")
+        self.assertEqual(question["evidence"][0]["evidence_id"], host["evidence_id"])
+        self.assertEqual(len(agenda["evidence_items"]), 1)
+
+    def test_host_market_evidence_cannot_answer_non_market_fact_question(self):
+        agenda = research_agenda_engine.initialize(frame())
+        host = self._host_market_evidence(agenda)
+        state = {"research_agenda": agenda, "rounds": [{}]}
+        payload = {"question_updates": [{
+            "question_id": "RQ1",
+            "answer_status": "ANSWERED",
+            "answer": "行情不能证明事件官方状态。",
+            "answer_is_inference": False,
+            "evidence_ids": [host["evidence_id"]],
+            "strongest_challenge": "仍需官方公告",
+            "missing_information": "官方状态",
+            "next_question": "官方是否确认？",
+            "next_test_availability": "SEARCH_NOW",
+        }]}
+        research_agenda_engine.harvest_round(state, 1, payload, {})
+        question = next(
+            item for item in research_agenda_engine.projected_questions(state)
+            if item["question_id"] == "RQ1"
+        )
+        self.assertEqual(question["answer_status"], "PARTIAL")
+        self.assertEqual(question["evidence"], [])
+
+    def test_copied_host_fact_becomes_alias_not_second_evidence_item(self):
+        agenda = research_agenda_engine.initialize(frame())
+        host = self._host_market_evidence(agenda)
+        state = {"research_agenda": agenda, "rounds": [{}]}
+        copied = {
+            "evidence_id": "EV-R1-D-COPIED-HOST",
+            "question_ids": ["RQ2"],
+            "direction_ids": [],
+            "stance": "CONTEXT",
+            "claim": host["claim"],
+            "number": host["number"],
+            "source": host["source"],
+            "url": host["url"],
+            "date": host["date"],
+            "source_tier": host["source_tier"],
+        }
+        audit = research_agenda_engine.harvest_round(
+            state, 1, {"evidence_items": [copied]}, {}
+        )
+        self.assertEqual(len(agenda["evidence_items"]), 1)
+        self.assertEqual(
+            agenda["evidence_aliases"]["EV-R1-D-COPIED-HOST"],
+            host["evidence_id"],
+        )
+        self.assertEqual(len(audit["duplicate_evidence_aliases"]), 1)
 
     def test_prior_finding_is_a_lead_and_boosts_linked_question(self):
         agenda = research_agenda_engine.initialize(frame_with_baseline())
@@ -286,6 +379,7 @@ class ResearchAgendaTests(unittest.TestCase):
                 "search_routes": [f"路线{suffix}"],
                 "decision_impact": "HIGH",
                 "research_cost": "LOW",
+                "next_test_availability": "SEARCH_NOW",
                 "parent_question_id": parent,
                 "decision_change": f"改变候选{suffix}",
             }
@@ -609,6 +703,7 @@ class ResearchAgendaTests(unittest.TestCase):
                 "load_bearing": True,
                 "decision_impact": "HIGH",
                 "research_cost": "LOW",
+                "next_test_availability": "SEARCH_NOW",
             }],
             "direction_updates": [{
                 "direction_id": "RD2",
@@ -618,6 +713,7 @@ class ResearchAgendaTests(unittest.TestCase):
                 "evidence_ids": [],
                 "strongest_challenge": "民营属性仍可能保留独立稀缺性",
                 "unresolved_question": "市场究竟给哪类稀缺性定价？",
+                "next_test_availability": "SEARCH_NOW",
             }],
             "question_updates": [{
                 "question_id": "RQ2",
@@ -628,6 +724,7 @@ class ResearchAgendaTests(unittest.TestCase):
                 "strongest_challenge": "也可能只是商业航天板块贝塔",
                 "missing_information": "事件窗口相对强弱",
                 "next_question": "资金交易全国首次还是民营闭环？",
+                "next_test_availability": "SEARCH_NOW",
             }],
         }
         research_agenda_engine.harvest_round(state, 1, payload, {})
@@ -639,6 +736,33 @@ class ResearchAgendaTests(unittest.TestCase):
         control = research_agenda_engine.control_decision(state, round_num=1)
         self.assertIn("NEW_VIEWPOINT_OPENED", control["reason_codes"])
         self.assertEqual(control["recommended_action"], "RESEARCH_MORE_IF_AUTHORIZED")
+
+    def test_wait_for_event_is_reported_without_spending_another_search_round(self):
+        state = {
+            "research_agenda": research_agenda_engine.initialize(frame()),
+            "research_runtime": {"authorized_rounds": 2},
+            "rounds": [{}],
+        }
+        question = state["research_agenda"]["questions"][0]
+        question["research_cost"] = "LOW"
+        question["blocks_current_recommendation"] = True
+        payload = {"question_updates": [{
+            "question_id": "RQ1",
+            "answer_status": "PARTIAL",
+            "answer": "官方已给出窗口，最终状态只能等待事件发生。",
+            "answer_is_inference": False,
+            "evidence_ids": [],
+            "strongest_challenge": "窗口仍可能调整",
+            "missing_information": "最终发射结果",
+            "next_question": "事件是否按窗口发生？",
+            "next_test_availability": "WAIT_FOR_EVENT",
+        }]}
+        research_agenda_engine.harvest_round(state, 1, payload, {})
+        control = research_agenda_engine.control_decision(state, round_num=1)
+        self.assertFalse(control["more_research_recommended"])
+        self.assertEqual(control["next_test_mode"], "WAIT_FOR_EVENT")
+        self.assertEqual(control["recommended_action"], "DELIVER_REPORT")
+        self.assertEqual(control["deferred_next_tests"][0]["id"], "RQ1")
 
 
 class AgendaOrchestratorIntegrationTests(unittest.TestCase):

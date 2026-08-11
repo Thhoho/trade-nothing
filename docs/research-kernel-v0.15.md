@@ -1,7 +1,7 @@
 # Trade Nothing 研究内核：P0 修复与 P1 收益目标
 
-> 日期：2026-08-10
-> 状态：P0 已实现，P1 仅冻结目标与验收口径
+> 日期：2026-08-11
+> 状态：P0 与 P1 统一修复已实现；真实课题效果仍需继续盲评
 > 边界：这是跨投影共享的确定性约束，不是新的状态机
 
 ## 1. 为什么需要一个小内核
@@ -11,12 +11,13 @@ Research Agenda 和 CandidateMap 面向不同用户问题，但不能各自发�
 不同待遇：未来日期可被接受，代理写的来源标签可制造发布方多样性，无证据的 `ANSWERED`
 可结束研究，具名候选只要字段非空就可成为 `SETUP_READY`。
 
-`scripts/research_kernel.py` 只统一四组不变量：
+`scripts/research_kernel.py` 只统一五组不变量：
 
 1. 证据日期、URL 身份、去重和发布方边界；
 2. 多角色、多轮答案与研究方向的确定性合并；
 3. 上市标的的 `exchange + ticker` 身份；
 4. EVENT/ECONOMIC setup 的字段内容、字段证据、事件窗口和冲突检查。
+5. 宿主事实入统一账本后，各产品视图只做当前时点的确定性投影。
 
 它不拥有轮次、预算、调度、授权、报告时点、候选晋级或外部动作。Agenda 和 CandidateMap
 仍是面向产品的投影，旧 crux 仍是兼容审计副轨。
@@ -32,11 +33,12 @@ Research Agenda 和 CandidateMap 面向不同用户问题，但不能各自发�
 
 直接收益：减少未来信息污染、重复证据膨胀和伪交叉验证。
 
-### 2.2 答案不再由最后写入者决定
+### 2.2 历史是日志，当前答案是时间投影
 
 - `ANSWERED` 没有有效证据时自动降为 `PARTIAL / HYPOTHESIS`；
-- 所有历史答案变体按证据边界确定性合并，不依赖 Detective/Inquisitor 写入顺序；
-- 同等级的完成答案与实质质疑保留为 `DISPUTED`；
+- 同一轮两个角色先按证据边界对称合并，不依赖 Detective/Inquisitor 写入顺序；
+- 不同轮次再按时间折叠：旧 `OPEN` 不会永久质疑后来有证据的 `ANSWERED`；
+- 同一轮、同等级的完成答案与实质质疑保留为 `DISPUTED`；
 - 低证据等级的新质疑不能抹掉更强的既有答案，但会保留在 `strongest_challenge`；
 - 研究方向的 `SUPPORTED / CHALLENGED` 同样按证据等级合并，同等级冲突保持
   `UNRESOLVED`。
@@ -48,8 +50,11 @@ Research Agenda 和 CandidateMap 面向不同用户问题，但不能各自发�
 - `LISTED_EQUITY` 必须有真实 ticker；`UNKNOWN / TBD` 会被拒绝；
 - A 股代码可确定性推导交易所，其他代码必须显式提供 exchange；
 - `SETUP_READY` 不再只看字符串非空。每一种 setup 都要求关键字段有自己绑定的证据；
-- 关键字段的自然补充使用 `REFINE`，纠错覆盖使用 `REPLACE`；只有角色显式声明互斥且未裁决
-  的 `CHALLENGE` 才形成字段冲突并保持 `EXPLORE`；
+- 关键字段的自然补充使用 `REFINE`，纠错覆盖使用 `REPLACE`；候选 prose 的 `CHALLENGE`
+  只保留替代表述，不再因为字符串不同制造 setup 冲突。真正影响判断的证据矛盾进入相连的
+  Agenda 问题/方向并投影为 `DISPUTED / UNRESOLVED`；
+- 同值更新可以累积证据；`REFINE / REPLACE` 改变当前字段后，只允许新字段绑定的证据授权
+  readiness；`CHALLENGE` 的反方证据单独进入变体审计，不能“旧证据洗新结论”；
 - catalyst window 必须有未过期的 ISO 日期；
 - `NO_USABLE_SETUP` 必须为四个覆盖维度各保存实际 query、检查过的具体 URL 和 outcome，
   并覆盖经济链、市场载体、竞争替代、失败分支和资本关系五种候选构造路径；
@@ -85,6 +90,30 @@ Research Agenda 和 CandidateMap 面向不同用户问题，但不能各自发�
 直接收益：阻止“口述三轮”、旧 state 冒充新方法重跑、失败 run 与手工报告拼接，以及 Codex
 误调用本机 Claude 形成的伪多智能体运行。
 
+### 2.6 单一事实链替代跨模块补丁
+
+统一链路为：
+
+```text
+宿主采集事实 -> canonical evidence -> 当前 Agenda/Bridge/Candidate 投影
+             -> Deep Research Report + Evidence Ledger
+```
+
+- 宿主行情回执自行生成候选身份绑定的 canonical evidence，不再要求模型预先发明
+  `evidence_ids`；甲公司的回执不能给乙公司的价格或筹码字段授权；
+- 市场、定价和候选类 Agenda 问题/方向可直接引用 Work Window 中的宿主 canonical ID；工程
+  事实问题不能借行情证据完成。旧模型若复制同一行情事实，摄入器折叠为 alias 而不新建证据；
+- 模型只声明产业解释、角色判断和比较逻辑。精确候选身份匹配的最新宿主快照由内核集中连接，
+  不要求两个角色重复抄 receipt；
+- `issues`、readiness、答案状态和推荐投影均从当前规范事实重算，不再把旧派生问题码永久并集；
+- 默认报告与独立 Evidence Ledger 都从同一 canonical evidence plane 渲染，证据附录不再是
+  legacy audit 报告改名；
+- relocation 后的 run 可由 state 的绝对路径定位 sibling manifest，避免合法回放被误判为
+  manifest 不存在。
+
+直接收益：修复旧快照无法被候选使用、错误 evidence ID 串股、历史 OPEN 污染当前答案、旧问题
+码永不消失和“报告证据数与附录不是同一本账”五类同源故障。
+
 ## 3. P0 验收口径
 
 以下是确定性合同，不是效果宣传：
@@ -92,12 +121,16 @@ Research Agenda 和 CandidateMap 面向不同用户问题，但不能各自发�
 - 同一证据 tuple 在统一账本中只存一次；
 - 非 ISO 或晚于 as-of 的证据接受数为 0；
 - 角色输入顺序反转后，答案和方向合并结果相同；
+- 旧轮 `OPEN` 与新轮有证据 `ANSWERED` 的当前投影为 `ANSWERED`；
 - 无证据 `ANSWERED` 的可用答案数为 0，但报告仍可交付；
 - `UNKNOWN` 上市 ticker 接受数为 0；
 - 未绑定关键字段证据、事件窗口无效或字段冲突时，setup-ready 数为 0；
 - 没有四个可检查搜索字段或五种候选构造 route kind 时，`NO_USABLE_SETUP` 数为 0；
 - 全部现有离线安全门与历史兼容回放继续通过。
 - 没有完整三角色收据时，可声明完成轮次数为 0；method drift 时当前方法运行声明为 false；
+- 宿主行情输入无需模型 evidence ID；生成的每条行情证据都绑定唯一候选身份和回执；
+- 派生 issue 在底层事实修复后从当前视图消失，但仍可在历史载荷/审计记录中追溯；
+- Evidence Ledger 必须枚举全部 canonical evidence 与宿主回执，不能渲染 legacy 审计正文；
 - runtime preflight 失败时不创建新 manifest；暂停/报告状态必须出现在 manifest 顶层；
 - `INLINE_DEGRADED_RESEARCH` 中 Round/第 N 轮声明和隔离声明通过报告校验的数量为 0。
 
@@ -144,7 +177,8 @@ STRUCTURAL_YEARS` 分开解释，保留角色间阶段争议，不用固定天�
 BaoStock、AKShare 腾讯或带来源 URL 的 CSV 获取单一 A 股候选与基准，冻结请求、交易日、
 provider version 与序列哈希；`scripts/market_snapshot_adapter.py` 校验上游回执后，确定性计算
 5/20/60 日收益、超额收益、60 日回撤、20 日量比和当前换手，并把规范化结果也写入内容哈希；
-最后由宿主用 `--ingest-market-snapshot` 把完整 artifact 写入注册 run 的可信数据平面。三段都
+最后由宿主用 `--ingest-market-snapshot` 把完整 artifact 写入注册 run 的可信数据平面，并由
+回执、来源和候选身份生成价格/相对强弱与成交/活动度两类 canonical evidence。三段都
 不猜市场日历，不自动降级，也不把旧快照或模型自报快照称为当前。
 
 推荐权限额外要求非假说价值路径、双角色同阶段读数、完整双池，以及同时包含相对强弱和市场
@@ -153,7 +187,14 @@ provider version 与序列哈希；`scripts/market_snapshot_adapter.py` 校验�
 仍待完成的数据能力：稳定的概念/行业横截面发现、免费源之间的显式对账，以及 H/美股连接器。
 没有可靠来源时保留 `UNKNOWN`，但产业优先级与市场确认条件仍应分开交付。
 
-### 4.5 用真实课题评价建议是否更有用
+### 4.5 下一验证动作必须有可用性
+
+`next_test_availability` 只回答一个调度问题：该验证现在是否能通过继续搜索获得。取值为
+`SEARCH_NOW / WAIT_FOR_DATE / WAIT_FOR_EVENT / NEEDS_USER_DATA / UNKNOWN`。只有明确
+`SEARCH_NOW` 且低成本、高影响的未决项可以建议再用一轮；其他项进入报告的 deferred tests。
+这是对研究边际信息价值的投影，不新增运行状态，也不会自动授权续跑。
+
+### 4.6 用真实课题评价建议是否更有用
 
 继续用至少 5 个不同类型的真实课题做固定 as-of 回放。盲评新增硬问题：是否形成经济暴露池
 与市场交易池，是否解释最近替代项，是否按时间视野给出不同建议，是否避免完整但无吸引力的

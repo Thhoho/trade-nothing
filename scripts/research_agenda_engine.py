@@ -29,12 +29,19 @@ MAX_NEW_DIRECTIONS_PER_ROLE = 1
 MAX_EVIDENCE_ITEMS_PER_ROLE = 12
 DECISION_IMPACTS = {"HIGH", "MEDIUM", "LOW"}
 RESEARCH_COSTS = {"LOW", "MEDIUM", "HIGH"}
+NEXT_TEST_AVAILABILITIES = {
+    "SEARCH_NOW", "WAIT_FOR_DATE", "WAIT_FOR_EVENT", "NEEDS_USER_DATA", "UNKNOWN",
+}
 DIRECTION_KINDS = {
     "FACT_ROUTE", "CAUSAL_CLAIM", "MARKET_MECHANISM", "CANDIDATE_PATH",
     "PRICING_CLAIM", "RISK_PATH", "COMPARISON_AXIS", "CRUX", "OTHER",
 }
 DIRECTION_JUDGMENTS = {"UNRESOLVED", "SUPPORTED", "CHALLENGED"}
 DIRECTION_NEXT_MOVES = {"ANSWER", "CONTINUE", "OPEN_NEW_DIRECTION"}
+HOST_EVIDENCE_QUESTION_TYPES = {"MARKET", "PRICING", "CANDIDATE"}
+HOST_EVIDENCE_DIRECTION_KINDS = {
+    "MARKET_MECHANISM", "PRICING_CLAIM", "CANDIDATE_PATH", "COMPARISON_AXIS",
+}
 EVIDENCE_STANCES = {"SUPPORT", "CHALLENGE", "CONTEXT"}
 BASELINE_DISPOSITIONS = {
     "UNREVIEWED", "REVERIFIED", "SUPERSEDED", "OUT_OF_SCOPE", "UNRESOLVED",
@@ -91,6 +98,10 @@ def _question_priority_fields(raw, question_type):
             raw.get("blocks_current_recommendation") is True
         ),
     }
+
+
+def _next_test_availability(value, default="UNKNOWN"):
+    return _enum(value, NEXT_TEST_AVAILABILITIES, default)
 
 
 def validate_frame(frame):
@@ -427,6 +438,7 @@ def initialize(frame):
                 "strongest_challenge": "",
                 "missing_information": "",
                 "next_question": "",
+                "next_test_availability": "SEARCH_NOW",
                 "source_agents": [],
                 "first_seen_round": 0,
                 "last_seen_round": 0,
@@ -445,6 +457,7 @@ def initialize(frame):
                 "evidence_boundary": "HYPOTHESIS",
                 "judgment_history": [],
                 "judgment_resolution": "NOT_RESEARCHED",
+                "next_test_availability": "SEARCH_NOW",
                 "source_agents": [],
                 "first_seen_round": 0,
                 "last_seen_round": 0,
@@ -551,6 +564,13 @@ def _ingest_evidence_items(agenda, round_num, role, payload, audit):
         for item in agenda.get("evidence_items", [])
         if research_kernel.evidence_identity(item)
     }
+    known_by_base_identity = {}
+    for item in agenda.get("evidence_items", []):
+        if not isinstance(item, dict):
+            continue
+        base_identity = crux_engine.citation_identity(item)
+        if base_identity:
+            known_by_base_identity.setdefault(base_identity, []).append(item)
     accepted = {}
     seen = set()
     for raw in items[:MAX_EVIDENCE_ITEMS_PER_ROLE]:
@@ -590,8 +610,14 @@ def _ingest_evidence_items(agenda, round_num, role, payload, audit):
             })
             continue
         identity = research_kernel.evidence_identity(normalized)
-        if identity in known_by_identity:
-            existing = known_by_identity[identity]
+        base_identity = crux_engine.citation_identity(normalized)
+        base_matches = known_by_base_identity.get(base_identity, [])
+        existing = known_by_identity.get(identity)
+        if existing is None and len(base_matches) == 1:
+            # Backward-compatible repair for roles that copied an already
+            # supplied host fact instead of referencing its canonical ID.
+            existing = base_matches[0]
+        if existing is not None:
             for field, values in (
                 ("question_ids", question_ids), ("direction_ids", direction_ids)
             ):
@@ -632,6 +658,7 @@ def _ingest_evidence_items(agenda, round_num, role, payload, audit):
         }
         agenda.setdefault("evidence_items", []).append(item)
         known_by_identity[identity] = item
+        known_by_base_identity.setdefault(base_identity, []).append(item)
         accepted[evidence_id] = item
         seen.add(evidence_id)
         audit["accepted_evidence_ids"].append(evidence_id)
@@ -642,6 +669,24 @@ def _evidence_boundary(citations, answer_is_inference=False):
     return research_kernel.evidence_boundary(
         citations, is_inference=answer_is_inference
     )
+
+
+def _host_evidence_for_question(agenda, evidence_id, question):
+    item = _evidence_by_id(agenda).get(evidence_id)
+    if not isinstance(item, dict) or item.get("origin") != "HOST_MARKET_SNAPSHOT":
+        return None
+    if _text(question.get("question_type")).upper() not in HOST_EVIDENCE_QUESTION_TYPES:
+        return None
+    return item
+
+
+def _host_evidence_for_direction(agenda, evidence_id, direction):
+    item = _evidence_by_id(agenda).get(evidence_id)
+    if not isinstance(item, dict) or item.get("origin") != "HOST_MARKET_SNAPSHOT":
+        return None
+    if _text(direction.get("direction_kind")).upper() not in HOST_EVIDENCE_DIRECTION_KINDS:
+        return None
+    return item
 
 
 def _question_by_id(agenda):
@@ -686,11 +731,19 @@ def _ingest_role_updates(
         evidence_ids = raw.get("evidence_ids", [])
         if not isinstance(evidence_ids, list):
             evidence_ids = []
-        evidence = [
-            deepcopy(accepted_evidence[eid]) for eid in evidence_ids
-            if eid in accepted_evidence
-            and question_id in accepted_evidence[eid].get("question_ids", [])
-        ]
+        evidence = []
+        for evidence_id in evidence_ids:
+            item = accepted_evidence.get(evidence_id)
+            if not (
+                isinstance(item, dict)
+                and question_id in item.get("question_ids", [])
+            ):
+                item = _host_evidence_for_question(
+                    agenda, _text(evidence_id), question
+                )
+            if isinstance(item, dict):
+                evidence.append(deepcopy(item))
+        evidence = research_kernel.unique_evidence(evidence)
         submitted_evidence = raw.get("evidence", [])
         if not isinstance(submitted_evidence, list):
             submitted_evidence = []
@@ -724,6 +777,9 @@ def _ingest_role_updates(
                 "strongest_challenge": _text(raw.get("strongest_challenge")),
                 "missing_information": _text(raw.get("missing_information")),
                 "next_question": _text(raw.get("next_question")),
+                "next_test_availability": _next_test_availability(
+                    raw.get("next_test_availability")
+                ),
             }
             if not any(
                 _norm(item.get("answer")) == _norm(answer)
@@ -903,6 +959,9 @@ def _reconcile_question_updates(agenda, round_num, audit):
             "strongest_challenge": resolution["strongest_challenge"],
             "missing_information": resolution["missing_information"],
             "next_question": resolution["next_question"],
+            "next_test_availability": resolution.get(
+                "next_test_availability", "UNKNOWN"
+            ),
             "answer_resolution": resolution["resolution"],
         })
         audit["answer_reconciliations"].append({
@@ -985,6 +1044,9 @@ def _ingest_new_directions(agenda, round_num, role, payload, audit):
             "evidence_boundary": "HYPOTHESIS",
             "judgment_history": [],
             "judgment_resolution": "NOT_RESEARCHED",
+            "next_test_availability": _next_test_availability(
+                raw.get("next_test_availability")
+            ),
             "source_agents": [role],
             "first_seen_round": round_num,
             "last_seen_round": round_num,
@@ -1026,14 +1088,19 @@ def _ingest_direction_updates(
         submitted_ids = raw.get("evidence_ids", [])
         if not isinstance(submitted_ids, list):
             submitted_ids = []
-        evidence_ids = [
-            accepted_evidence[evidence_id].get("evidence_id")
-            for evidence_id in submitted_ids
-            if evidence_id in accepted_evidence
-            and direction_id in accepted_evidence[evidence_id].get(
-                "direction_ids", []
-            )
-        ]
+        evidence_ids = []
+        for submitted_id in submitted_ids:
+            item = accepted_evidence.get(submitted_id)
+            if not (
+                isinstance(item, dict)
+                and direction_id in item.get("direction_ids", [])
+            ):
+                item = _host_evidence_for_direction(
+                    agenda, _text(submitted_id), direction
+                )
+            canonical_id = item.get("evidence_id") if isinstance(item, dict) else ""
+            if canonical_id and canonical_id not in evidence_ids:
+                evidence_ids.append(canonical_id)
         evidence_ids = list(dict.fromkeys(evidence_ids))
         evidence_by_id = _evidence_by_id(agenda)
         evidence = [
@@ -1053,6 +1120,9 @@ def _ingest_direction_updates(
             "evidence_boundary": evidence_boundary,
             "strongest_challenge": _text(raw.get("strongest_challenge")),
             "unresolved_question": _text(raw.get("unresolved_question")),
+            "next_test_availability": _next_test_availability(
+                raw.get("next_test_availability")
+            ),
         }
         direction["last_seen_round"] = round_num
         direction.setdefault("judgment_history", []).append(record)
@@ -1091,6 +1161,9 @@ def _reconcile_direction_updates(agenda, round_num, audit):
             "unresolved_question": resolution["unresolved_question"],
             "evidence_ids": resolution["evidence_ids"],
             "judgment_resolution": resolution["resolution"],
+            "next_test_availability": resolution.get(
+                "next_test_availability", "UNKNOWN"
+            ),
         })
         audit["direction_reconciliations"].append({
             "direction_id": direction.get("direction_id"),
@@ -1208,6 +1281,9 @@ def _ingest_new_questions(agenda, round_num, submissions, audit):
             "strongest_challenge": "",
             "missing_information": "",
             "next_question": "",
+            "next_test_availability": _next_test_availability(
+                raw.get("next_test_availability")
+            ),
             "source_agents": [role],
             "first_seen_round": round_num,
             "last_seen_round": round_num,
@@ -1286,6 +1362,9 @@ def _ingest_blind_spots(agenda, round_num, submissions, audit):
             "potential_impact": impact,
             "linked_question_ids": linked_question_ids,
             "cheapest_test": cheapest_test,
+            "next_test_availability": _next_test_availability(
+                raw.get("next_test_availability")
+            ),
             "decision_impact": decision_impact,
             "research_cost": research_cost,
             "blocks_current_recommendation": (
@@ -1416,7 +1495,7 @@ def focus_directions(state, question_ids=None, limit=5):
     cost_rank = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
     judgment_rank = {"CHALLENGED": 0, "UNRESOLVED": 1, "SUPPORTED": 2}
     active = []
-    for item in agenda.get("research_directions", []):
+    for item in projected_directions(state):
         if (
             not isinstance(item, dict)
             or item.get("next_move", "CONTINUE") == "ANSWER"
@@ -1532,7 +1611,7 @@ def focus_questions(state, dispatch_cruxes=None, limit=5):
         for question_id in finding.get("linked_question_ids", [])
     }
     questions = [
-        item for item in agenda.get("questions", [])
+        item for item in projected_questions(state)
         if isinstance(item, dict)
         and (
             not research_kernel.answer_is_usable(item)
@@ -1571,6 +1650,9 @@ def dispatch_questions(state, dispatch_cruxes=None, limit=5):
                 "strongest_challenge": resolution["strongest_challenge"],
                 "missing_information": resolution["missing_information"],
                 "next_question": resolution["next_question"],
+                "next_test_availability": resolution.get(
+                    "next_test_availability", "UNKNOWN"
+                ),
                 "answer_resolution": resolution["resolution"],
             })
         evidence_refs = []
@@ -1599,7 +1681,7 @@ def dispatch_questions(state, dispatch_cruxes=None, limit=5):
                 "url": citation.get("url"),
                 "date": citation.get("date"),
             })
-            if len(evidence_refs) >= 8:
+            if len(evidence_refs) >= 4:
                 break
         packets.append({
             "question_id": item.get("question_id"),
@@ -1615,12 +1697,15 @@ def dispatch_questions(state, dispatch_cruxes=None, limit=5):
             "parent_question_id": item.get("parent_question_id", ""),
             "decision_change": _clip(item.get("decision_change"), 500),
             "answer_status": item.get("answer_status"),
-            "current_answer": _clip(item.get("current_answer"), 1600),
+            "current_answer": _clip(item.get("current_answer"), 650),
             "answer_resolution": item.get("answer_resolution"),
             "evidence_boundary": item.get("evidence_boundary"),
-            "strongest_challenge": _clip(item.get("strongest_challenge"), 800),
-            "missing_information": _clip(item.get("missing_information"), 800),
-            "next_question": _clip(item.get("next_question"), 500),
+            "strongest_challenge": _clip(item.get("strongest_challenge"), 360),
+            "missing_information": _clip(item.get("missing_information"), 360),
+            "next_question": _clip(item.get("next_question"), 360),
+            "next_test_availability": _next_test_availability(
+                item.get("next_test_availability")
+            ),
             "evidence_refs": evidence_refs,
             "history_summary": {
                 "variant_count": len(item.get("answer_variants", [])),
@@ -1639,10 +1724,10 @@ def dispatch_directions(state, question_ids=None, limit=5):
     """Bound direction context while keeping every discriminating field."""
     return [{
         "direction_id": item.get("direction_id"),
-        "proposition": _clip(item.get("proposition"), 600),
+        "proposition": _clip(item.get("proposition"), 450),
         "direction_kind": item.get("direction_kind"),
-        "why_it_matters": _clip(item.get("why_it_matters"), 500),
-        "discriminating_test": _clip(item.get("discriminating_test"), 600),
+        "why_it_matters": _clip(item.get("why_it_matters"), 360),
+        "discriminating_test": _clip(item.get("discriminating_test"), 450),
         "linked_question_ids": deepcopy(item.get("linked_question_ids", [])),
         "linked_crux_id": item.get("linked_crux_id"),
         "parent_direction_ids": deepcopy(item.get("parent_direction_ids", [])),
@@ -1651,11 +1736,14 @@ def dispatch_directions(state, question_ids=None, limit=5):
         "research_cost": item.get("research_cost"),
         "research_judgment": item.get("research_judgment"),
         "next_move": item.get("next_move"),
-        "rationale": _clip(item.get("rationale"), 800),
+        "rationale": _clip(item.get("rationale"), 550),
         "evidence_boundary": item.get("evidence_boundary"),
         "evidence_ids": deepcopy(item.get("evidence_ids", [])[:8]),
-        "strongest_challenge": _clip(item.get("strongest_challenge"), 600),
-        "unresolved_question": _clip(item.get("unresolved_question"), 500),
+        "strongest_challenge": _clip(item.get("strongest_challenge"), 420),
+        "unresolved_question": _clip(item.get("unresolved_question"), 360),
+        "next_test_availability": _next_test_availability(
+            item.get("next_test_availability")
+        ),
     } for item in focus_directions(state, question_ids, limit)]
 
 
@@ -1699,6 +1787,10 @@ def is_agenda_native(state):
 def _question_has_marginal_next_test(question, agenda, rounds_completed):
     """Whether one more cheap test is likely to add decision information."""
     if not isinstance(question, dict) or question.get("answer_status") == "ANSWERED":
+        return False
+    if _next_test_availability(
+        question.get("next_test_availability")
+    ) != "SEARCH_NOW":
         return False
     if _enum(question.get("research_cost"), RESEARCH_COSTS, "MEDIUM") != "LOW":
         return False
@@ -1812,6 +1904,9 @@ def control_decision(state, round_num=None):
             )
         )
         and item.get("research_cost") == "LOW"
+        and _next_test_availability(
+            item.get("next_test_availability")
+        ) == "SEARCH_NOW"
         and bool(set(item.get("linked_question_ids", [])) & material_question_ids)
     ]
     blind_spots = [
@@ -1821,9 +1916,41 @@ def control_decision(state, round_num=None):
         and item.get("blocks_current_recommendation") is True
         and item.get("decision_impact") == "HIGH"
         and item.get("research_cost") == "LOW"
+        and _next_test_availability(
+            item.get("next_test_availability")
+        ) == "SEARCH_NOW"
         and bool(_text(item.get("cheapest_test")))
         and bool(set(item.get("linked_question_ids", [])) & material_question_ids)
     ]
+    deferred_next_tests = []
+    for item in unresolved:
+        availability = _next_test_availability(
+            item.get("next_test_availability")
+        )
+        if availability in {"WAIT_FOR_DATE", "WAIT_FOR_EVENT", "NEEDS_USER_DATA"}:
+            deferred_next_tests.append({
+                "kind": "QUESTION",
+                "id": item.get("question_id"),
+                "availability": availability,
+                "test": _text(
+                    item.get("next_question")
+                    or item.get("missing_information")
+                    or item.get("success_condition")
+                ),
+            })
+    for item in agenda.get("blind_spots", []):
+        if not isinstance(item, dict):
+            continue
+        availability = _next_test_availability(
+            item.get("next_test_availability")
+        )
+        if availability in {"WAIT_FOR_DATE", "WAIT_FOR_EVENT", "NEEDS_USER_DATA"}:
+            deferred_next_tests.append({
+                "kind": "BLIND_SPOT",
+                "id": item.get("blind_spot_id"),
+                "availability": availability,
+                "test": _text(item.get("cheapest_test")),
+            })
     reasons = []
     if rounds_completed <= 0:
         reasons.append("NO_COMPLETED_ROUND")
@@ -1843,6 +1970,8 @@ def control_decision(state, round_num=None):
         reasons.append("NEW_VIEWPOINT_OPENED")
     elif material_directions:
         reasons.append("RESEARCH_DIRECTION_REQUIRES_CONTINUATION")
+    if deferred_next_tests and not (material or blind_spots or material_directions):
+        reasons.append("DEFERRED_TESTS_NOT_SEARCHABLE_NOW")
     more_research_recommended = (
         rounds_completed <= 0
         or (
@@ -1883,6 +2012,8 @@ def control_decision(state, round_num=None):
             if not has_progress
             else "DELIVERABLE_MORE_RESEARCH_RECOMMENDED"
             if more_research_recommended
+            else "DELIVERABLE_WAITING_FOR_NEW_INFORMATION"
+            if deferred_next_tests
             else "DELIVERABLE_CURRENT_QUESTION_ANSWERABLE"
         ),
         "recommended_action": action,
@@ -1899,6 +2030,12 @@ def control_decision(state, round_num=None):
         ],
         "next_questions": deepcopy(unresolved[:3]),
         "next_directions": deepcopy(material_directions[:3]),
+        "next_test_mode": (
+            "SEARCH_NOW" if more_research_recommended
+            else deferred_next_tests[0]["availability"]
+            if deferred_next_tests else "NONE"
+        ),
+        "deferred_next_tests": deepcopy(deferred_next_tests[:8]),
         "additional_rounds_recommended": 1 if more_research_recommended else 0,
         "boundary": (
             "This controls research attention and report timing only; it is not "
@@ -1920,6 +2057,8 @@ def continuation_packet(state):
         "focus_questions": deepcopy(control["next_questions"]),
         "material_blind_spot_ids": deepcopy(control["material_blind_spot_ids"]),
         "focus_directions": deepcopy(control["next_directions"]),
+        "next_test_mode": control.get("next_test_mode", "NONE"),
+        "deferred_next_tests": deepcopy(control.get("deferred_next_tests", [])),
         "authorization_required": (
             control["recommended_action"] == "RESEARCH_MORE_IF_AUTHORIZED"
         ),
@@ -1928,7 +2067,7 @@ def continuation_packet(state):
 
 def summary(state):
     agenda = state.get("research_agenda", {})
-    questions = [item for item in agenda.get("questions", []) if isinstance(item, dict)]
+    questions = projected_questions(state)
     counts = {status.lower() + "_count": 0 for status in QUESTION_STATUSES}
     for item in questions:
         key = _text(item.get("answer_status")).upper().lower() + "_count"
@@ -1937,10 +2076,7 @@ def summary(state):
     usable_answer_count = sum(
         research_kernel.answer_is_usable(item) for item in questions
     )
-    directions = [
-        item for item in agenda.get("research_directions", [])
-        if isinstance(item, dict)
-    ]
+    directions = projected_directions(state)
     baseline_findings = [
         item for item in agenda.get("baseline_findings", [])
         if isinstance(item, dict)
@@ -1976,7 +2112,7 @@ def summary(state):
     }
 
 
-def report_view(state):
+def projected_questions(state):
     agenda = state.get("research_agenda", {})
     projected_questions = []
     for raw in agenda.get("questions", []):
@@ -1994,9 +2130,46 @@ def report_view(state):
                 "strongest_challenge": resolution["strongest_challenge"],
                 "missing_information": resolution["missing_information"],
                 "next_question": resolution["next_question"],
+                "next_test_availability": resolution.get(
+                    "next_test_availability", "UNKNOWN"
+                ),
                 "answer_resolution": resolution["resolution"],
             })
         projected_questions.append(item)
+    return projected_questions
+
+
+def projected_directions(state):
+    agenda = state.get("research_agenda", {})
+    projected = []
+    for raw in agenda.get("research_directions", []):
+        if not isinstance(raw, dict):
+            continue
+        item = deepcopy(raw)
+        resolution = research_kernel.reconcile_direction_records(
+            item.get("judgment_history", [])
+        )
+        if resolution:
+            item.update({
+                "research_judgment": resolution["research_judgment"],
+                "next_move": resolution["next_move"],
+                "rationale": resolution["rationale"],
+                "evidence_boundary": resolution["evidence_boundary"],
+                "strongest_challenge": resolution["strongest_challenge"],
+                "unresolved_question": resolution["unresolved_question"],
+                "evidence_ids": resolution["evidence_ids"],
+                "next_test_availability": resolution.get(
+                    "next_test_availability", "UNKNOWN"
+                ),
+                "judgment_resolution": resolution["resolution"],
+            })
+        projected.append(item)
+    return projected
+
+
+def report_view(state):
+    agenda = state.get("research_agenda", {})
+    question_view = projected_questions(state)
     research_control = (
         control_decision(state)
         if is_agenda_native(state)
@@ -2010,15 +2183,16 @@ def report_view(state):
     )
     return {
         **summary(state),
-        "questions": projected_questions,
-        "research_directions": deepcopy([
-            item for item in agenda.get("research_directions", [])
-            if isinstance(item, dict)
-        ]),
+        "questions": question_view,
+        "research_directions": projected_directions(state),
         "evidence_items": deepcopy([
             item for item in agenda.get("evidence_items", [])
             if isinstance(item, dict)
         ]),
+        "evidence_aliases": deepcopy(
+            agenda.get("evidence_aliases", {})
+            if isinstance(agenda.get("evidence_aliases"), dict) else {}
+        ),
         "baseline_findings": deepcopy([
             item for item in agenda.get("baseline_findings", [])
             if isinstance(item, dict)

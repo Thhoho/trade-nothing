@@ -146,6 +146,44 @@ class ExecutionIntegrityTests(unittest.TestCase):
         self.assertEqual(audit["execution_mode"], "HISTORICAL_REPLAY")
         self.assertFalse(audit["can_claim_current_method_run"])
 
+    def test_relocated_state_finds_its_sibling_manifest(self):
+        _, payloads, receipt = self._fixture()
+        run_id = "RUN-20260811-ABCDEF123456"
+        relocated = os.path.join(self.tmp.name, "relocated")
+        state_path = os.path.join(
+            relocated, "v2-state", f"{run_id}_v2_state.json"
+        )
+        manifest_path = os.path.join(relocated, "v2-runs", f"{run_id}.json")
+        identity = method_identity.build_method_identity()
+        manifest = {
+            "schema": "trade-nothing.run-manifest.v1",
+            "run_id": run_id,
+            "state_path": state_path,
+            "method_identity": identity,
+        }
+        state = {
+            "method_identity": identity,
+            "runtime": {"run_id": run_id, "state_path": state_path},
+            "rounds": [{
+                "round": 1,
+                "detective_raw": payloads["detective"],
+                "inquisitor_raw": payloads["inquisitor"],
+                "judge_host_raw": payloads["judge"],
+                "execution_receipt": receipt,
+                "execution_integrity": {
+                    "status": "verified", "receipt_id": receipt["receipt_id"]
+                },
+            }],
+        }
+        save_json(manifest_path, manifest)
+        save_json(state_path, state)
+        os.environ["TRADE_NOTHING_SCRATCH_DIR"] = os.path.join(
+            self.tmp.name, "different-process-root"
+        )
+        audit = execution_integrity.audit_state(state)
+        self.assertEqual(audit["manifest_binding_status"], "REGISTERED")
+        self.assertEqual(audit["execution_mode"], "ORCHESTRATED_VERIFIED")
+
     def test_inline_marker_has_no_round_or_isolation_authority(self):
         audit = execution_integrity.inline_audit("topic", "2026-08-10")
         parsed = execution_integrity.parse_marker(execution_integrity.marker(audit))

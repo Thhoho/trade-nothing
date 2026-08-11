@@ -44,7 +44,7 @@ python3 scripts/free_market_observations.py --input free-market-request.json \
   --output market-observations.json
 
 # Provider-neutral market snapshot from frozen candidate + benchmark observations.
-# The input owns source URLs and canonical evidence IDs; the adapter does not fetch.
+# The input owns source URLs; the adapter does not fetch or accept model evidence IDs.
 python3 scripts/market_snapshot_adapter.py --input market-observations.json \
   --output market-snapshot.json
 
@@ -70,6 +70,11 @@ complete or that the result predicts returns. Content-addressed receipts are int
 proofs, not cryptographic signatures from the provider; explicit host ingestion remains the trust
 root and must never be delegated to a model role.
 
+At host ingestion, the verified artifact mints candidate-bound canonical evidence for price/relative
+strength/valuation and for volume/turnover/activity. Those IDs are outputs of the trusted data plane,
+not inputs supplied by a research role. Market and pricing questions may reference those host IDs
+directly; they must not recreate the same observation as model-authored evidence.
+
 ### Bounded A-share request
 
 The compatibility-named `free_market_observations.py` adapter fetches only one candidate and one
@@ -89,8 +94,7 @@ attempt is a new bounded acquisition, not an invisible fallback.
   "benchmark": {
     "name": "沪深300", "ticker": "000300", "exchange": "XSHG",
     "asset_type": "INDEX"
-  },
-  "evidence_ids": ["EV-PRICE", "EV-CROWDING"]
+  }
 }
 ```
 
@@ -115,11 +119,28 @@ isolates it in a child process and enforces a 20-second wall-clock boundary.
 
 The complete adapter artifact—not only its nested `market_snapshot`—must be ingested through the
 orchestrator command above. The artifact carries the complete upstream acquisition receipt and binds
-the candidate identity plus normalized snapshot in the adapter receipt. Ingestion requires canonical Agenda
-evidence covering both price/expectation and activity/crowding, at least one benchmark-relative
-return, and at least one volume/turnover metric. It is idempotent by receipt and rejects a conflicting
-artifact for the same candidate and market session. Model-role payloads cannot invoke this command
-or expose the Tushare token.
+the candidate identity plus normalized snapshot in the adapter receipt. Ingestion itself creates the
+canonical Agenda evidence; it does not require or accept borrowed model evidence IDs. The snapshot
+must contain at least one benchmark-relative return and one volume/turnover metric. Ingestion is
+idempotent by receipt and rejects a conflicting artifact for the same candidate and market session.
+Model-role payloads cannot invoke this command or expose the Tushare token.
+
+### Replacing or adding a provider
+
+Changing among built-in sources only requires changing the explicit `provider` field. Do not add an
+automatic fallback: a second source is a separately visible acquisition attempt with its own receipt.
+
+For a vendor API, database, or MCP service that is not built in, choose one of two boundaries:
+
+1. Export candidate and benchmark observations to the `CSV` contract, including the real upstream
+   URL and publisher identity; or
+2. Add one collector to `free_market_observations.py` that emits the same normalized packet and
+   acquisition receipt as the existing collectors.
+
+Either route must preserve candidate identity, benchmark identity, cutoff date, a shared latest
+session, source lineage, and content hashes. The downstream snapshot adapter and research kernel
+must remain provider-neutral. An MCP tool response or model summary is transport output, not trusted
+evidence, until the host freezes and ingests it through this contract.
 
 ## 3. Acquisition rules
 

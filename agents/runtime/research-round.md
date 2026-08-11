@@ -12,10 +12,13 @@ Stop when the bounded routes are exhausted; uncertainty is a valid result. Do
 not continue the run, produce a trade, position size, target price, or invent a
 source.
 
-Submit every formal citation once in `evidence_items`. All `evidence_ids` in
-question, direction, path, universe, phase, and candidate fields must reference
-IDs from this same JSON response. Use a concrete publisher URL and ISO date no
-later than the Work Window `as-of`. A useful evidence-free idea stays
+Submit every newly researched citation once in `evidence_items`. Question and
+direction updates normally reference same-role, same-round IDs; MARKET, PRICING,
+CANDIDATE questions and matching market/candidate directions may also reference
+canonical host evidence IDs physically supplied in the Work Window
+`trusted_market_snapshots`. Path, universe, phase, and candidate fields may use
+the same host IDs. Never recreate those price/activity facts as model-authored evidence. Use a concrete
+publisher URL and ISO date no later than the Work Window `as-of`. A useful evidence-free idea stays
 `HYPOTHESIS`/`PARTIAL`; it is never promoted by confident wording.
 
 Maximum per role per round: two searches per dispatched crux/question route,
@@ -111,7 +114,8 @@ Core record shapes:
     "evidence_ids": [],
     "strongest_challenge": "best contrary fact or mechanism",
     "missing_information": "specific missing datum",
-    "next_question": "next discriminator"
+    "next_question": "next discriminator",
+    "next_test_availability": "SEARCH_NOW|WAIT_FOR_DATE|WAIT_FOR_EVENT|NEEDS_USER_DATA|UNKNOWN"
   },
   "baseline_finding_update": {
     "finding_id": "BF1",
@@ -127,7 +131,8 @@ Core record shapes:
     "judgment_is_inference": true,
     "evidence_ids": [],
     "strongest_challenge": "remaining challenge",
-    "unresolved_question": "remaining discriminator"
+    "unresolved_question": "remaining discriminator",
+    "next_test_availability": "SEARCH_NOW|WAIT_FOR_DATE|WAIT_FOR_EVENT|NEEDS_USER_DATA|UNKNOWN"
   },
   "new_direction": {
     "proposition": "testable proposition",
@@ -140,7 +145,8 @@ Core record shapes:
     "origin_reason": "",
     "load_bearing": true,
     "decision_impact": "HIGH|MEDIUM|LOW",
-    "research_cost": "LOW|MEDIUM|HIGH"
+    "research_cost": "LOW|MEDIUM|HIGH",
+    "next_test_availability": "SEARCH_NOW|WAIT_FOR_DATE|WAIT_FOR_EVENT|NEEDS_USER_DATA|UNKNOWN"
   },
   "new_blind_spot": {
     "statement": "omitted factor",
@@ -150,7 +156,8 @@ Core record shapes:
     "cheapest_test": "bounded check",
     "decision_impact": "HIGH|MEDIUM|LOW",
     "research_cost": "LOW|MEDIUM|HIGH",
-    "blocks_current_recommendation": true
+    "blocks_current_recommendation": true,
+    "next_test_availability": "SEARCH_NOW|WAIT_FOR_DATE|WAIT_FOR_EVENT|NEEDS_USER_DATA|UNKNOWN"
   },
   "new_question": {
     "question": "answerable question",
@@ -164,7 +171,8 @@ Core record shapes:
     "parent_question_id": "RQ1",
     "decision_change": "which conclusion/candidate/timing changes",
     "linked_crux_id": "",
-    "introduced_by_blind_spot": ""
+    "introduced_by_blind_spot": "",
+    "next_test_availability": "SEARCH_NOW|WAIT_FOR_DATE|WAIT_FOR_EVENT|NEEDS_USER_DATA|UNKNOWN"
   }
 }
 ```
@@ -266,6 +274,10 @@ Candidate shape:
   "evidence": []
 }
 ```
+
+`field_update_modes=CHALLENGE` preserves an alternative wording for audit; it
+does not create a CandidateMap readiness conflict. Put an actual evidence-backed
+contradiction in the linked Agenda question/direction as `DISPUTED`.
 
 `market_mechanics` must separate `event_change`, `narrative`, `capital_flow`,
 `carrier_selection`, `crowding_path`, `realization_path`, and

@@ -304,7 +304,31 @@ def audit_state(state):
             ):
                 manifest_binding_status = "STATE_PATH_MISMATCH"
         except (OSError, ValueError):
-            manifest_binding_status = "MANIFEST_UNAVAILABLE"
+            # A state may be copied together with its scratch root.  Derive the
+            # sibling manifest from the state path before falling back to the
+            # process-global scratch directory; execution truth should travel
+            # with the registered run rather than depend on one shell env var.
+            state_path = Path(str((state.get("runtime") or {}).get("state_path") or ""))
+            sibling = (
+                state_path.parent.parent / "v2-runs" / f"{run_id}.json"
+                if state_path.name else Path()
+            )
+            try:
+                manifest = json.loads(sibling.read_text(encoding="utf-8"))
+                if (
+                    manifest.get("schema") != "trade-nothing.run-manifest.v1"
+                    or manifest.get("run_id") != run_id
+                ):
+                    raise ValueError("run_manifest_not_found_or_invalid")
+                manifest_binding_status = "REGISTERED"
+                manifest_method_status = (
+                    "match" if manifest.get("method_identity") == current_identity
+                    else "drift"
+                )
+                if str(manifest.get("state_path") or "") != str(state_path):
+                    manifest_binding_status = "STATE_PATH_MISMATCH"
+            except (OSError, ValueError, json.JSONDecodeError):
+                manifest_binding_status = "MANIFEST_UNAVAILABLE"
     if identity_status == "HISTORICAL":
         mode = "HISTORICAL_REPLAY"
     elif (

@@ -136,11 +136,6 @@ def _request(raw):
         raise AcquisitionError("REQUEST_REJECTED", "lookback_calendar_days_must_be_integer")
     if not MIN_LOOKBACK_DAYS <= lookback <= MAX_LOOKBACK_DAYS:
         raise AcquisitionError("REQUEST_REJECTED", "lookback_calendar_days_out_of_range")
-    evidence_ids = [
-        _text(item) for item in raw.get("evidence_ids", []) if _text(item)
-    ] if isinstance(raw.get("evidence_ids"), list) else []
-    if not evidence_ids:
-        raise AcquisitionError("REQUEST_REJECTED", "evidence_ids_required")
     return {
         "schema_version": SCHEMA_VERSION,
         "as_of_date": as_of.isoformat(),
@@ -149,7 +144,6 @@ def _request(raw):
         "adjustment": "QFQ_AS_OF_CUTOFF" if provider == "TUSHARE" else "NONE",
         "candidate": _asset(raw.get("candidate"), "candidate", provider),
         "benchmark": _asset(raw.get("benchmark"), "benchmark", provider),
-        "evidence_ids": list(dict.fromkeys(evidence_ids)),
     }
 
 
@@ -625,7 +619,6 @@ def collect(raw_request, *, now=None):
         "adjustment": request["adjustment"],
         "candidate": series["candidate"],
         "benchmark": series["benchmark"],
-        "evidence_ids": request["evidence_ids"],
         "acquisition_receipt": {
             **receipt_core,
             "receipt_id": receipt_id,

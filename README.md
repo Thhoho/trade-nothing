@@ -32,6 +32,18 @@ buy/sell instruction, target price, expected return, Kelly allocation, or positi
 > wired; real-theme effectiveness remains unbenchmarked. See
 > [the topic-led product baseline](docs/topic-led-research-product.md).
 
+## Current capabilities
+
+| Layer | What the current version does | Hard boundary |
+|---|---|---|
+| Research | Builds a question-native Research Agenda, answers it over bounded adversarial rounds, and keeps blind spots visible | A completed report does not imply that every question is answered |
+| Evidence | Stores model findings and verified host data in one canonical evidence ledger, then recomputes current answers and issues | Historical observations remain auditable but do not stay authoritative forever |
+| Industry → market | Maps causal change → value-transfer path → economic-exposure universe → observed market-carrier universe → horizon-specific setup | Theme membership or price leadership alone cannot establish economic exposure |
+| Securities | Preserves named A-share candidates, compares the closest alternative, and can issue conditional research priorities | No automatic buy/sell instruction, target price, expected return, or position size |
+| Market data | Freezes candidate and benchmark observations from Tushare, BaoStock, AKShare/Tencent, or CSV and binds them with receipts | Market data is context, not issuer evidence or proof of recommendation quality |
+| Stopping | Continues only for a low-cost, decision-relevant test that can be searched now; waiting conditions remain in the report | A round budget is a safety fuse, not a reason to manufacture progress |
+| Output | Produces a Deep Research Report and a separate canonical Evidence Ledger; focused verification remains explicit | Engineering gates and report rendering do not prove Alpha or investment performance |
+
 ## v0.15.0: discovery first, verification on demand
 
 > **The topic defines the work. Each round answers, challenges, and discovers what was missed.**
@@ -74,6 +86,13 @@ decision-discriminating evidence, research allocation, and bounded stopping expl
   a closest-alternative comparison, current reasons and switch conditions, a payload-bound
   multi-role phase receipt, and a host-ingested market artifact with benchmark-relative strength
   plus activity. Model-authored quotes and valuation-only snapshots cannot self-authorize.
+- **One evidence plane feeds every current view.** Verified host market artifacts mint
+  candidate-bound canonical facts; Agenda answers, bridge issues, candidate readiness, the report,
+  and the Evidence Ledger are deterministic projections rather than append-only copies of old
+  derived state.
+- **Stopping follows information availability.** Only a named low-cost, high-impact test that is
+  searchable now can justify another round. Waiting for a date/event or for user data stays visible
+  in the report without silently spending research budget.
 - **A-share data is reproducible and secret-safe.** Tushare Pro, BaoStock, AKShare Tencent, and CSV
   feed one frozen adapter contract. Acquisition and adapter receipts bind the candidate, benchmark,
   session, observations, and derived snapshot; Tushare credentials never enter role prompts, state,
@@ -174,34 +193,15 @@ be labelled `degraded` and cannot claim physical multi-agent isolation.
 
 ### Natural-language installation for an agent
 
-Paste the following into Codex, Claude Code, Gemini CLI, Antigravity, or another coding agent:
+Paste this into Codex, Claude Code, Gemini CLI, Antigravity, or another coding agent:
 
 ```text
-Install Trade Nothing v0.15.0 from https://github.com/Thhoho/trade-nothing.git for this agent runtime.
-
-Safety and verification requirements:
-1. Do not start a research run. This request authorizes installation only.
-2. Detect the current runtime's configured skill root and target its `trade-nothing` directory. Use
-   `${CODEX_HOME:-$HOME/.codex}/skills/trade-nothing` for Codex,
-   `$HOME/.claude/skills/trade-nothing` for Claude Code, or
-   `$HOME/.gemini/skills/trade-nothing` for Gemini CLI. For any other runtime, use its documented
-   configured skill root; if that cannot be verified, stop and ask me instead of guessing.
-3. Before writing, inspect any existing checkout and target. Never reset, delete, or overwrite a
-   dirty checkout, runtime state, scratch data, personal research memory, or target metadata.
-4. Clone or fetch `origin/main` in a new temporary or user-approved source directory, detach at the
-   exact fetched commit, and report `git rev-parse HEAD`. Do not install from a moving branch while
-   leaving the installed commit unidentified. If an annotated release tag is explicitly requested,
-   verify that tag separately; this instruction does not authorize creating one.
-5. From that checkout, run `python3 scripts/version.py` and `make test`. Do not install third-party
-   packages unless a required check fails and I explicitly approve the dependency change.
-6. Install with `python3 scripts/install_skill.py --source <checkout> --targets <target>`; do not
-   hand-copy files. Then run `python3 scripts/check_source_sync.py --source <checkout> --targets
-   <target>`.
-7. Preserve `Methodology_Evolution.md`, `scripts/.state`, `.git`, and everything under
-   `~/.trade-nothing/`. Let the installer move stale managed code to its recoverable quarantine.
-8. Request permission before network access or writes outside the current workspace when the host
-   requires it. Finish by reporting the commit, install target, test result, sync result, and
-   any quarantined files.
+Install or update Trade Nothing from https://github.com/Thhoho/trade-nothing.git for this runtime.
+Do not start a research run. Use a clean checkout of origin/main, report `git rev-parse HEAD`, and
+run `python3 scripts/version.py` plus `make test`. Detect the runtime's configured skill directory;
+ask if it is unclear. Install with `python3 scripts/install_skill.py --source <checkout> --targets <target>`,
+preserve runtime state and target metadata, verify with `scripts/check_source_sync.py`,
+then report the target, commit, test result, sync result, and any quarantined files.
 ```
 
 That prompt intentionally installs only into the current runtime. To install the same verified
@@ -260,12 +260,50 @@ When bounded A-share observations are needed, acquire and adapt them first, then
 the complete artifact to the registered run with `--ingest-market-snapshot --market-snapshot PATH`.
 This is a data injection step, not a candidate lifecycle transition.
 
-### Tushare Pro configuration
+### Market-data configuration and provider replacement
 
-Trade Nothing reads one credential, `TUSHARE_TOKEN`, from the **parent acquisition process**. Do
-not put the token in this repository, request JSON, `.env` files committed to Git, role prompts, or
-the three installed skill directories. Codex, Claude Code, and Gemini CLI do not need three copies
-of the token; they only need to inherit the same host environment.
+The deterministic core and CSV path use only the Python standard library. Install only the optional
+provider you intend to call:
+
+| `provider` | Local package / credential | Useful coverage |
+|---|---|---|
+| `TUSHARE` | `tushare==1.4.29` and `TUSHARE_TOKEN` | Forward-adjusted equity history, index history, turnover, volume ratio, PE/PB and market cap |
+| `BAOSTOCK` | `baostock==0.8.9`; no token | Free bounded equity/index price-volume history |
+| `AKSHARE_TENCENT` | `akshare>=1.14.0`; no token | Free bounded Tencent equity/index price-volume history |
+| `CSV` | No package; each asset needs `csv_path`, upstream `source_url`, and optional `source` | Vendor export, MCP output, or another dataset normalized locally |
+
+```bash
+python3 -m pip install tushare==1.4.29      # choose one provider only
+# python3 -m pip install baostock==0.8.9
+# python3 -m pip install 'akshare>=1.14.0'
+```
+
+Choose the source explicitly in the request; changing `provider` replaces the acquisition source
+without changing the snapshot adapter or research kernel. There is no `AUTO` mode and no silent
+fallback:
+
+```json
+{
+  "as_of_date": "2026-08-11",
+  "lookback_calendar_days": 180,
+  "provider": "TUSHARE",
+  "candidate": {"name": "贵州茅台", "ticker": "600519", "exchange": "XSHG", "asset_type": "EQUITY"},
+  "benchmark": {"name": "沪深300", "ticker": "000300", "exchange": "XSHG", "asset_type": "INDEX"}
+}
+```
+
+Built-in providers are local Python/API adapters. An MCP service can be used upstream, but its
+result must first be frozen through the `CSV` contract—or a new collector that emits the same
+candidate/benchmark observation packet. It must preserve exact source URLs, dates, closes, and a
+shared latest session; volume, turnover and valuation fields remain optional. A model-authored MCP
+summary is not a trusted market artifact.
+
+#### Tushare Pro configuration
+
+Trade Nothing reads `TUSHARE_TOKEN` from the **parent acquisition process**. Do not put the token in
+this repository, request JSON, committed `.env` files, role prompts, reports, or installed skill
+directories. Codex, Claude Code, and Gemini CLI do not need separate copies; they only need to
+inherit the same host environment.
 
 For terminal-launched runtimes on macOS or Linux, export it in the shell that launches the agent
 (optionally persist the same export in your private shell profile):
@@ -292,10 +330,11 @@ python3 scripts/market_snapshot_adapter.py --input market-observations.json \
   --output market-snapshot.json
 ```
 
-Set `"provider": "TUSHARE"` in `tushare-request.json`; the complete request schema and ingestion
-command are in [`references/data-sources.md`](references/data-sources.md). A successful data call
-proves acquisition and deterministic transformation, not issuer fundamentals, recommendation
-quality, or expected return.
+For BaoStock, AKShare/Tencent, or CSV, keep the same command and change only the explicit request
+fields. The complete schema, provider boundaries, custom-source contract, and run-ingestion command
+are in [`references/data-sources.md`](references/data-sources.md). A successful call proves bounded
+acquisition and deterministic transformation—not issuer fundamentals, recommendation quality, or
+expected return.
 
 ## Minimal manual workflow
 

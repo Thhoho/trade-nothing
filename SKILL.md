@@ -205,7 +205,10 @@ python3 scripts/execution_integrity.py inline-marker --topic "TARGET" --as-of YY
 2. Detective 与 Inquisitor 每轮必须推进待回答问题，并分别提供证据、反证、新盲点和下一问。
    每个模型调用必须收到物理嵌入的完整 `WORK WINDOW` 与角色/protocol 正文；只在 prompt 中
    引用一个隔离进程看不到的文件名，不算交付上下文。
-3. 引擎保留答案变体并标记 `OPEN / PARTIAL / ANSWERED / DISPUTED`，再重排下一轮问题。
+3. 引擎保留答案变体：同轮角色对称合并，跨轮按最新证据做时间投影，再标记
+   `OPEN / PARTIAL / ANSWERED / DISPUTED`。每个未决检验必须声明
+   `SEARCH_NOW / WAIT_FOR_DATE / WAIT_FOR_EVENT / NEEDS_USER_DATA / UNKNOWN`；只有明确可立即
+   搜索的低成本高影响问题可以建议再用一轮。
 4. 两个研究角色同时形成 ValueTransferPath、市场阶段、经济暴露池和市场交易池，并对候选与
    最近替代项作横向比较；发现机会不以正式晋级证明为前提。
    覆盖完整不仅是四个字段打勾：还必须分别检查经济链、市场实际载体、竞争/替代路线、
@@ -264,7 +267,7 @@ python3 scripts/deepthink_orchestrator_v2.py --report --run-id "RUN-..."
 默认一轮预算是安全边界。继续研究需要用户授权额外预算；429、超时、无效 JSON 或单侧
 失败必须保留收据和成功载荷，不得自动重试。
 
-每次注册运行交付时必须消费 `stage_envelope.artifact_paths.report_path` 与证据附录路径；不得只在
+每次注册运行交付时必须消费 `stage_envelope.artifact_paths.report_path` 与 Evidence Ledger 路径；不得只在
 聊天中另写一份无法回指 state 的“最终报告”。用同一 state 运行：
 
 ```bash
@@ -287,8 +290,8 @@ python3 scripts/execution_integrity.py inspect --state STATE.json
 7. 短线事件 setup 与产业链兑现 setup；
 8. 新盲点、二阶影响与前瞻推演；
 9. bull/base/bear 或事件树、触发、失效与筹码风险；
-10. 未回答问题、活跃方向和下一轮最低成本验证；
-10. 事实、单一来源、推断、假说与方法限制。
+10. 未回答问题、活跃方向和下一验证动作（含当前可用性）；
+11. 事实、单一来源、推断、假说与方法限制。
 
 执行模式、状态字段、来源计数和隔离收据只能进入附录；只有完整执行收据允许使用“研究轮次”。
 `FORMAL` 只描述旧证据流程完整，
@@ -302,7 +305,8 @@ python3 scripts/execution_integrity.py inspect --state STATE.json
 `scripts/free_market_observations.py` 显式选择 Tushare Pro、BaoStock、AKShare 腾讯或 CSV，
 再用 `scripts/market_snapshot_adapter.py` 生成带内容回执的可回放相对强弱快照。只有宿主通过
 `--ingest-market-snapshot` 把完整 adapter 产物写入当前 run 后，它才进入推荐可信数据平面；
-模型载荷里的自报行情只保留为上下文。Tushare token 只能存在于宿主父进程环境，不能进入角色
+宿主摄入时由回执生成候选身份绑定的 canonical 行情证据，模型不预先提供或改绑这些 evidence
+ID；模型载荷里的自报行情只保留为上下文。Tushare token 只能存在于宿主父进程环境，不能进入角色
 prompt、state、回执、报告或 Skill 安装目录。不要默认加载未被当前任务使用的旧协议。
 
 ## 5. Guardrails

@@ -22,6 +22,9 @@ import hypothesis_engine
 import opportunity_engine
 import report_v2
 import execution_integrity
+import market_bridge_engine
+import research_agenda_engine
+import research_kernel
 from version import __version__
 
 
@@ -215,6 +218,8 @@ def validate_report(path, state_path=""):
             official_view = "brief"
         elif state_bound_md.startswith("# Candidate Cards"):
             official_view = "cards"
+        elif state_bound_md.startswith("# Evidence Ledger"):
+            official_view = "evidence"
         elif (
             state_bound_md.startswith(f"# Trade Nothing v{__version__}")
             or state_bound_md.startswith("# Trade Nothing v0.10")
@@ -645,19 +650,65 @@ def validate_report_outcomes(path, state_path=""):
         "claim_tiers": grade["claim_tiers"],
     }
 
-    if state.get("last_convergence", {}).get("decision") != "converge":
-        result["state_errors"].append("Formal report state is not converged.")
-    for crux_id, crux in state.get("cruxes", {}).items():
-        source_count = len({
-            crux_engine.citation_source_identity(citation)
-            for citation in crux.get("citations", [])
-            if crux_engine.valid_citation(citation)
-        })
-        if source_count < crux_engine.MIN_VALID_CITATIONS:
-            result["state_errors"].append(
-                f"{crux_id} has {source_count} valid unique formal sources; "
-                f"minimum is {crux_engine.MIN_VALID_CITATIONS}."
+    agenda_native = research_agenda_engine.is_agenda_native(state)
+    if agenda_native:
+        # Deterministic migration must run before canonical-evidence validation;
+        # otherwise legacy accepted snapshots are checked against the old,
+        # borrowed model IDs and the newly minted host facts escape validation.
+        market_bridge_engine.refresh_host_market_evidence(state)
+        agenda = state.get("research_agenda", {})
+        control = research_agenda_engine.control_decision(state)
+        if not isinstance(agenda, dict) or not agenda.get("questions"):
+            result["state_errors"].append("Agenda-native state has no Research Agenda questions.")
+        if not control.get("report_deliverable"):
+            result["state_errors"].append("Agenda-native state has no completed report-deliverable research round.")
+        evidence_ids = set()
+        for item in agenda.get("evidence_items", []):
+            evidence_id = str(item.get("evidence_id") or "") if isinstance(item, dict) else ""
+            if not evidence_id or evidence_id in evidence_ids:
+                result["state_errors"].append(
+                    f"Canonical evidence ID is missing or duplicated: {evidence_id or 'EMPTY'}."
+                )
+                continue
+            evidence_ids.add(evidence_id)
+            _, reason = research_kernel.normalize_evidence(
+                item, agenda.get("as_of_date", "")
             )
+            if reason:
+                result["state_errors"].append(
+                    f"{evidence_id} is not valid canonical evidence: {reason}."
+                )
+        for entry in state.get("market_bridge", {}).get("host_market_snapshots", []):
+            if not isinstance(entry, dict):
+                continue
+            identity = entry.get("candidate_identity")
+            for evidence_id in entry.get("canonical_evidence_ids", []):
+                evidence = next((
+                    item for item in agenda.get("evidence_items", [])
+                    if isinstance(item, dict) and item.get("evidence_id") == evidence_id
+                ), None)
+                binding = evidence.get("binding", {}) if isinstance(evidence, dict) else {}
+                if binding.get("candidate_identity") != identity:
+                    result["state_errors"].append(
+                        f"Host evidence {evidence_id} is cross-bound to the wrong candidate."
+                    )
+        result["warnings"].append(
+            "Legacy crux convergence/source minima are compatibility audit metrics and do not invalidate an Agenda-native research state."
+        )
+    else:
+        if state.get("last_convergence", {}).get("decision") != "converge":
+            result["state_errors"].append("Formal report state is not converged.")
+        for crux_id, crux in state.get("cruxes", {}).items():
+            source_count = len({
+                crux_engine.citation_source_identity(citation)
+                for citation in crux.get("citations", [])
+                if crux_engine.valid_citation(citation)
+            })
+            if source_count < crux_engine.MIN_VALID_CITATIONS:
+                result["state_errors"].append(
+                    f"{crux_id} has {source_count} valid unique formal sources; "
+                    f"minimum is {crux_engine.MIN_VALID_CITATIONS}."
+                )
     for seed in state.get("opportunity_seeds", []):
         if not isinstance(seed, dict) or not seed.get("seed_id"):
             result["state_errors"].append("Opportunity seed is missing seed_id.")

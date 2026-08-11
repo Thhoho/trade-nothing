@@ -2307,6 +2307,38 @@ def _candidate_name(item):
     )
 
 
+def _candidate_source_links(item, limit=3):
+    citations = []
+    field_evidence = item.get("field_evidence", {}) if isinstance(item, dict) else {}
+    if isinstance(field_evidence, dict):
+        for values in field_evidence.values():
+            if isinstance(values, list):
+                citations.extend(value for value in values if isinstance(value, dict))
+    bridge_snapshot = (
+        item.get("bridge", {}).get("market_snapshot", {})
+        if isinstance(item, dict) and isinstance(item.get("bridge"), dict) else {}
+    )
+    if isinstance(bridge_snapshot, dict):
+        citations.extend(
+            value for value in bridge_snapshot.get("evidence", [])
+            if isinstance(value, dict)
+        )
+    seen = set()
+    links = []
+    for citation in citations:
+        url = _clean(citation.get("url"))
+        if url == "—" or url in seen:
+            continue
+        seen.add(url)
+        label = _clean(
+            citation.get("evidence_id") or citation.get("source") or "source"
+        )
+        links.append(f"[{label}]({url})")
+        if len(links) >= limit:
+            break
+    return "、".join(links) or "—"
+
+
 def _setup_gap_text(item):
     checks = item.get("setup_checks") if isinstance(item, dict) else {}
     if not isinstance(checks, dict) or not checks:
@@ -2346,6 +2378,7 @@ def _setup_lines(items):
             f"{_clean(item.get('crowding_or_position'))}",
             f"- **失效条件**：{_clean(item.get('invalidation'))}",
             f"- **最强替代解释**：{_clean(item.get('strongest_alternative_explanation'))}",
+            f"- **关键来源**：{_candidate_source_links(item)}",
             "",
         ])
     return lines
@@ -2680,6 +2713,7 @@ def _render_deep_research_report(view):
         f"`{_clean(research_control.get('product_readiness'))}`",
         f"- **是否建议续研**："
         f"{'是（需额外授权）' if research_control.get('more_research_recommended') else '否'}；"
+        f"当前最低成本动作=`{_clean(research_control.get('next_test_mode'))}`；"
         f"原因={_clean(', '.join(research_control.get('reason_codes', [])))}",
         f"- **候选字段完整性**：`{_clean(result_type)}`；它不决定推荐权。",
         "",
@@ -2718,6 +2752,7 @@ def _render_deep_research_report(view):
                     f"- **失效 / 边界**：{_clean(item.get('invalidation'))}；"
                     f"产业强度={_clean(bridge.get('economic_exposure_strength', {}).get('effective'))}；"
                     f"市场确认={_clean(bridge.get('market_recognition', {}).get('effective'))}",
+                    f"- **关键来源**：{_candidate_source_links(item)}",
                     "",
                 ])
             if rendered >= 8:
@@ -2737,7 +2772,8 @@ def _render_deep_research_report(view):
                 f"`{_clean(bridge.get('projection'))}`；下一步先验证"
                 f"{_clean(item.get('cheap_discriminating_test'))}；当前缺口="
                 f"{_clean(_setup_gap_text(item))} / "
-                f"{_clean(', '.join(bridge.get('issues', [])))}。",
+                f"{_clean(', '.join(bridge.get('issues', [])))}。"
+                f"来源={_candidate_source_links(item)}",
             ])
     else:
         lines.append(
@@ -2940,7 +2976,8 @@ def _render_deep_research_report(view):
                 f"{_cell(_candidate_name(alternative) if alternative else '—')}；"
                 f"{_cell(bridge.get('why_prefer_now'))} | "
                 f"`{_cell(item.get('evidence_boundary'))}`；"
-                f"{_cell(', '.join(bridge.get('issues', [])))} |"
+                f"{_cell(', '.join(bridge.get('issues', [])))}；"
+                f"{_candidate_source_links(item)} |"
             )
     else:
         lines.append("| — | 尚无具名载体 | — | — | — | — | — | `HYPOTHESIS` |")
@@ -3015,7 +3052,7 @@ def _render_deep_research_report(view):
 
     lines.extend([
         "",
-        "## 9. 未回答问题与下一轮研究",
+        "## 9. 未回答问题与下一验证动作",
         "",
     ])
     next_question_ids = {
@@ -3030,6 +3067,7 @@ def _render_deep_research_report(view):
         for item in next_questions[:5]:
             lines.append(
                 f"- `{_clean(item.get('answer_status'))}` **{_clean(item.get('question'))}**："
+                f"`{_clean(item.get('next_test_availability') or 'UNKNOWN')}` — "
                 f"{_clean(item.get('next_question') or item.get('missing_information') or item.get('success_condition'))}"
             )
     elif questions:
@@ -3042,9 +3080,19 @@ def _render_deep_research_report(view):
     for item in active_directions[:5]:
         lines.append(
             f"- **方向 `{_clean(item.get('direction_id'))}`｜"
-            f"{_clean(item.get('next_move'))}**："
+            f"{_clean(item.get('next_move'))}｜"
+            f"`{_clean(item.get('next_test_availability') or 'UNKNOWN')}`**："
             f"{_clean(item.get('unresolved_question') or item.get('discriminating_test'))}"
         )
+    deferred = research_control.get("deferred_next_tests", [])
+    if deferred:
+        lines.extend(["", "### 等待新信息的验证（不应消耗新一轮搜索）", ""])
+        for item in deferred[:8]:
+            lines.append(
+                f"- `{_clean(item.get('availability'))}` "
+                f"`{_clean(item.get('kind'))}:{_clean(item.get('id'))}` — "
+                f"{_clean(item.get('test'))}"
+            )
     lines.append(f"- **最便宜的总体下一检验**：{_clean(candidate_map.get('cheapest_next_test'))}")
     for note in candidate_map.get("coverage_notes", [])[:5]:
         lines.append(f"- **覆盖备注**：{_clean(note)}")
@@ -3138,6 +3186,109 @@ def _render_deep_research_report(view):
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _render_evidence_ledger(view):
+    """Render the canonical evidence plane, not the legacy audit report."""
+    agenda = view.get("research_agenda", {})
+    items = [
+        item for item in agenda.get("evidence_items", []) if isinstance(item, dict)
+    ]
+    items.sort(key=lambda item: (
+        _clean(item.get("date")), _clean(item.get("evidence_id"))
+    ))
+    counts = research_kernel.evidence_plane_counts(items)
+    lines = [
+        "# Evidence Ledger",
+        "",
+        f"> **课题**：{_clean(view.get('topic'))}  ",
+        f"> **证据截止**：{_clean(view.get('as_of_date'))}  ",
+        f"> **canonical evidence**：{counts['canonical_evidence_item_count']} 条；"
+        f"去重 URL={counts['unique_source_url_count']}；"
+        f"独立发布方={counts['independent_publisher_count']}。",
+        "",
+        "本文件只展示统一证据账本与宿主行情回执。legacy crux 是兼容审计副轨，"
+        "不替代 Research Agenda 证据，也不阻止报告交付。",
+        "",
+        "## 1. Canonical evidence items",
+        "",
+        "| Evidence ID | 来源类型 | 绑定 | 立场 | 直接支持的事实 | 数字 | 来源与日期 |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    if not items:
+        lines.append("| — | — | — | — | 当前没有 canonical evidence | — | — |")
+    for item in items:
+        binding = item.get("binding", {}) if isinstance(item.get("binding"), dict) else {}
+        binding_text = ", ".join(filter(None, [
+            "/".join(item.get("question_ids", [])),
+            "/".join(item.get("direction_ids", [])),
+            _clean(binding.get("candidate_identity"))
+            if binding.get("candidate_identity") else "",
+        ])) or "未绑定回答，仅作事实底座"
+        source_label = _clean(item.get("source"))
+        source_url = _clean(item.get("url"))
+        source_cell = (
+            f"[{source_label}]({source_url})（{_clean(item.get('date'))}）"
+            if source_url != "—" else f"{source_label}（{_clean(item.get('date'))}）"
+        )
+        lines.append(
+            f"| `{_cell(item.get('evidence_id'))}` | "
+            f"`{_cell(item.get('origin') or 'MODEL_RESEARCH')}` | "
+            f"{_cell(binding_text)} | `{_cell(item.get('stance'))}` | "
+            f"{_cell(item.get('claim'))} | {_cell(item.get('number'))} | {source_cell} |"
+        )
+        supporting = [
+            _clean(url) for url in item.get("supporting_urls", []) if _clean(url) != "—"
+        ] if isinstance(item.get("supporting_urls"), list) else []
+        if supporting:
+            lines.append(
+                f"|  | supporting URLs |  |  | "
+                f"{'；'.join(f'[source]({url})' for url in supporting)} |  |  |"
+            )
+
+    aliases = agenda.get("evidence_aliases", {})
+    lines.extend(["", "## 2. Duplicate aliases", ""])
+    if aliases:
+        for alias, canonical in sorted(aliases.items()):
+            lines.append(f"- `{_clean(alias)}` → `{_clean(canonical)}`")
+    else:
+        lines.append("- 无。")
+
+    host_snapshots = view.get("market_bridge", {}).get("host_market_snapshots", [])
+    lines.extend(["", "## 3. Host market snapshot receipts", ""])
+    if host_snapshots:
+        lines.extend([
+            "| 候选 | 市场日 | Adapter receipt | Upstream receipt | Canonical evidence | 关键指标 |",
+            "|---|---|---|---|---|---|",
+        ])
+        for entry in host_snapshots:
+            snapshot = entry.get("market_snapshot", {})
+            metrics = "；".join(
+                f"{key}={snapshot.get(key)}" for key in (
+                    "excess_5d", "excess_20d", "excess_60d",
+                    "volume_ratio_20d", "turnover_rate",
+                ) if snapshot.get(key) is not None
+            )
+            candidate = entry.get("candidate", {})
+            lines.append(
+                f"| {_cell(candidate.get('name'))}（{_cell(candidate.get('ticker'))}） | "
+                f"{_cell(entry.get('market_session_date'))} | "
+                f"`{_cell(entry.get('receipt_id'))}` | "
+                f"`{_cell(entry.get('upstream_acquisition_receipt_id'))}` | "
+                f"{_cell(', '.join(entry.get('canonical_evidence_ids', [])))} | "
+                f"{_cell(metrics)} |"
+            )
+    else:
+        lines.append("- 无已接受的宿主行情快照。")
+    lines.extend([
+        "",
+        "## 4. Boundary",
+        "",
+        "- 宿主行情证据只支持价格、相对强弱、估值与活动度，不支持客户、订单、收入、利润或现金。",
+        "- `FACT / SINGLE_SOURCE / INFERENCE / HYPOTHESIS` 是断言边界，不是收益概率。",
+        "- 完整执行回执只证明运行真实性，不证明研究结论或 Alpha。",
+    ])
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def render(state, view="research"):
     """Render the Deep Research Report by default; legacy views stay explicit."""
     model = build_report_view_model(state)
@@ -3156,9 +3307,11 @@ def render(state, view="research"):
         rendered = _render_candidate_cards(model)
     elif view == "audit":
         rendered = render_audit(state)
+    elif view == "evidence":
+        rendered = _render_evidence_ledger(model)
     elif view != "full":
         raise ValueError(
-            "unknown report view: expected research, opportunity, facts_box, brief, insights, cards, audit, or full"
+            "unknown report view: expected research, opportunity, facts_box, brief, insights, cards, evidence, audit, or full"
         )
     else:
         rendered = "\n\n".join([
@@ -3178,7 +3331,7 @@ if __name__ == "__main__":
     ap.add_argument(
         "--view",
         default="research",
-        choices=["research", "opportunity", "facts_box", "brief", "insights", "cards", "audit", "full"],
+        choices=["research", "opportunity", "facts_box", "brief", "insights", "cards", "evidence", "audit", "full"],
         help="report view to render",
     )
     ap.add_argument("--selftest", action="store_true")

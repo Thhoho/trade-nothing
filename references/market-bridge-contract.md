@@ -139,8 +139,7 @@ Market Bridge 把产业因果翻译为可交易市场表达。它是 Research Ag
     "name": "固定行业或宽基基准", "ticker": "INDEX", "exchange": "...",
     "source": "provider", "source_url": "https://...",
     "observations": [{"date": "YYYY-MM-DD", "close": 1000.0}]
-  },
-  "evidence_ids": ["EV-PRICE", "EV-CROWDING"]
+  }
 }
 ```
 
@@ -152,10 +151,10 @@ python3 scripts/deepthink_orchestrator_v2.py --ingest-market-snapshot \
   --run-id RUN_ID --market-snapshot market-snapshot.json
 ```
 
-引擎校验 adapter 内容哈希、完整上游采集回执 envelope 及其 ID、候选身份哈希、交易日、
-Research Agenda 中已存在的
-证据 ID，并要求至少一个 5/20/60 日超额收益和一个成交量比/换手率维度。价格/预期证据与
-成交/拥挤证据必须分别覆盖。候选和基准必须结束在同一观测交易日；不足窗口时对应指标为
+引擎校验 adapter 内容哈希、完整上游采集回执 envelope 及其 ID、候选身份哈希与交易日，
+然后从经过校验的宿主 artifact 生成两类候选绑定的 canonical evidence：价格/相对收益/估值，
+以及成交/换手/活动度。采集输入不接受也不需要模型 evidence ID。引擎要求至少一个 5/20/60
+日超额收益和一个成交量比/换手率维度。候选和基准必须结束在同一观测交易日；不足窗口时对应指标为
 null，不得补值。行情源只能支持市场观测，不能证明公司订单、客户、利润或产业暴露。
 
 CandidateMap 继续拥有证券身份、setup 字段和字段证据。Market Bridge 只添加连接信息：
@@ -168,7 +167,7 @@ CandidateMap 继续拥有证券身份、setup 字段和字段证据。Market Bri
   "market_recognition": "LEADER|CONFIRMED|EMERGING|WEAK|UNKNOWN",
   "market_selection_rationale": "资金为何把它当成载体",
   "horizon_fit": ["TACTICAL_WEEKS", "EARNINGS_QUARTERS"],
-  "trusted_market_snapshot_receipt_id": "宿主上下文给出的 receipt_id；无则留空",
+  "trusted_market_snapshot_receipt_id": "可选；需要锁定特定回执时填写，否则留空",
   "closest_alternative": {
     "candidate": "替代公司",
     "ticker": "000000",
@@ -182,6 +181,10 @@ CandidateMap 继续拥有证券身份、setup 字段和字段证据。Market Bri
 `economic_exposure_strength` 必须同时由该候选自己的 economic exposure 字段证据与非
 `HYPOTHESIS` 价值路径支撑；`market_recognition` 必须由宿主已摄入的当前快照支撑。模型
 载荷中的 `market_snapshot` 即使字段齐全也只作为审计上下文，不能写入可信数据平面或自证。
+当模型未填写 receipt 时，内核按精确 `asset_type + exchange + ticker` 连接该候选最新的合格
+宿主快照；模型不能把回执或行情 evidence ID 改绑到别的候选。
+市场、定价和候选类 Research Agenda 更新可直接引用 Work Window 已提供的宿主 evidence ID；
+非市场事实问题不得借价格证据完成，也不得把同一宿主事实复制为新的模型 evidence item。
 价值路径的机制证据必须同时匹配 `state_change / constraint_change` 的类别与文本语义，经济
 证据必须同时匹配 `profit_pool_shift`；只有“业务、收入、订单”等泛化词、但与路径正文无语义
 重合的证据不能把路径洗成 grounded。该检查是确定性的有界对齐，不冒充来源页面的自然语言蕴含证明。
@@ -189,6 +192,9 @@ CandidateMap 继续拥有证券身份、setup 字段和字段证据。Market Bri
 降为 `UNKNOWN`，避免用负相对强弱讲“强势载体”。
 非交易日允许使用研究时点之前三天内的最近观测交易日，但必须显式标记
 `latest_observed_session_on_or_before_as_of=true`；更早快照或未确认最近观测日不得形成市场确认。
+
+所有 bridge issue、grounding、阶段与推荐等级都是当前投影，必须从 canonical state 重算。
+历史模型 issue 保留在原始载荷或 ingest audit 中，但不能在事实已经补齐后继续阻塞当前候选。
 
 ## 6. 双股票池与条件性建议
 

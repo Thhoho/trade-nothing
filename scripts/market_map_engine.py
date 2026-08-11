@@ -359,7 +359,7 @@ def _merge_text(existing, incoming, field):
     new_value = _text(incoming.get(field))
     old_value = _text(existing.get(field))
     if not new_value:
-        return
+        return "NO_UPDATE"
     mode = _text(
         (incoming.get("field_update_modes") or {}).get(field)
     ).upper()
@@ -371,32 +371,59 @@ def _merge_text(existing, incoming, field):
             history.append(copy.deepcopy(record))
     if not old_value:
         existing[field] = new_value
-        return
+        return "APPLIED"
     if old_value == new_value:
-        return
+        return "SAME_VALUE"
     if mode == "CHALLENGE":
-        conflicts = existing.setdefault("field_conflicts", {}).setdefault(field, [])
+        # Candidate prose is a synthesis surface, not the epistemic control
+        # plane. Preserve a role's alternative wording for audit, but let real
+        # contradiction live in the linked Agenda question/direction where it
+        # can carry evidence and an explicit DISPUTED status.
         variants = existing.setdefault("field_variants", {}).setdefault(field, [])
-        for values in (conflicts, variants):
-            for value in (old_value, new_value):
-                if value not in values:
-                    values.append(value)
-        return
+        for value in (old_value, new_value):
+            if value not in variants:
+                variants.append(value)
+        records = existing.setdefault("field_variant_records", {}).setdefault(
+            field, []
+        )
+        record = {
+            "value": new_value,
+            "round": int(incoming.get("last_seen_round", 0) or 0),
+            "roles": copy.deepcopy(incoming.get("source_agents", [])),
+            "evidence_ids": list(
+                (incoming.get("field_evidence_ids") or {}).get(field, [])
+            ),
+            "evidence_refs": [
+                {
+                    "evidence_id": item.get("evidence_id", ""),
+                    "url": item.get("url", ""),
+                    "date": item.get("date", ""),
+                }
+                for item in (incoming.get("field_evidence") or {}).get(field, [])
+                if isinstance(item, dict)
+            ],
+        }
+        if record not in records:
+            records.append(record)
+        return "CHALLENGE_VARIANT"
     if mode == "REPLACE":
         existing[field] = new_value
         existing.setdefault("field_conflicts", {}).pop(field, None)
         existing.setdefault("field_variants", {}).pop(field, None)
-        return
+        return "APPLIED"
     # REFINE means a newer or better-supported snapshot, not a contradiction.
     # The tuple makes same-round role order irrelevant.
     if _field_value_rank(incoming, field) > _field_value_rank(existing, field):
         existing[field] = new_value
+        return "APPLIED"
+    return "IGNORED"
 
 
 def _merge_candidate(existing, incoming):
     previous_round = int(existing.get("last_seen_round", 0) or 0)
+    field_merge_results = {}
     for field in CANDIDATE_TEXT_FIELDS:
-        _merge_text(existing, incoming, field)
+        field_merge_results[field] = _merge_text(existing, incoming, field)
     existing["market_roles"] = sorted(set(
         existing.get("market_roles", []) + incoming.get("market_roles", [])
     ))
@@ -427,16 +454,34 @@ def _merge_candidate(existing, incoming):
     )
     field_evidence = existing.setdefault("field_evidence", {})
     for field in research_kernel.FIELD_EVIDENCE_NAMES:
-        field_evidence[field] = research_kernel.unique_evidence(
-            field_evidence.get(field, [])
-            + incoming.get("field_evidence", {}).get(field, [])
-        )
+        incoming_evidence = incoming.get("field_evidence", {}).get(field, [])
+        if field_merge_results.get(field) == "APPLIED":
+            # The current field now has new semantics.  Old evidence remains in
+            # field history, but cannot authorize the replacement text.
+            field_evidence[field] = research_kernel.unique_evidence(
+                incoming_evidence
+            )
+        elif field_merge_results.get(field) == "SAME_VALUE":
+            field_evidence[field] = research_kernel.unique_evidence(
+                field_evidence.get(field, []) + incoming_evidence
+            )
+        else:
+            field_evidence[field] = research_kernel.unique_evidence(
+                field_evidence.get(field, [])
+            )
     field_evidence_ids = existing.setdefault("field_evidence_ids", {})
     for field in research_kernel.FIELD_EVIDENCE_NAMES:
-        field_evidence_ids[field] = list(dict.fromkeys(
-            field_evidence_ids.get(field, [])
-            + incoming.get("field_evidence_ids", {}).get(field, [])
-        ))
+        incoming_ids = incoming.get("field_evidence_ids", {}).get(field, [])
+        if field_merge_results.get(field) == "APPLIED":
+            field_evidence_ids[field] = list(dict.fromkeys(incoming_ids))
+        elif field_merge_results.get(field) == "SAME_VALUE":
+            field_evidence_ids[field] = list(dict.fromkeys(
+                field_evidence_ids.get(field, []) + incoming_ids
+            ))
+        else:
+            field_evidence_ids[field] = list(dict.fromkeys(
+                field_evidence_ids.get(field, [])
+            ))
     known_checks = {
         (item.get("field"), item.get("evidence_id"), item.get("reason"))
         for item in existing.setdefault("field_evidence_checks", [])
@@ -488,14 +533,46 @@ def _candidate_gap_fields(item):
     return sorted(gaps)
 
 
+def _clip_text(value, limit=360):
+    value = _text(value)
+    return value if len(value) <= limit else value[:max(0, limit - 1)] + "…"
+
+
+def _bridge_dispatch_view(bridge):
+    bridge = bridge if isinstance(bridge, dict) else {}
+    return {
+        "value_path_ids": list(bridge.get("value_path_ids", []))[:6],
+        "economic_exposure_strength": copy.deepcopy(
+            bridge.get("economic_exposure_strength", {})
+        ),
+        "market_recognition": copy.deepcopy(bridge.get("market_recognition", {})),
+        "horizon_fit": list(bridge.get("horizon_fit", [])),
+        "trusted_market_snapshot_receipt_id": bridge.get(
+            "trusted_market_snapshot_receipt_id", ""
+        ),
+        "closest_alternative": copy.deepcopy(bridge.get("closest_alternative", {})),
+        "why_prefer_now": _clip_text(bridge.get("why_prefer_now")),
+        "switch_condition": _clip_text(bridge.get("switch_condition")),
+        "issues": list(bridge.get("issues", []))[:12],
+    }
+
+
 def focus_candidates(state, limit=4):
     """Return a bounded completion queue, not a candidate ranking."""
     candidate_map = _ensure_map(state)
     rows = []
     boundary_rank = {"FACT": 0, "SINGLE_SOURCE": 1, "INFERENCE": 2, "HYPOTHESIS": 3}
-    for item in candidate_map.get("candidates", []):
+    for raw in candidate_map.get("candidates", []):
+        item = copy.deepcopy(raw) if isinstance(raw, dict) else raw
         if not isinstance(item, dict):
             continue
+        item["field_conflicts"] = {}
+        item["bridge"] = market_bridge_engine.refresh_candidate_bridge(
+            state, item, item.get("bridge")
+        )
+        item.update(research_kernel.evaluate_setup(
+            item, item.get("evidence_as_of_date") or _state_as_of(state)
+        ))
         gaps = _candidate_gap_fields(item)
         if not gaps:
             continue
@@ -522,11 +599,11 @@ def focus_candidates(state, limit=4):
             "market_roles": copy.deepcopy(item.get("market_roles", [])),
             "setup_types": copy.deepcopy(item.get("setup_types", [])),
             "current_fields": {
-                field: copy.deepcopy(item.get(field))
+                field: _clip_text(item.get(field))
                 for field in CANDIDATE_TEXT_FIELDS
                 if field != "candidate"
             },
-            "bridge": copy.deepcopy(bridge),
+            "bridge": _bridge_dispatch_view(bridge),
             "research_focus": gaps,
         }))
     rows.sort(key=lambda row: row[0])
@@ -718,10 +795,22 @@ def harvest_round(state, round_num, detective=None, inquisitor=None):
                 audit["coverage_route_rejections"].append(
                     "coverage_routes_must_be_list"
                 )
-            for raw_route in routes:
+            for route_index, raw_route in enumerate(routes):
                 route, reason = _normalize_coverage_route(raw_route)
                 if reason:
-                    audit["coverage_route_rejections"].append(reason)
+                    audit["coverage_route_rejections"].append({
+                        "role": role,
+                        "route_index": route_index,
+                        "reason": reason,
+                        "submitted_route_kind": _text(
+                            raw_route.get("route_kind")
+                            if isinstance(raw_route, dict) else ""
+                        ),
+                        "submitted_coverage_field": _text(
+                            raw_route.get("coverage_field")
+                            if isinstance(raw_route, dict) else ""
+                        ),
+                    })
                     continue
                 route_key = (
                     route["coverage_field"], route["route_kind"], route["query"],
@@ -771,7 +860,13 @@ def report_view(state):
         # Recompute the view under the current semantic kernel. Historical v4
         # `field_variants` were generated from any wording change and therefore
         # cannot be treated as explicit conflicts in v5.
-        item.setdefault("field_conflicts", {})
+        # Historical v4/v5 conflicts were inferred from prose inequality.  The
+        # Agenda now owns epistemic disputes; CandidateMap readiness measures
+        # content/evidence completeness only.
+        item["field_conflicts"] = {}
+        item["bridge"] = market_bridge_engine.refresh_candidate_bridge(
+            state, item, item.get("bridge")
+        )
         item.update(research_kernel.evaluate_setup(
             item, item.get("evidence_as_of_date") or _state_as_of(state)
         ))

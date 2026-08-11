@@ -107,6 +107,17 @@ disputed answers. The default body shows all initial questions plus only the mos
 derived questions, directions, blind spots and candidates. The exhaustive append-only history stays
 in the explicit audit view; omission from the default body is counted and disclosed.
 
+Within one round, role variants are reconciled symmetrically. Across rounds, the report displays the
+latest temporal projection: an old `OPEN` does not remain a permanent dispute against a later
+evidence-backed answer. Historical variants remain auditable. Candidate prose alternatives are not
+Agenda disputes; a material contradiction must be recorded on the linked question or direction.
+When a candidate field is refined or replaced, the current report may cite only evidence bound to
+that current field value; evidence attached to a challenged variant remains audit-only.
+
+Every unresolved next test displays `SEARCH_NOW`, `WAIT_FOR_DATE`, `WAIT_FOR_EVENT`,
+`NEEDS_USER_DATA`, or `UNKNOWN`. Only an explicit low-cost, high-impact `SEARCH_NOW` test may justify
+another research round; waiting and user-data dependencies remain visible without consuming budget.
+
 同题重跑且提供旧报告时，正文必须显示既有关键发现处置表。旧结论不继承证据等级：每条必须
 用本轮证据重新验证、推翻，或明确判为无关/未决。静默消失属于报告回归。
 
@@ -149,8 +160,10 @@ from the new default narrative.
 
 ## 9. Persistence and validation
 
-When the user requests a saved artifact, persist the Deep Research Report and a separate evidence
-appendix. Validate:
+When the user requests a saved artifact, persist the Deep Research Report and a separate Evidence
+Ledger rendered from the same canonical evidence plane. The ledger enumerates every canonical ID,
+binding, source/date, alias, and accepted host-market receipt; the legacy crux audit is not the
+evidence ledger. Validate:
 
 - every concrete security identity;
 - citation URL/date/source completeness;

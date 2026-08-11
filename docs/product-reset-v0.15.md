@@ -174,7 +174,7 @@ Opportunity Brief 的优先顺序：
 7. 触发与失效条件；
 8. 事实、推断与假说边界；
 9. 最低成本下一验证动作；
-10. 证据附录。
+10. 与正文同一 canonical evidence plane 生成的 Evidence Ledger。
 
 运行轮次、状态字段和来源统计只能进入附录，不得占据首屏。
 

@@ -77,9 +77,14 @@ Test the Detective's nodes through three paired vectors:
    or `DISPUTED`. Prefer updating `next_question` on the existing item. Add at most one new blind
    spot and one new research question per role. A new question must name its existing
    `parent_question_id`, exact `decision_change`, success condition, and bounded route.
+   For every unresolved next test, declare `next_test_availability` as exactly `SEARCH_NOW`,
+   `WAIT_FOR_DATE`, `WAIT_FOR_EVENT`, `NEEDS_USER_DATA`, or `UNKNOWN`. Do not request another search
+   round for a fact that only time, an event, or user-held data can reveal.
    If the Work Window supplies prior-run baseline findings, challenge every relevant item explicitly.
    They are leads, not evidence: `REVERIFIED` and `SUPERSEDED` require a same-response
    `evidence_id`; otherwise use `OUT_OF_SCOPE` with a reason or `UNRESOLVED`.
+   Market, pricing, and candidate questions may directly cite canonical host evidence IDs physically
+   supplied in `trusted_market_snapshots`; never recreate the same market fact in `evidence_items`.
 
 8. **Exploration track (optional tool; max 3 sparks and 3 trails per round)**:
    Preserve counter-mechanisms, analogies, anomalies, substitutes, and indirect clues as
@@ -104,7 +109,8 @@ Test the Detective's nodes through three paired vectors:
    obvious claim/field category mismatches are rejected. From round 2 onward, update the supplied
    completion queue before adding a genuinely different carrier. For changed fields use `REFINE`
    for greater precision, `REPLACE` when the old value is wrong and superseded, and `CHALLENGE`
-   only for mutually exclusive unresolved claims.
+   to preserve an alternative wording. A material contradiction belongs in the linked Agenda
+   question/direction as `DISPUTED`/`UNRESOLVED`, not in a string-difference setup gate.
    Evidence may be empty and will remain `HYPOTHESIS`/`EXPLORE`; never invent a citation.
    Attack the candidate against its closest mapped alternative: explain why the preferred carrier
    wins now and what evidence would switch the choice. Field completeness alone never creates a
@@ -112,8 +118,9 @@ Test the Detective's nodes through three paired vectors:
    in a preference, submit both an `ECONOMIC_EXPOSURE` and a `MARKET_TRADING` universe snapshot
    with a frozen construction rule and at least two evidence-bound members. Use the contract fields
    embedded below.
-   Only a matching `trusted_market_snapshots` receipt from the Work Window can ground market
-   recognition. A model-authored `market_snapshot` is diagnostic only and ignored for authority.
+   Only a host snapshot matching the exact candidate identity from the Work Window can ground market
+   recognition. The receipt field may be empty when there is one current exact match; never recreate
+   or rebind its evidence IDs. A model-authored `market_snapshot` is diagnostic only and ignored for authority.
 
 10. **OpportunitySeed Harvest (legacy explicit verification path, max 3 per round)**:
    An attack can reveal the better asset. Preserve concrete substitute winners,
@@ -234,7 +241,8 @@ Your response must be a valid JSON matching this schema exactly:
       "evidence_ids": ["EV-R1-I-001"],
       "strongest_challenge": "<best challenge to this answer>",
       "missing_information": "<specific missing datum>",
-      "next_question": "<question this challenge creates>"
+      "next_question": "<question this challenge creates>",
+      "next_test_availability": "SEARCH_NOW|WAIT_FOR_DATE|WAIT_FOR_EVENT|NEEDS_USER_DATA|UNKNOWN"
     }
   ],
   "baseline_finding_updates": [
@@ -254,7 +262,8 @@ Your response must be a valid JSON matching this schema exactly:
       "judgment_is_inference": true,
       "evidence_ids": ["EV-R1-I-001"],
       "strongest_challenge": "<best remaining challenge>",
-      "unresolved_question": "<specific unresolved discriminator>"
+      "unresolved_question": "<specific unresolved discriminator>",
+      "next_test_availability": "SEARCH_NOW|WAIT_FOR_DATE|WAIT_FOR_EVENT|NEEDS_USER_DATA|UNKNOWN"
     }
   ],
   "new_research_directions": [
@@ -270,7 +279,8 @@ Your response must be a valid JSON matching this schema exactly:
       "origin_reason": "<evidence, attack, or blind spot that created it>",
       "load_bearing": true,
       "decision_impact": "HIGH|MEDIUM|LOW",
-      "research_cost": "LOW|MEDIUM|HIGH"
+      "research_cost": "LOW|MEDIUM|HIGH",
+      "next_test_availability": "SEARCH_NOW|WAIT_FOR_DATE|WAIT_FOR_EVENT|NEEDS_USER_DATA|UNKNOWN"
     }
   ],
   "new_blind_spots": [
@@ -282,7 +292,8 @@ Your response must be a valid JSON matching this schema exactly:
       "cheapest_test": "<bounded discriminating check>",
       "decision_impact": "HIGH|MEDIUM|LOW",
       "research_cost": "LOW|MEDIUM|HIGH",
-      "blocks_current_recommendation": true
+      "blocks_current_recommendation": true,
+      "next_test_availability": "SEARCH_NOW|WAIT_FOR_DATE|WAIT_FOR_EVENT|NEEDS_USER_DATA|UNKNOWN"
     }
   ],
   "new_research_questions": [
@@ -298,7 +309,8 @@ Your response must be a valid JSON matching this schema exactly:
       "parent_question_id": "RQ1",
       "decision_change": "<which conclusion, candidate, timing, or advice changes>",
       "linked_crux_id": "C1 or empty string",
-      "introduced_by_blind_spot": "<blind spot statement or empty string>"
+      "introduced_by_blind_spot": "<blind spot statement or empty string>",
+      "next_test_availability": "SEARCH_NOW|WAIT_FOR_DATE|WAIT_FOR_EVENT|NEEDS_USER_DATA|UNKNOWN"
     }
   ],
   "crux_attacks": [

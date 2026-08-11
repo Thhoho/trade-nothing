@@ -73,9 +73,14 @@ Evaluate the target through these three sequential layers:
    complete. Prefer updating `next_question` on the existing item. Add at most one genuinely new
    blind spot and one new research question per role. A new question must name its existing
    `parent_question_id`, exact `decision_change`, success condition, and bounded route.
+   For every unresolved next test, declare `next_test_availability` as exactly `SEARCH_NOW`,
+   `WAIT_FOR_DATE`, `WAIT_FOR_EVENT`, `NEEDS_USER_DATA`, or `UNKNOWN`. Do not request another search
+   round for a fact that only time, an event, or user-held data can reveal.
    If the Work Window supplies prior-run baseline findings, dispose every relevant item explicitly.
    Treat it as a search lead, not inherited evidence: `REVERIFIED` and `SUPERSEDED` require a
    same-response `evidence_id`; otherwise use `OUT_OF_SCOPE` with a reason or `UNRESOLVED`.
+   Market, pricing, and candidate questions may directly cite canonical host evidence IDs physically
+   supplied in `trusted_market_snapshots`; never recreate the same market fact in `evidence_items`.
 
 9. **Exploration track (optional tool; max 3 sparks and 3 trails per round)**:
    Treat abductive discovery as first-class output. A weak anomaly, analogy, supplier clue,
@@ -102,7 +107,8 @@ Evaluate the target through these three sequential layers:
    rejects unknown IDs and obvious claim/field category mismatches. From round 2 onward, update the
    supplied completion queue before adding a genuinely different carrier. For changed fields use
    `REFINE` for greater precision, `REPLACE` when the old value is wrong and superseded, and
-   `CHALLENGE` only for mutually exclusive unresolved claims. Record catalyst, invalidation,
+   `CHALLENGE` to preserve an alternative wording. A material contradiction belongs in the linked
+   Agenda question/direction as `DISPUTED`/`UNRESOLVED`, not in a string-difference setup gate. Record catalyst, invalidation,
    price/expectation, crowding, alternative
    explanation, and the cheapest next test. Evidence may be empty: the engine will preserve the
    candidate as `HYPOTHESIS`/`EXPLORE`. Do not invent a source to make the map look mature.
@@ -112,8 +118,9 @@ Evaluate the target through these three sequential layers:
    counterexamples even when every field is populated. For each horizon used in a preference,
    submit both an `ECONOMIC_EXPOSURE` and a `MARKET_TRADING` universe snapshot with a frozen
    construction rule and at least two evidence-bound members. Use the contract fields embedded below.
-   Only a matching `trusted_market_snapshots` receipt from the Work Window can ground market
-   recognition. A model-authored `market_snapshot` is diagnostic only and ignored for authority.
+   Only a host snapshot matching the exact candidate identity from the Work Window can ground market
+   recognition. The receipt field may be empty when there is one current exact match; never recreate
+   or rebind its evidence IDs. A model-authored `market_snapshot` is diagnostic only and ignored for authority.
 
 11. **OpportunitySeed Harvest (legacy explicit verification path, max 3 per round)**:
    Preserve evidence-backed opportunities even when the root thesis fails. Look for a
@@ -217,7 +224,8 @@ Your response must be a valid JSON matching this schema exactly:
       "evidence_ids": ["EV-R1-D-001"],
       "strongest_challenge": "<best evidence or mechanism against this answer>",
       "missing_information": "<specific missing datum>",
-      "next_question": "<question this answer creates>"
+      "next_question": "<question this answer creates>",
+      "next_test_availability": "SEARCH_NOW|WAIT_FOR_DATE|WAIT_FOR_EVENT|NEEDS_USER_DATA|UNKNOWN"
     }
   ],
   "baseline_finding_updates": [
@@ -237,7 +245,8 @@ Your response must be a valid JSON matching this schema exactly:
       "judgment_is_inference": true,
       "evidence_ids": ["EV-R1-D-001"],
       "strongest_challenge": "<best remaining challenge>",
-      "unresolved_question": "<specific unresolved discriminator>"
+      "unresolved_question": "<specific unresolved discriminator>",
+      "next_test_availability": "SEARCH_NOW|WAIT_FOR_DATE|WAIT_FOR_EVENT|NEEDS_USER_DATA|UNKNOWN"
     }
   ],
   "new_research_directions": [
@@ -253,7 +262,8 @@ Your response must be a valid JSON matching this schema exactly:
       "origin_reason": "<evidence, challenge, or blind spot that created it>",
       "load_bearing": true,
       "decision_impact": "HIGH|MEDIUM|LOW",
-      "research_cost": "LOW|MEDIUM|HIGH"
+      "research_cost": "LOW|MEDIUM|HIGH",
+      "next_test_availability": "SEARCH_NOW|WAIT_FOR_DATE|WAIT_FOR_EVENT|NEEDS_USER_DATA|UNKNOWN"
     }
   ],
   "new_blind_spots": [
@@ -265,7 +275,8 @@ Your response must be a valid JSON matching this schema exactly:
       "cheapest_test": "<bounded discriminating check>",
       "decision_impact": "HIGH|MEDIUM|LOW",
       "research_cost": "LOW|MEDIUM|HIGH",
-      "blocks_current_recommendation": true
+      "blocks_current_recommendation": true,
+      "next_test_availability": "SEARCH_NOW|WAIT_FOR_DATE|WAIT_FOR_EVENT|NEEDS_USER_DATA|UNKNOWN"
     }
   ],
   "new_research_questions": [
@@ -281,7 +292,8 @@ Your response must be a valid JSON matching this schema exactly:
       "parent_question_id": "RQ1",
       "decision_change": "<which conclusion, candidate, timing, or advice changes>",
       "linked_crux_id": "C1 or empty string",
-      "introduced_by_blind_spot": "<blind spot statement or empty string>"
+      "introduced_by_blind_spot": "<blind spot statement or empty string>",
+      "next_test_availability": "SEARCH_NOW|WAIT_FOR_DATE|WAIT_FOR_EVENT|NEEDS_USER_DATA|UNKNOWN"
     }
   ],
   "market_consensus": "<1 sentence. e.g., 'Market expects GPU sales to drive software boom.'>",

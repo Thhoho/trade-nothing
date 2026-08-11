@@ -613,7 +613,9 @@ def _path_grounding(state, path_ids):
     return grounded, ungrounded
 
 
-def _normalize_market_snapshot(state, raw, trusted_receipt_verified=False):
+def _normalize_market_snapshot(
+    state, raw, trusted_receipt_verified=False, authoritative_evidence=None,
+):
     if not isinstance(raw, dict):
         return {}, False, ["MARKET_SNAPSHOT_REQUIRED"]
     issues = []
@@ -640,9 +642,17 @@ def _normalize_market_snapshot(state, raw, trusted_receipt_verified=False):
         issues.append("MARKET_SNAPSHOT_RELATIVE_STRENGTH_REQUIRED")
     if not any(metrics.get(name) is not None for name in MARKET_ACTIVITY_METRICS):
         issues.append("MARKET_SNAPSHOT_ACTIVITY_REQUIRED")
-    evidence, evidence_ids, evidence_issues = _resolve_evidence_ids(
-        state, raw.get("evidence_ids", [])
-    )
+    if authoritative_evidence is not None:
+        evidence = research_kernel.unique_evidence(authoritative_evidence)
+        evidence_ids = list(dict.fromkeys(
+            _text(item.get("evidence_id")) for item in evidence
+            if _text(item.get("evidence_id"))
+        ))
+        evidence_issues = []
+    else:
+        evidence, evidence_ids, evidence_issues = _resolve_evidence_ids(
+            state, raw.get("evidence_ids", [])
+        )
     if not evidence_ids:
         issues.append("MARKET_SNAPSHOT_EVIDENCE_REQUIRED")
     if not any(
@@ -711,6 +721,147 @@ def _candidate_source_identity(raw):
     return research_kernel.instrument_identity(item), ""
 
 
+def _host_market_evidence_items(state, artifact, receipt, identity):
+    """Mint candidate-bound canonical facts from a verified host snapshot.
+
+    Host data is itself the evidence source.  Requiring a model-created Agenda
+    citation before this point created a circular trust dependency and allowed
+    unrelated company evidence IDs to be reused merely to open the gate.
+    """
+    snapshot = artifact.get("market_snapshot", {})
+    candidate = artifact.get("candidate", {})
+    sources = [
+        item for item in artifact.get("sources", []) if isinstance(item, dict)
+    ] if isinstance(artifact.get("sources"), list) else []
+    candidate_url = _text(candidate.get("source_url"))
+    benchmark_url = next((
+        _text(item.get("source_url")) for item in sources
+        if _text(item.get("source_url")) and _text(item.get("source_url")) != candidate_url
+    ), _text(snapshot.get("adapter_receipt", {}).get("benchmark_source_url")))
+    source = _text(candidate.get("source")) or "structured market data"
+    name = _text(candidate.get("name")) or _text(candidate.get("ticker"))
+    session = _text(snapshot.get("as_of_date"))
+
+    def metric_text(names):
+        values = []
+        for field in names:
+            value = snapshot.get(field)
+            if value is not None:
+                values.append(f"{field}={value}")
+        return "；".join(values)
+
+    price_numbers = metric_text((
+        "return_5d", "return_20d", "return_60d",
+        "excess_5d", "excess_20d", "excess_60d", "drawdown_60d",
+        "pe_ttm", "pb", "total_market_cap_cny", "float_market_cap_cny",
+    ))
+    activity_numbers = metric_text((
+        "volume_ratio_20d", "turnover_rate", "provider_volume_ratio",
+    ))
+    common = {
+        "source": source,
+        "url": candidate_url,
+        "date": session,
+        "source_tier": "structured_market_data",
+        "question_ids": [],
+        "direction_ids": [],
+        "stance": "CONTEXT",
+        "origin": "HOST_MARKET_SNAPSHOT",
+        "binding": {
+            "binding_type": "CANDIDATE_MARKET_SNAPSHOT",
+            "candidate_identity": identity,
+            "market_session_date": receipt.get("market_session_date"),
+        },
+        "supporting_urls": [benchmark_url] if benchmark_url else [],
+        "receipt_id": receipt.get("receipt_id"),
+    }
+    raw_items = [
+        {
+            **common,
+            "claim": (
+                f"{name}截至{session}的冻结股价、相对基准收益、回撤与估值观测："
+                f"{price_numbers}"
+            ),
+            "number": price_numbers,
+            "axis": "PRICE_OR_EXPECTATION",
+        },
+        {
+            **common,
+            "claim": (
+                f"{name}截至{session}的换手率、成交量与市场活动度观测："
+                f"{activity_numbers}"
+            ),
+            "number": activity_numbers,
+            "axis": "CROWDING_OR_POSITION",
+        },
+    ]
+    agenda = state.get("research_agenda")
+    if not isinstance(agenda, dict):
+        return [], ["RESEARCH_AGENDA_REQUIRED_FOR_HOST_EVIDENCE"]
+    items = []
+    issues = []
+    for raw in raw_items:
+        if not raw.get("number"):
+            continue
+        stable = {
+            "receipt_id": receipt.get("receipt_id"),
+            "candidate_identity": identity,
+            "axis": raw.get("axis"),
+        }
+        item, status = research_kernel.upsert_canonical_evidence(
+            agenda, raw, _as_of(state), stable_material=stable
+        )
+        if item is None:
+            issues.append(status)
+        else:
+            items.append(item)
+    return items, issues
+
+
+def refresh_host_market_evidence(state):
+    """Upgrade accepted legacy snapshots to candidate-bound host evidence.
+
+    Older v0.15 artifacts were accepted only after borrowing model evidence
+    IDs.  The receipt-bound snapshot already contains enough source lineage to
+    derive the correct canonical facts, so the repair is deterministic and
+    does not fetch or reinterpret external data.
+    """
+    refreshed = 0
+    issues = []
+    for entry in _ensure(state).get("host_market_snapshots", []):
+        if not isinstance(entry, dict):
+            continue
+        identity = _text(entry.get("candidate_identity"))
+        artifact = {
+            "candidate": deepcopy(entry.get("candidate", {})),
+            "market_snapshot": deepcopy(entry.get("market_snapshot", {})),
+            "sources": deepcopy(entry.get("sources", [])),
+        }
+        receipt = {
+            "receipt_id": _text(entry.get("receipt_id")),
+            "market_session_date": _text(entry.get("market_session_date")),
+        }
+        evidence, evidence_issues = _host_market_evidence_items(
+            state, artifact, receipt, identity
+        )
+        issues.extend(evidence_issues)
+        if not evidence:
+            continue
+        snapshot = entry.setdefault("market_snapshot", {})
+        canonical_ids = list(dict.fromkeys(
+            _text(item.get("evidence_id")) for item in evidence
+            if _text(item.get("evidence_id"))
+        ))
+        if snapshot.get("evidence_ids") != canonical_ids:
+            refreshed += 1
+        snapshot["evidence_ids"] = canonical_ids
+        snapshot["evidence"] = deepcopy(evidence)
+        snapshot["evidence_boundary"] = research_kernel.evidence_boundary(evidence)
+        snapshot["evidence_issues"] = []
+        entry["canonical_evidence_ids"] = canonical_ids
+    return {"refreshed": refreshed, "issues": sorted(set(issues))}
+
+
 def ingest_host_market_snapshot(state, artifact):
     """Ingest one explicitly host-approved, receipt-bound market projection.
 
@@ -732,9 +883,16 @@ def ingest_host_market_snapshot(state, artifact):
         audit.update({"reason": identity_issue, "receipt_id": receipt["receipt_id"]})
         bridge["host_snapshot_audits"].append(deepcopy(audit))
         return audit
-    snapshot, grounded, issues = _normalize_market_snapshot(
-        state, artifact.get("market_snapshot"), trusted_receipt_verified=True
+    host_evidence, host_evidence_issues = _host_market_evidence_items(
+        state, artifact, receipt, identity
     )
+    snapshot, grounded, issues = _normalize_market_snapshot(
+        state,
+        artifact.get("market_snapshot"),
+        trusted_receipt_verified=True,
+        authoritative_evidence=host_evidence,
+    )
+    issues.extend(host_evidence_issues)
     audit.update({
         "receipt_id": receipt["receipt_id"],
         "candidate_identity": identity,
@@ -752,6 +910,7 @@ def ingest_host_market_snapshot(state, artifact):
         and item.get("market_session_date") == receipt["market_session_date"]
     ]
     if any(item.get("receipt_id") == receipt["receipt_id"] for item in existing):
+        refresh_host_market_evidence(state)
         audit.update({"status": "IDEMPOTENT", "reason": ""})
         bridge["host_snapshot_audits"].append(deepcopy(audit))
         return audit
@@ -768,6 +927,7 @@ def ingest_host_market_snapshot(state, artifact):
             "upstream_acquisition_receipt_id"
         ],
         "market_snapshot": snapshot,
+        "canonical_evidence_ids": list(snapshot.get("evidence_ids", [])),
         "sources": deepcopy(artifact.get("sources", [])),
     }
     bridge["host_market_snapshots"].append(entry)
@@ -777,6 +937,7 @@ def ingest_host_market_snapshot(state, artifact):
 
 
 def _trusted_snapshot_for_candidate(state, candidate_item, requested_receipt_id=""):
+    refresh_host_market_evidence(state)
     identity = research_kernel.instrument_identity(candidate_item or {})
     requested_receipt_id = _text(requested_receipt_id)
     matches = [
@@ -869,8 +1030,7 @@ def normalize_candidate_bridge(state, raw, role, candidate_item):
     economic_rationale = _text(raw.get("economic_rationale"))
     market_rationale = _text(raw.get("market_selection_rationale"))
     economic_grounded = bool(
-        path_ids
-        and not ungrounded_path_ids
+        grounded_path_ids
         and research_kernel.known(candidate_item.get("economic_exposure"))
         and economic_field_evidence
         and research_kernel.known(economic_rationale)
@@ -918,6 +1078,57 @@ def normalize_candidate_bridge(state, raw, role, candidate_item):
     }
 
 
+def refresh_candidate_bridge(state, candidate_item, bridge=None):
+    """Recompute authority-bearing bridge facts from current canonical state.
+
+    Persisted bridge records retain what roles declared.  Snapshot attachment,
+    grounding and issue codes are derived facts and must never be append-only.
+    """
+    bridge = bridge if isinstance(bridge, dict) else {}
+    raw = {
+        "value_path_refs": list(bridge.get("value_path_ids", [])),
+        "economic_exposure_strength": bridge.get(
+            "economic_exposure_strength", {}
+        ).get("declared", "UNKNOWN"),
+        "economic_rationale": bridge.get(
+            "economic_exposure_strength", {}
+        ).get("rationale", ""),
+        "market_recognition": bridge.get(
+            "market_recognition", {}
+        ).get("declared", "UNKNOWN"),
+        "market_selection_rationale": bridge.get(
+            "market_recognition", {}
+        ).get("rationale", ""),
+        "horizon_fit": list(bridge.get("horizon_fit", [])),
+        # Snapshot selection is centralized by exact instrument identity.  A
+        # role never has to repeat a receipt ID to make already-ingested host
+        # data visible to the current projection.
+        "trusted_market_snapshot_receipt_id": "",
+        "closest_alternative": deepcopy(bridge.get("closest_alternative", {})),
+        "why_prefer_now": bridge.get("why_prefer_now", ""),
+        "switch_condition": bridge.get("switch_condition", ""),
+    }
+    refreshed = normalize_candidate_bridge(
+        state, raw, "canonical_projection", candidate_item
+    )
+    refreshed["source_agents"] = sorted(set(bridge.get("source_agents", [])))
+    # These two codes describe real, grounded role disagreement.  Other issue
+    # codes are current-state derivations and are deliberately recomputed.
+    for issue in bridge.get("issues", []):
+        if issue in {
+            "ECONOMIC_STRENGTH_ROLE_CONFLICT",
+            "MARKET_RECOGNITION_ROLE_CONFLICT",
+        }:
+            refreshed.setdefault("issues", []).append(issue)
+        elif issue == "CLOSEST_ALTERNATIVE_ROLE_CONFLICT":
+            refreshed.setdefault("audit_notes", []).append(
+                "ALTERNATIVE_SET_DIVERGED"
+            )
+    refreshed["issues"] = sorted(set(refreshed.get("issues", [])))
+    refreshed["audit_notes"] = sorted(set(refreshed.get("audit_notes", [])))
+    return refreshed
+
+
 def _bridge_quality(item):
     return (
         int(item.get("economic_exposure_strength", {}).get("grounded") is True)
@@ -955,9 +1166,10 @@ def merge_candidate_bridge(existing, incoming):
     merged["source_agents"] = sorted(set(
         existing.get("source_agents", []) + incoming.get("source_agents", [])
     ))
-    merged["issues"] = sorted(set(
-        existing.get("issues", []) + incoming.get("issues", [])
-    ))
+    # Issue codes are a projection of current facts, not an append-only event
+    # log.  Start from the selected current view and add only conflicts derived
+    # from the two role declarations below.
+    merged["issues"] = sorted(set(winner.get("issues", [])))
     if (
         existing.get("economic_exposure_strength", {}).get("effective")
         != incoming.get("economic_exposure_strength", {}).get("effective")
@@ -983,8 +1195,9 @@ def merge_candidate_bridge(existing, incoming):
         and incoming_alternative
         and existing_alternative != incoming_alternative
     ):
-        merged["issues"].append("CLOSEST_ALTERNATIVE_ROLE_CONFLICT")
+        merged.setdefault("audit_notes", []).append("ALTERNATIVE_SET_DIVERGED")
     merged["issues"] = sorted(set(merged["issues"]))
+    merged["audit_notes"] = sorted(set(merged.get("audit_notes", [])))
     return merged
 
 
@@ -1095,11 +1308,11 @@ def finalize_candidates(
         bridge_conflict = any(issue in {
             "ECONOMIC_STRENGTH_ROLE_CONFLICT",
             "MARKET_RECOGNITION_ROLE_CONFLICT",
-            "CLOSEST_ALTERNATIVE_ROLE_CONFLICT",
         } for issue in bridge.get("issues", []))
         path_ids = set(bridge.get("value_path_ids", []))
-        value_paths_grounded = bool(path_ids and path_ids <= grounded_paths)
-        if path_ids and not value_paths_grounded:
+        recommendation_path_ids = sorted(path_ids & grounded_paths)
+        value_paths_grounded = bool(recommendation_path_ids)
+        if path_ids - grounded_paths:
             bridge.setdefault("issues", []).append("VALUE_PATH_NOT_GROUNDED")
         comparison_ready = bool(
             value_paths_grounded
@@ -1180,6 +1393,7 @@ def finalize_candidates(
         else:
             recommendation_level = "RESEARCH_PRIORITY"
         bridge["projection"] = projection
+        bridge["recommendation_path_ids"] = recommendation_path_ids
         bridge["alternative_valid"] = alternative_valid
         bridge["comparison_ready"] = comparison_ready
         bridge["recommendation_horizons"] = recommendation_horizons
@@ -1247,6 +1461,7 @@ def _phase_view(state):
 
 
 def report_view(state, candidates):
+    refresh_host_market_evidence(state)
     phase_by_horizon = _phase_view(state)
     universe_by_horizon = _universe_view(state)
     projected = finalize_candidates(
@@ -1289,6 +1504,9 @@ def report_view(state, candidates):
             if projected else "NO_CANDIDATE_MAP"
         ),
         "value_paths": deepcopy(bridge.get("value_paths", [])),
+        "host_market_snapshots": deepcopy(
+            bridge.get("host_market_snapshots", [])
+        ),
         "phase_by_horizon": phase_by_horizon,
         "universe_by_horizon": universe_by_horizon,
         "candidates": projected,
@@ -1302,8 +1520,9 @@ def report_view(state, candidates):
     }
 
 
-def dispatch_context(state, max_paths=6):
+def dispatch_context(state, max_paths=4, candidate_tickers=None):
     """Return compact bridge context for the next model work window."""
+    refresh_host_market_evidence(state)
     bridge = _ensure(state)
     paths = sorted(
         [item for item in bridge.get("value_paths", []) if isinstance(item, dict)],
@@ -1319,6 +1538,15 @@ def dispatch_context(state, max_paths=6):
         ),
         reverse=True,
     )
+    selected_tickers = {
+        _text(value) for value in (candidate_tickers or []) if _text(value)
+    }
+    if selected_tickers:
+        trusted_snapshots = [
+            item for item in trusted_snapshots
+            if _text((item.get("candidate") or {}).get("ticker"))
+            in selected_tickers
+        ]
     return {
         "value_paths": [{
             "path_id": item.get("path_id"),
