@@ -30,12 +30,12 @@ class ProductResetContractTests(unittest.TestCase):
 
     def test_skill_declares_research_boundary_not_downstream_ownership(self):
         text = (ROOT / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("**Deep Research Report（深度研究报告与建议）**", text)
-        self.assertIn("Research Agenda（事实/因果/市场/载体/定价/风险/前瞻问题）", text)
-        self.assertIn("假说只在不确定机制需要对照检验时使用", text)
-        self.assertIn("抽象 hypothesis 永远不得自动晋升", text)
-        self.assertIn("新运行\n  默认不要求 crux/logic graph", text)
-        self.assertIn("Skill 到 Deep Research Report 与建议为止", text)
+        self.assertIn("Current Reality Scan（主体级近期事实面）", text)
+        self.assertIn("Research Agenda（只研究仍会改变判断的问题）", text)
+        self.assertIn("潜在重大变化进入 `material_change_leads`", text)
+        self.assertIn("Judge 不得空转", text)
+        self.assertIn("事实门未清时继续", text)
+        self.assertIn("Skill 到 Deep Research Report 为止", text)
 
     def test_agents_and_runtime_make_agenda_primary(self):
         framer = (ROOT / "agents" / "framer.md").read_text(encoding="utf-8")

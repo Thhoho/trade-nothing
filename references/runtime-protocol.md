@@ -6,9 +6,9 @@ not the Python orchestrator, enforces context isolation and wall-clock limits.
 | Stage | Dispatch | Isolation | Default wall-clock limit | On timeout |
 |---|---|---:|---:|---|
 | Framer | Inline parent context | No | 120 seconds | Emit `--runtime-failure`; do not retry |
-| Detective | Delegated agent | Yes | 8 minutes | Emit `--runtime-failure`; do not fabricate JSON |
-| Inquisitor | Delegated agent | Yes | 8 minutes | Emit `--runtime-failure`; do not fabricate JSON |
-| Judge | Independent context where supported | Preferred | 4 minutes | Emit `--runtime-failure`; do not score |
+| Value Lead (`detective`) | Delegated agent when scheduled | Yes | 8 minutes | Emit `--runtime-failure`; do not fabricate JSON |
+| Targeted Challenger (`inquisitor`) | Delegated agent when scheduled | Yes | 8 minutes | Emit `--runtime-failure`; do not fabricate JSON |
+| Legacy Judge | Independent context only for explicit legacy audit | Preferred | 4 minutes | Emit `--runtime-failure`; do not score |
 | Candidate Analyst / Skeptic | Two isolated agents | Yes | 8 minutes each | Emit `--runtime-failure`; do not screen |
 | Claim Verifier | Independent agent | Yes | 8 minutes | Emit `--runtime-failure`; do not verify |
 
@@ -23,8 +23,8 @@ not browse: every factual seed remains `HYPOTHESIS` or `URL_CLAIMED_UNVERIFIED` 
 
 1. Apply a stage-local wall-clock limit; a global CLI timeout is not a substitute.
 2. At the first timeout, stop waiting. Do not automatically retry, because a retry silently doubles
-   cost and may duplicate evidence. The resumable host runner may checkpoint the successful peer
-   role, but must leave the failed role missing. Process adapters start a new session and terminate
+   cost and may duplicate evidence. The resumable host runner checkpoints every completed role in
+   the round's `required_roles`, but must leave a failed required role missing. Process adapters start a new session and terminate
    the entire process group on timeout so CLI/tool descendants cannot survive the parent.
 3. Record a compact receipt:
 
@@ -51,8 +51,9 @@ child process so Claude's CLI does not mistake the isolated role for an interact
 authentication and unrelated environment settings remain inherited. A runtime change may complete a payload-free failed checkpoint, but
 it may not combine a changed prompt with a previously successful payload.
 
-The default CLI limits match the table: Detective/Inquisitor use `--timeout-seconds 480`, Judge is
-capped by `--judge-timeout-seconds 240`, and CandidateScreen/Claim Verifier use 480 seconds. When a
+The default CLI limits match the table: Value Lead/Targeted Challenger use `--timeout-seconds 480`,
+legacy Judge is capped by `--judge-timeout-seconds 240`, and CandidateScreen/Claim Verifier use 480 seconds. A role timeout applies only when that role is listed in the sealed dispatch
+`required_roles`; omitted roles receive typed empty payloads and are not model calls. When a
 loop stops because it converged, reached the maximum, used its round budget, or paused before a
 CandidateScreen, the host runner calls `--report` and returns the complete content-addressed graded
 report bundle. A resume or continuation hint is preserved separately; it never replaces the report

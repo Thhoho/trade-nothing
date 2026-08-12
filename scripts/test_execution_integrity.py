@@ -59,6 +59,37 @@ class ExecutionIntegrityTests(unittest.TestCase):
         self.assertEqual(invalid["status"], "invalid")
         self.assertIn("round_receipt_detective_payload_hash_mismatch", invalid["blockers"])
 
+    def test_adaptive_receipt_binds_only_planned_role_and_rejects_hidden_work(self):
+        dispatch = {
+            "required_roles": ["detective"],
+            "detective_prompt": "value lead",
+            "inquisitor_prompt": "unused",
+            "judge_prompt": "unused",
+        }
+        payloads = {
+            "detective": {"answer": "current truth"},
+            "inquisitor": {"_execution": {"status": "SKIPPED", "role": "inquisitor"}},
+            "judge": {"_execution": {"status": "SKIPPED", "role": "judge"}},
+        }
+        receipt = execution_integrity.build_codex_receipt(
+            1, dispatch, payloads, {"detective": "/root/lead"}
+        )
+        self.assertEqual(receipt["required_roles"], ["detective"])
+        valid = execution_integrity.validate_round_receipt(
+            receipt, 1, dispatch,
+            payloads["detective"], payloads["inquisitor"], payloads["judge"],
+        )
+        self.assertEqual(valid["status"], "verified")
+        hidden_challenger = {"evidence_items": [{"claim": "unbound"}]}
+        invalid = execution_integrity.validate_round_receipt(
+            receipt, 1, dispatch,
+            payloads["detective"], hidden_challenger, payloads["judge"],
+        )
+        self.assertIn(
+            "round_receipt_inquisitor_unplanned_payload_not_skipped",
+            invalid["blockers"],
+        )
+
     def test_only_registered_current_state_with_all_receipts_can_claim_rounds(self):
         _, payloads, receipt = self._fixture()
         manifest = run_registry.create_manifest("Truth boundary")

@@ -9,7 +9,7 @@
 <p align="center">
   <a href="README.md">English</a> ·
   <a href="SKILL.md">运行契约</a> ·
-  <a href="docs/release-v0.15.0.md">v0.15.0 发布说明</a> ·
+  <a href="docs/release-v0.16.0.md">v0.16.0 发布说明</a> ·
   <a href="docs/hypothesis-led-research-v0.10.md">v0.10 基础设计</a>
 </p>
 
@@ -23,8 +23,9 @@ Trade Nothing 是一套面向 Agent Runtime 的课题驱动、对抗式投资研
 它是研究工作流，不是自动交易系统。它不会自动给出买卖指令、目标价、预期收益、
 Kelly 仓位或持仓比例。
 
-> **v0.15 产品形态已落地。** Research Agenda 是主对象，机会发现是核心任务，重型验证
-> 改为显式、选择性调用，Skill 止于 Deep Research Report 与条件性建议。Thesis、Decision、订单、仓位、组合、发布流程和跨产品 handoff
+> **v0.16 价值优先内核已落地。** Current Reality 现在先于 Research Agenda：首个 Lead
+> 调用先扫描主体近期官方事实面，已知重大遗漏会阻断 decision-ready 交付，Challenger/Judge
+> 只在真正需要时调用。Skill 仍止于 Deep Research Report 与条件性建议。Thesis、Decision、订单、仓位、组合、发布流程和跨产品 handoff
 > 均在边界之外。CandidateMap、discovery-first 调度和新默认 renderer 已接通；真实主题
 > 有效性仍未完成 benchmark。
 > 详见[课题驱动产品基准](docs/topic-led-research-product.md)。
@@ -33,6 +34,7 @@ Kelly 仓位或持仓比例。
 
 | 层次 | 当前版本真正完成的工作 | 硬边界 |
 |---|---|---|
+| 当前事实 | 对具名主体检查官方披露、最新定期报告、商业里程碑和资本/监管变化，登记重大事件与开放线索 | 有界覆盖减少已知遗漏，但不能证明穷尽整个互联网 |
 | 研究 | 把课题拆成问题原生的 Research Agenda，在有界对抗轮次中回答并保留盲点 | 报告完成不等于所有问题都已回答 |
 | 证据 | 模型发现与宿主核验数据进入同一个 canonical evidence ledger，再重算当前答案和问题 | 历史观察可审计，但不会永远支配当前结论 |
 | 产业 → 市场 | 连接因果变化、价值转移、经济暴露池、实际交易载体池和分时间视野 setup | 概念归属或股价强势不能替代经济暴露 |
@@ -40,6 +42,30 @@ Kelly 仓位或持仓比例。
 | 行情 | 冻结 Tushare、BaoStock、AKShare/Tencent 或 CSV 的候选与基准数据并生成回执 | 行情只是上下文，不是公司基本面或推荐质量证明 |
 | 停止 | 只有现在可搜索、低成本且影响决策的检验才建议续研；等待条件留在报告中 | 轮次预算是安全熔断器，不是制造进展的理由 |
 | 输出 | 交付 Deep Research Report 和独立 canonical Evidence Ledger；重型验证按需调用 | 工程门禁与报告渲染不证明 Alpha 或投资收益 |
+
+## v0.16.0：当前事实优先，质证按需
+
+上一版架构可能严谨地跑完多轮，却漏掉同模型单 Agent 能找到的公司近期重大事件。v0.16
+修复的是这个架构根因：
+
+- **先召回，再辩论。** `primary_entities` 定义主体级 Current Reality Scan，完成后才收窄到
+  Agenda；实际 query、checked URL、outcome 和 materiality 都会落账。
+- **已知遗漏失败关闭。** 开放的 HIGH 重大线索或未完成的必要事实面产生
+  `MATERIAL_FACT_GAP`。报告仍可交付，但不允许输出 decision-ready 推荐。
+- **角色自适应。** Agenda-native 首轮通常只调用一个 Value Lead；只有承重答案需要独立攻击
+  时才调用 Targeted Challenger；Judge 只服务显式 legacy crux audit。收据绑定真实执行的
+  角色，不用三个合成角色伪装完整。
+- **首屏展示价值。** 重大变化、事实缺口、当前判断、产业到市场映射、具名替代项和最低成本
+  下一验证优先于流程诊断。
+- **产品价值单独过门。** 新方法必须在同模型、同问题、同 as-of 对照中，重大事实加权召回和
+  决策可用性不低于 single-agent；证明增益前总成本不超过 baseline 的 1.5 倍。
+
+> **校准状态：** v0.16.0 已实现，并通过确定性工程回归门；但在新的同模型、同问题、同
+> as-of 盲评完成前，运行方法仍为 `UNBENCHMARKED_METHOD_CHANGE`。工程正确不等于研究有效，
+> 更不等于 Alpha、收益率或风险调整收益。
+
+参见 [v0.16.0 发布说明](docs/release-v0.16.0.md)和精简后的[运行契约](SKILL.md)。下方
+v0.15 内容作为架构历史保留。
 
 ## v0.15.0：发现优先，验证按需
 
@@ -215,10 +241,10 @@ make install DEV_DIR="$(pwd)"
 
 1. 定义有边界、可证伪的问题，并选择 `THESIS_CHALLENGE`、
    `OPPORTUNITY_DISCOVERY` 或 `HYBRID`。
-2. 在父上下文内联运行 Framer，初始化确定性状态，再把选中的 OPEN crux 分派给
-   隔离的 Detective 与 Inquisitor。
-3. Judge 只对带引用的正式证据评分；由引擎而不是 LLM 更新支持度，并决定继续、
-   收敛或熔断。
+2. 在父上下文内联运行 Framer 并初始化确定性状态；首个 Value Lead 先逐主体扫描近期
+   官方事实面，再进入 Agenda 问题。
+3. 只执行密封调度中的 `required_roles`：承重答案未被独立攻击或显式 Landscape 缺第二侧
+   覆盖时才调用 Targeted Challenger；Judge 只服务 legacy crux audit。
 4. 机会研究先推进 Research Agenda、产业到市场映射与 CandidateMap；CandidateScreen 和
    快照绑定的 claim 核验只在用户要求核验短名单时显式运行。
 5. 如有价值，可以设计一个有界探索动作；计划不等于授权，只有用户对精确 action ID
@@ -301,6 +327,57 @@ python3 scripts/market_snapshot_adapter.py --input market-observations.json \
 [`references/data-sources.md`](references/data-sources.md)。数据调用成功只证明有界采集与
 确定性转换完成，不证明公司基本面、推荐质量或预期收益。
 
+#### 每日观察与动态选题
+
+每日入口只有一条命令：
+
+```bash
+make daily
+```
+
+它用当前 Codex 登录启动一次只读、临时的市场扫描，以同一事实截止时间和同一组来源生成两个
+相邻产物：一份每日观察，以及一个唯一研究主题与 `0—10轮`最小充分预算。观察层拥有
+`C1/C2/C3` 变化证据，选题只引用这些证据，不再维护第二套事实叙事：
+
+- `var/daily/YYYY-MM-DD/observation.{json,md}`
+- `var/daily/YYYY-MM-DD/topic-card.{json,md}`
+
+每日观察回答市场状态、真正改变的三件事、产业到市场的连接、今日边界和下一验证；它是决策
+简报，不是新闻摘要、完整研报或推荐。证据不足时显式 `DEGRADED`，不会用泛泛评论补足三条。
+即使当天没有合格主题，观察仍然产出，选题返回 `NO_TOPIC / 0轮`。预算只是等待用户授权的
+建议；脚本不会创建或恢复研究 run，不会消耗研究轮次，也不会修改网站、发布或部署。非交易日
+不调用模型，只记录日历边界；同日重复运行失败关闭，只有显式添加 `ARGS="--replace"` 才能替换。
+
+先检查完整 prompt 而不调用模型：
+
+```bash
+make daily ARGS="--dry-run --as-of 2026-08-12"
+```
+
+定时器只需每天执行 `make daily`。旧的 `make daily-topic` 保留为同一入口的兼容别名。
+Codex CLI 使用现有 ChatGPT/Codex 登录，不要求把 OpenAI API key 写进仓库；
+`TUSHARE_TOKEN` 仍只由父进程继承。
+
+日终产物具有严格的交易时段语义：交易日 18:00（Asia/Shanghai）以前不会写入 canonical
+`var/daily/YYYY-MM-DD`，因此盘前测试不会占用当天日终槽位。历史版本误写的盘前槽位会在真正
+日终运行时完整移入 `var/daily-drafts/YYYY-MM-DD/HHMM` 后再生成日终产物，不会静默覆盖。
+
+Codex 定时任务在 `workspace-write` 下默认不能访问工作区外的登录状态。仓库提供最小项目规则
+`.codex/rules/daily.rules`：只允许固定的、`--ephemeral --sandbox read-only` 的 Codex 子进程跨过
+外层任务沙箱，子进程仍不能写文件，且脚本会剥离 token/API key/secret。项目必须在 Codex 中标记
+为 trusted，新增规则后需重启 Codex。若宿主不加载项目规则，可由外层 Agent 产出符合 schema 的
+JSON，再走不启动子进程的确定性入口：
+
+```bash
+make daily-finalize INPUT=/path/to/daily.json ARGS="--as-of 2026-08-12"
+```
+
+研究运行同样冻结上下文：行情必须在角色执行前摄入；一旦本轮已有成功角色 payload，新行情只能
+进入下一轮。答案、市场阶段、经济/交易双池、候选解释和市场运行链都继承本轮 dispatch 的行情
+回执血缘，不能在提交时从可变 state 补记。正式报告以宿主行情回执和 canonical evidence plane
+为当前真相，旧角色解释只留在审计历史；等待未来日期或事件的有证据答案可以完成当前 as-of
+闭环，并保留重开条件。
+
 ## 最小手动流程
 
 ```bash
@@ -311,10 +388,10 @@ python3 scripts/deepthink_orchestrator_v2.py --frame --topic "TARGET"
 python3 scripts/deepthink_orchestrator_v2.py --init \
   --topic "TARGET" --frame-json '<framer_json>'
 
-# 提交隔离的 Detective、Inquisitor 与 Judge 载荷。
+# 查看 required_roles，只运行其中角色；省略角色用 --empty-role 生成 typed empty payload。
 python3 scripts/deepthink_orchestrator_v2.py --submit \
-  --topic "TARGET" --det '<detective_json>' \
-  --inq '<inquisitor_json>' --judge '<judge_json>'
+  --topic "TARGET" --det '<lead_or_typed_empty_json>' \
+  --inq '<challenger_or_typed_empty_json>' --judge '<legacy_judge_or_typed_empty_json>'
 
 # 每个终态都渲染；确定性闸门控制报告等级与允许表达的结论。
 python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET"

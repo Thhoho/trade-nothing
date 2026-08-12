@@ -15,7 +15,9 @@ from pathlib import Path
 import method_identity
 
 
-RECEIPT_SCHEMA = "trade-nothing.round-execution-receipt.v1"
+LEGACY_RECEIPT_SCHEMA = "trade-nothing.round-execution-receipt.v1"
+RECEIPT_SCHEMA = "trade-nothing.round-execution-receipt.v2"
+RECEIPT_SCHEMAS = {LEGACY_RECEIPT_SCHEMA, RECEIPT_SCHEMA}
 AUDIT_SCHEMA = "trade-nothing.execution-integrity.v1"
 MARKER_PREFIX = "<!-- TRADE_NOTHING_EXECUTION_INTEGRITY "
 PROCESS_RUNNERS = {
@@ -46,6 +48,19 @@ def judge_prompt(dispatch, detective, inquisitor):
     )
 
 
+def required_roles(dispatch, receipt=None):
+    """Resolve the host-enforced adaptive plan, preserving v1 receipts."""
+    allowed = {"detective", "inquisitor", "judge"}
+    if isinstance(receipt, dict) and receipt.get("schema") == LEGACY_RECEIPT_SCHEMA:
+        return ["detective", "inquisitor", "judge"]
+    raw = dispatch.get("required_roles") if isinstance(dispatch, dict) else None
+    if not isinstance(raw, list) and isinstance(receipt, dict):
+        raw = receipt.get("required_roles")
+    roles = [str(role) for role in raw] if isinstance(raw, list) else []
+    roles = list(dict.fromkeys(role for role in roles if role in allowed))
+    return roles or ["detective", "inquisitor", "judge"]
+
+
 def receipt_id(receipt):
     content = dict(receipt) if isinstance(receipt, dict) else {}
     content.pop("receipt_id", None)
@@ -56,11 +71,13 @@ def build_process_receipt(round_num, host_runtime, dispatch, payloads, records):
     runner_kind = PROCESS_RUNNERS.get(str(host_runtime or ""))
     if not runner_kind:
         raise ValueError("unsupported_process_receipt_runtime")
+    planned_roles = required_roles(dispatch)
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "round": int(round_num),
         "runner_kind": runner_kind,
         "host_enforced": True,
+        "required_roles": planned_roles,
         "roles": {},
     }
     prompts = {
@@ -68,7 +85,7 @@ def build_process_receipt(round_num, host_runtime, dispatch, payloads, records):
         "inquisitor": dispatch.get("inquisitor_prompt"),
         "judge": judge_prompt(dispatch, payloads["detective"], payloads["inquisitor"]),
     }
-    for role in ("detective", "inquisitor", "judge"):
+    for role in planned_roles:
         record = records.get(role) if isinstance(records.get(role), dict) else {}
         receipt["roles"][role] = {
             "invocation_id": str(record.get("invocation_id") or ""),
@@ -84,11 +101,10 @@ def build_process_receipt(round_num, host_runtime, dispatch, payloads, records):
 
 
 def build_codex_receipt(round_num, dispatch, payloads, agent_ids):
-    ids = [str(agent_ids.get(role) or "").strip() for role in (
-        "detective", "inquisitor", "judge"
-    )]
-    if not all(ids) or len(set(ids)) != 3:
-        raise ValueError("three distinct canonical Codex agent IDs are required")
+    planned_roles = required_roles(dispatch)
+    ids = [str(agent_ids.get(role) or "").strip() for role in planned_roles]
+    if not all(ids) or len(set(ids)) != len(planned_roles):
+        raise ValueError("distinct canonical Codex agent IDs are required for planned roles")
     prompts = {
         "detective": dispatch.get("detective_prompt"),
         "inquisitor": dispatch.get("inquisitor_prompt"),
@@ -99,9 +115,10 @@ def build_codex_receipt(round_num, dispatch, payloads, agent_ids):
         "round": int(round_num),
         "runner_kind": "codex_collaboration_v1",
         "host_enforced": True,
+        "required_roles": planned_roles,
         "roles": {},
     }
-    for role, agent_id in zip(("detective", "inquisitor", "judge"), ids):
+    for role, agent_id in zip(planned_roles, ids):
         receipt["roles"][role] = {
             "invocation_id": agent_id,
             "agent_id": agent_id,
@@ -118,7 +135,7 @@ def build_codex_receipt(round_num, dispatch, payloads, agent_ids):
 def validate_round_receipt(receipt, round_num, dispatch, detective, inquisitor, judge):
     blockers = []
     receipt = receipt if isinstance(receipt, dict) else {}
-    if receipt.get("schema") != RECEIPT_SCHEMA:
+    if receipt.get("schema") not in RECEIPT_SCHEMAS:
         blockers.append("round_receipt_schema_invalid")
     try:
         stored_round = int(receipt.get("round"))
@@ -138,11 +155,20 @@ def validate_round_receipt(receipt, round_num, dispatch, detective, inquisitor, 
         "inquisitor": dispatch.get("inquisitor_prompt"),
         "judge": judge_prompt(dispatch, detective, inquisitor),
     }
+    planned_roles = required_roles(dispatch, receipt)
+    submitted_required = receipt.get("required_roles")
+    if receipt.get("schema") == RECEIPT_SCHEMA and submitted_required != planned_roles:
+        blockers.append("round_receipt_required_roles_mismatch")
     roles = receipt.get("roles") if isinstance(receipt.get("roles"), dict) else {}
+    for role in ({"detective", "inquisitor", "judge"} - set(planned_roles)):
+        skipped = payloads.get(role)
+        marker = skipped.get("_execution") if isinstance(skipped, dict) else None
+        if not isinstance(marker, dict) or marker.get("status") != "SKIPPED":
+            blockers.append(f"round_receipt_{role}_unplanned_payload_not_skipped")
     invocation_ids = []
     isolation_ids = []
     process_runner = runner_kind in set(PROCESS_RUNNERS.values())
-    for role in ("detective", "inquisitor", "judge"):
+    for role in planned_roles:
         item = roles.get(role) if isinstance(roles.get(role), dict) else {}
         invocation_id = str(item.get("invocation_id") or "").strip()
         if not invocation_id:
@@ -169,9 +195,9 @@ def validate_round_receipt(receipt, round_num, dispatch, detective, inquisitor, 
             blockers.append(f"round_receipt_{role}_prompt_hash_mismatch")
         if item.get("payload_sha256") != canonical_json_hash(payloads[role]):
             blockers.append(f"round_receipt_{role}_payload_hash_mismatch")
-    if len(set(invocation_ids)) != 3:
+    if len(set(invocation_ids)) != len(planned_roles):
         blockers.append("round_receipt_invocations_not_distinct")
-    if len(set(isolation_ids)) != 3:
+    if len(set(isolation_ids)) != len(planned_roles):
         blockers.append("round_receipt_isolation_contexts_not_distinct")
     if receipt.get("receipt_id") != receipt_id(receipt):
         blockers.append("round_receipt_id_mismatch")
@@ -191,7 +217,7 @@ def _stored_round_receipt_status(round_record):
     receipt = round_record.get("execution_receipt")
     if not isinstance(audit, dict) or audit.get("status") != "verified":
         return str((audit or {}).get("status") or "missing")
-    if not isinstance(receipt, dict) or receipt.get("schema") != RECEIPT_SCHEMA:
+    if not isinstance(receipt, dict) or receipt.get("schema") not in RECEIPT_SCHEMAS:
         return "invalid"
     if audit.get("receipt_id") != receipt.get("receipt_id"):
         return "invalid"
@@ -215,7 +241,8 @@ def _stored_round_receipt_status(round_record):
     runner_kind = str(receipt.get("runner_kind") or "")
     if runner_kind not in SUPPORTED_RUNNERS or receipt.get("host_enforced") is not True:
         return "invalid"
-    for role in ("detective", "inquisitor", "judge"):
+    planned_roles = required_roles({}, receipt)
+    for role in planned_roles:
         item = roles.get(role) if isinstance(roles.get(role), dict) else {}
         payload = raw_payloads[role]
         if not isinstance(payload, dict):
@@ -236,9 +263,9 @@ def _stored_round_receipt_status(round_record):
             if item.get("exit_code") != 0:
                 return "invalid"
             isolation_ids.append(str(item.get("process_id") or ""))
-    if not all(invocation_ids) or len(set(invocation_ids)) != 3:
+    if not all(invocation_ids) or len(set(invocation_ids)) != len(planned_roles):
         return "invalid"
-    if not all(isolation_ids) or len(set(isolation_ids)) != 3:
+    if not all(isolation_ids) or len(set(isolation_ids)) != len(planned_roles):
         return "invalid"
     return "verified"
 
@@ -270,6 +297,9 @@ def round_role_execution_verified(
         role_receipt = roles.get(role) if isinstance(roles.get(role), dict) else {}
         if role_receipt.get("payload_sha256") != expected_payload_sha256:
             return False
+    receipt_roles = records[0]["execution_receipt"].get("roles", {})
+    if role not in receipt_roles:
+        return False
     return isinstance(records[0].get(f"{role}_raw"), dict)
 
 

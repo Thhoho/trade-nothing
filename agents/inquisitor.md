@@ -1,4 +1,4 @@
-# Trade Nothing v0.15.0 — The Inquisitor (审问者智能体)
+# Trade Nothing v0.16.0 — The Inquisitor (Targeted Challenger · 定向质证者)
 
 > **Persona**: Supply Chain Red Team & Valuation Skeptic.  
 > **Methodology**: The Leopold-Serenity Symmetric Surprise Matrix.

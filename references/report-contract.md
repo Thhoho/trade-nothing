@@ -23,15 +23,21 @@ the opportunity search was broad, useful, actionable, or profitable.
 ## 2. Required report order
 
 1. **Core judgment and conditional recommendations**;
-2. **Research objective and Agenda progress**;
-3. **Answered, partial, disputed and open questions** with strongest challenge and missing datum;
-4. **Industry value transfer and market time structure** — constraint -> profit pool, plus phase by horizon;
-5. **Economic-exposure × trading-carrier map** — company, ticker, closest alternative and evidence boundary;
-6. **Conditional EVENT_SETUP and ECONOMIC_SETUP advice**;
-7. **New blind spots and forward-looking implications**;
-8. **Scenario tree and candidate risks** — trigger, invalidation, price and crowding;
-9. **Open questions and cheapest next tests**;
-10. **Evidence and method boundary**.
+2. **Current Reality gate** — named subject coverage, material changes, open material leads and
+   whether the view is decision-ready;
+3. **Research objective and Agenda progress**;
+4. **Answered, partial, disputed and open questions** with strongest challenge and missing datum;
+5. **Industry value transfer and market time structure** — constraint -> profit pool, plus phase by horizon;
+6. **Economic-exposure × trading-carrier map** — company, ticker, closest alternative and evidence boundary;
+7. **Conditional EVENT_SETUP and ECONOMIC_SETUP advice**;
+8. **New blind spots and forward-looking implications**;
+9. **Scenario tree and candidate risks** — trigger, invalidation, price and crowding;
+10. **Open questions, cheapest next tests, evidence and method boundary**.
+
+If the Current Reality gate is `MATERIAL_FACT_GAP`, the report remains deliverable as research
+progress but must suppress decision-ready recommendations. A HIGH lead already encountered cannot
+be demoted to a footnote or generic limitation; it must be verified, rejected, or shown as the
+first-page blocker.
 
 If concrete CandidateMap rendering is not yet available, the report must say so explicitly. It may
 not replace the missing product surface with additional state-machine detail.
@@ -135,14 +141,16 @@ the product count. Round counts, coverage, run status and engine labels come onl
 The Deep Research Report may explain that those fields measure audit completeness, not product value.
 
 Every Trade Nothing report carries one deterministic `TRADE_NOTHING_EXECUTION_INTEGRITY` marker.
-Only a current registered state whose every stored round has a valid three-role prompt/payload/host
-receipt may say that N research rounds completed or that roles were isolated. A state-only artifact
+Only a current registered state whose every stored round has a valid adaptive-role
+prompt/payload/host receipt may say that N research rounds completed or which roles were isolated.
+The receipt binds the exact `required_roles`; a skipped role is never represented as an invocation.
+A state-only artifact
 must say "unverified state updates"; method-identity drift must say `HISTORICAL_REPLAY`; an inline
 fallback must say `INLINE_DEGRADED_RESEARCH` and must not use numbered-round or named-role theatre.
 Never attach an inline report to a paused registered run or reuse that run ID.
 
-Raw Detective, Inquisitor and Judge payloads stay out of the default report. Preserve them only for
-explicit audit.
+Raw Lead/Detective, Challenger/Inquisitor and legacy Judge payloads stay out of the default report.
+Preserve them only for explicit audit.
 
 ## 8. Boundary
 

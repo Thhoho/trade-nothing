@@ -2,6 +2,7 @@
 """Regressions for the industry-to-market bridge and recommendation authority."""
 import hashlib
 import json
+import os
 import unittest
 from unittest import mock
 
@@ -11,6 +12,7 @@ import execution_integrity
 import market_bridge_engine
 import market_map_engine
 import report_v2
+import run_registry
 
 
 def evidence(evidence_id, claim, suffix):
@@ -587,6 +589,51 @@ class MarketBridgeTests(unittest.TestCase):
             for item in view["candidates"]
         ))
 
+    def test_all_market_interpretations_bind_sealed_dispatch_receipts(self):
+        st = state()
+        ingest_pair(st)
+        detective = {
+            "value_transfer_paths": [value_path()],
+            "market_phase_snapshot": phase(),
+            "carrier_universe_snapshots": universes(),
+            "market_map_candidates": [
+                candidate("甲公司", "600001", "乙公司", "000002"),
+                candidate("乙公司", "000002", "甲公司", "600001"),
+            ],
+            "market_mechanics": {
+                "event_change": "旧上下文事件解释",
+                "capital_flow": "旧上下文资金解释",
+            },
+        }
+        # Simulate a sealed role context that predated the host receipts now in
+        # state.  Every derived market interpretation must inherit this empty
+        # dispatch lineage instead of reading mutable state at submit time.
+        market_bridge_engine.harvest_context(
+            st, 1, detective, {}, market_context_receipt_ids=[]
+        )
+        attach_verified_round(st, 1, detective, {})
+        market_map_engine.harvest_round(
+            st, 1, detective, {}, market_context_receipt_ids=[]
+        )
+        candidate_view = market_map_engine.report_view(st)
+        bridge = candidate_view["market_bridge"]
+        self.assertEqual(
+            bridge["phase_by_horizon"]["EARNINGS_QUARTERS"]["status"],
+            "STALE_CONTEXT",
+        )
+        self.assertEqual(
+            bridge["universe_by_horizon"]["EARNINGS_QUARTERS"]["types"]
+            ["MARKET_TRADING"]["status"],
+            "STALE_CONTEXT",
+        )
+        self.assertTrue(all(
+            item["bridge"]["market_context_status"] == "STALE"
+            and item["bridge"]["market_recognition"]["effective"] == "UNKNOWN"
+            for item in bridge["candidates"]
+        ))
+        self.assertEqual(candidate_view["market_mechanics"], [])
+        self.assertEqual(candidate_view["stale_market_mechanics_count"], 1)
+
     def test_two_role_phase_requires_evidence_from_both_roles(self):
         st = state()
         ingest_pair(st)
@@ -721,6 +768,45 @@ class MarketBridgeTests(unittest.TestCase):
         self.assertEqual(context[0]["ticker"], "600001")
         self.assertEqual(context[0]["authority"], "HOST_INGESTED_RECEIPT_BOUND")
         self.assertNotIn("upstream_acquisition_receipt_id", context[0])
+
+    def test_market_views_have_stable_semantic_key_order(self):
+        st = state()
+        view = market_bridge_engine.report_view(st, [])
+        self.assertEqual(
+            list(view["universe_by_horizon"]),
+            sorted(view["universe_by_horizon"]),
+        )
+
+    def test_new_snapshot_cannot_mutate_a_round_after_role_execution(self):
+        st = state()
+        payload = {"evidence_items": []}
+        checkpoint = {
+            "roles": {
+                "detective": {
+                    "payload": payload,
+                    "payload_sha256": run_registry.canonical_json_hash(payload),
+                    "exit_code": 0,
+                }
+            }
+        }
+        with mock.patch.object(
+            deepthink_orchestrator_v2, "_load", return_value=st
+        ), mock.patch.object(
+            deepthink_orchestrator_v2.run_registry,
+            "load_checkpoint",
+            return_value=checkpoint,
+        ), mock.patch.dict(
+            os.environ, {"TRADE_NOTHING_RUN_ID": "RUN-20260812-ABCDEF123456"}
+        ):
+            result = deepthink_orchestrator_v2.cmd_ingest_market_snapshot(
+                "产业到市场映射测试",
+                host_snapshot("甲公司", "600001", "XSHG", salt="late"),
+            )
+        self.assertEqual(result["status"], "market_snapshot_rejected")
+        self.assertEqual(result["reason"], "ROUND_CONTEXT_ALREADY_EXECUTED")
+        self.assertFalse(
+            st.get("market_bridge", {}).get("host_market_snapshots", [])
+        )
 
     def test_competing_phase_readings_remain_disputed(self):
         st = state()

@@ -345,7 +345,7 @@ class CandidateMapTests(unittest.TestCase):
         self.assertEqual(view["candidates"][0]["evidence_boundary"], "HYPOTHESIS")
         self.assertEqual(view["candidates"][0]["attention_band"], "EXPLORE")
         self.assertEqual(view["result_type"], "EXPLORE")
-        self.assertIn("缺字段证据", report_v2.render(st))
+        self.assertIn("缺证据", report_v2.render(st))
 
     def test_listed_equity_without_ticker_and_abstract_mapping_are_rejected(self):
         st = state()
@@ -836,7 +836,10 @@ class DeepResearchReplayTests(unittest.TestCase):
         self.assertIn("### 产业链兑现", md)
         self.assertIn("完整回收", md)
         self.assertIn("价格与筹码", md)
-        self.assertIn("短线资金可能先交易高辨识度事件 beta", md)
+        self.assertIn("当前宿主可信市场快照（权威数据平面）", md)
+        self.assertIn("旧角色解释保留在审计历史", md)
+        self.assertNotIn("STALE_CONTEXT", md)
+        self.assertNotIn("短线资金可能先交易高辨识度事件 beta", md)
         self.assertIn("再次延期本身可能比最终结果更先改变筹码结构", md)
         self.assertIn("条件性优先关注 超捷股份", md)
         self.assertIn("条件性优先关注 斯瑞新材", md)

@@ -506,9 +506,10 @@ def execute_round(context, *, agy_bin="", host_bin="", host_runtime="antigravity
     round_num = len(state.get("rounds", [])) + 1
     stage_id = f"round-{round_num}"
     prompts = orchestrator.dispatch_prompts(state, round_num)
+    planned_roles = execution_integrity.required_roles(prompts)
     role_prompts = {
-        "detective": prompts["detective_prompt"],
-        "inquisitor": prompts["inquisitor_prompt"],
+        role: prompts[f"{role}_prompt"]
+        for role in planned_roles if role in {"detective", "inquisitor"}
     }
     checkpoint = run_registry.load_checkpoint(context["run_id"], stage_id)
     if checkpoint.get("submitted"):
@@ -523,9 +524,13 @@ def execute_round(context, *, agy_bin="", host_bin="", host_runtime="antigravity
     checkpoint.setdefault("prompt_sha256", {
         role: _prompt_hash(prompt) for role, prompt in role_prompts.items()
     })
+    checkpoint.setdefault(
+        "dispatch_context_sha256", prompts.get("context_sha256", "")
+    )
     expected_prompt_hashes = {
         role: _prompt_hash(prompt) for role, prompt in role_prompts.items()
     }
+    expected_context_sha256 = prompts.get("context_sha256", "")
     if checkpoint["prompt_sha256"] != expected_prompt_hashes:
         old_records = checkpoint.get("roles") if isinstance(checkpoint.get("roles"), dict) else {}
         records_to_check = list(old_records.values())
@@ -540,13 +545,23 @@ def execute_round(context, *, agy_bin="", host_bin="", host_runtime="antigravity
             for record in records_to_check
         )
         if checkpoint.get("submitted") or has_successful_payload:
+            reason = (
+                "checkpoint_dispatch_context_changed"
+                if checkpoint.get("dispatch_context_sha256")
+                != expected_context_sha256
+                else "checkpoint_prompt_contract_changed"
+            )
             return _pause(
                 context, stage_id, checkpoint, ["manual_review"],
-                "checkpoint_prompt_hash_mismatch", budget
+                reason, budget
             )
         checkpoint = {
             "prompt_sha256": expected_prompt_hashes,
+            "dispatch_context_sha256": expected_context_sha256,
             "superseded_prompt_sha256": checkpoint.get("prompt_sha256", {}),
+            "superseded_dispatch_context_sha256": checkpoint.get(
+                "dispatch_context_sha256", ""
+            ),
             "roles": {},
             "status": "restarted_after_failed_prompt_drift",
         }
@@ -582,52 +597,59 @@ def execute_round(context, *, agy_bin="", host_bin="", host_runtime="antigravity
         )
         return _pause(context, stage_id, checkpoint, failed, reason, budget)
 
-    detective = records["detective"]["payload"]
-    inquisitor = records["inquisitor"]["payload"]
-    judge_prompt = (
-        prompts["judge_prompt"]
-        + "\nOnly score evidence physically present in these exact payloads.\nDetective JSON:\n"
-        + json.dumps(detective, ensure_ascii=False, sort_keys=True)
-        + "\nInquisitor JSON:\n"
-        + json.dumps(inquisitor, ensure_ascii=False, sort_keys=True)
+    detective = (
+        records["detective"]["payload"] if "detective" in role_prompts
+        else orchestrator.empty_role_payload("detective", round_num)
     )
-    judge_record = checkpoint.get("judge")
-    if not _checkpoint_role_valid(judge_record, judge_prompt):
-        judge_workdir = os.path.join(
-            run_registry.checkpoint_dir(context["run_id"]), stage_id + "-work", "judge"
+    inquisitor = (
+        records["inquisitor"]["payload"] if "inquisitor" in role_prompts
+        else orchestrator.empty_role_payload("inquisitor", round_num)
+    )
+    judge_record = None
+    judge_payload = orchestrator.empty_role_payload("judge", round_num)
+    if "judge" in planned_roles:
+        judge_prompt = execution_integrity.judge_prompt(
+            prompts, detective, inquisitor
         )
-        os.makedirs(judge_workdir, exist_ok=True)
-        judge_record = _public_result(_run_role(
-            "judge", judge_prompt, host_bin,
-            min(timeout_seconds, judge_timeout_seconds), allow_agent_tools,
-            judge_workdir, host_runtime,
-        ))
-        checkpoint["judge"] = judge_record
-        run_registry.save_checkpoint(context["run_id"], stage_id, checkpoint)
-    if not _checkpoint_role_valid(judge_record, judge_prompt):
-        reason = (
-            "resource_exhausted_429"
-            if judge_record.get("resource_exhausted") else "judge_failure"
-        )
-        return _pause(context, stage_id, checkpoint, ["judge"], reason, budget)
+        judge_record = checkpoint.get("judge")
+        if not _checkpoint_role_valid(judge_record, judge_prompt):
+            judge_workdir = os.path.join(
+                run_registry.checkpoint_dir(context["run_id"]), stage_id + "-work", "judge"
+            )
+            os.makedirs(judge_workdir, exist_ok=True)
+            judge_record = _public_result(_run_role(
+                "judge", judge_prompt, host_bin,
+                min(timeout_seconds, judge_timeout_seconds), allow_agent_tools,
+                judge_workdir, host_runtime,
+            ))
+            checkpoint["judge"] = judge_record
+            run_registry.save_checkpoint(context["run_id"], stage_id, checkpoint)
+        if not _checkpoint_role_valid(judge_record, judge_prompt):
+            reason = (
+                "resource_exhausted_429"
+                if judge_record.get("resource_exhausted") else "judge_failure"
+            )
+            return _pause(context, stage_id, checkpoint, ["judge"], reason, budget)
+        judge_payload = judge_record["payload"]
 
+    payloads = {
+        "detective": detective,
+        "inquisitor": inquisitor,
+        "judge": judge_payload,
+    }
+    receipt_records = {
+        role: (judge_record if role == "judge" else records[role])
+        for role in planned_roles
+    }
     round_receipt = execution_integrity.build_process_receipt(
         round_num,
         host_runtime,
         prompts,
-        {
-            "detective": detective,
-            "inquisitor": inquisitor,
-            "judge": judge_record["payload"],
-        },
-        {
-            "detective": records["detective"],
-            "inquisitor": records["inquisitor"],
-            "judge": judge_record,
-        },
+        payloads,
+        receipt_records,
     )
     result = orchestrator.cmd_submit(
-        context["topic"], detective, inquisitor, judge_record["payload"],
+        context["topic"], detective, inquisitor, judge_payload,
         round_receipt=round_receipt,
     )
     checkpoint["submitted"] = True

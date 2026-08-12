@@ -5,6 +5,35 @@ from identical frozen inputs. Do not load an assessment or future outcome into a
 context. This protocol does not test live source discovery, full-universe coverage, expected return,
 or alpha.
 
+## Product-value comparison is a separate gate
+
+The frozen suites below remain reasoning and controlled-discovery instruments. They cannot answer
+the product question exposed by a same-model live comparison: did the method find the recent,
+load-bearing facts that a capable single researcher would find, and did the added process improve
+the decision enough to justify its cost?
+
+Use `scripts/product_value_benchmark.py` for that gate. Freeze the user question, model, as-of,
+tool profile, maximum tokens/searches/wall time, and evaluator-only weighted material facts. The
+single-agent and Skill artifacts are blindly assessed only after completion. The candidate is
+blocked when:
+
+- weighted material-fact recall is below the single-agent baseline;
+- blind decision usefulness does not improve;
+- false-source, hypothesis-laundering, or known-material-omission count is non-zero;
+- token cost exceeds 1.5x baseline before incremental value is demonstrated.
+
+Keep the material-fact key out of both research contexts. Do not let the Skill self-assess. A pass
+is case-level product evidence, not Alpha or return evidence; repeat across diverse real themes
+before changing the public effectiveness claim.
+
+Each assessment must bind the exact report SHA-256 and the same blinded assessor identity. The CLI
+requires both report files, recomputes their hashes, and rejects a typed hash that is not the actual
+artifact. The scorer derives known omissions from the hidden material-fact IDs instead of trusting a model- or
+assessor-authored zero, rejects unknown fact IDs, unequal comparison contracts, reused artifacts,
+out-of-range usefulness scores, and actual usage above any frozen budget. `blind=true` remains a
+host attestation, so the host must withhold variant labels and the material key until both reports
+are frozen.
+
 ## Separation
 
 Keep four artifacts physically separate:

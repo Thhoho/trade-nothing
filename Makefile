@@ -7,7 +7,7 @@ DEV_DIR ?= $(if $(wildcard $(HOME)/Documents/trade-nothing/SKILL.md),$(HOME)/Doc
 GEMINI_SKILL_DIR ?= $(HOME)/.gemini/skills/trade-nothing
 CODEX_SKILL_DIR ?= $(HOME)/.codex/skills/trade-nothing
 CLAUDE_SKILL_DIR ?= $(HOME)/.claude/skills/trade-nothing
-.PHONY: help install pull status test clean clean-state verify-version verify-report
+.PHONY: help install pull status test daily daily-finalize daily-topic clean clean-state verify-version verify-report
 
 help:
 	@echo "=================================================================="
@@ -15,6 +15,9 @@ help:
 	@echo "=================================================================="
 	@echo "make install       : Sync controlled source files to Gemini, Codex and Claude skills"
 	@echo "make status        : Verify managed source alignment and report inert legacy extras"
+	@echo "make daily         : Produce one market observation and one 0-10 round topic budget"
+	@echo "make daily-finalize: Validate/persist INPUT JSON without starting nested Codex"
+	@echo "make daily-topic   : Compatibility alias for make daily"
 	@echo "make verify-version: Check version consistency across documentation"
 	@echo "make test          : Run current deterministic safety and regression gates"
 	@echo "make clean         : Clean Python cache only (never deletes research state)"
@@ -50,9 +53,11 @@ test:
 	PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/scripts/test_hypothesis_integration.py"
 	PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/scripts/test_product_reset_contract.py"
 	PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/scripts/test_research_kernel.py"
+	PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/scripts/test_material_change_engine.py"
 	PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/scripts/test_research_agenda_engine.py"
 	PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/scripts/test_agenda_native_control.py"
 	PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/scripts/test_free_market_observations.py"
+	PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/scripts/test_daily_topic.py"
 	PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/scripts/test_market_snapshot_adapter.py"
 	PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/scripts/test_market_bridge_engine.py"
 	PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/scripts/test_market_map_engine.py"
@@ -76,13 +81,23 @@ test:
 	PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/scripts/test_benchmark_current.py"
 	PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/scripts/test_benchmark_harness.py"
 	PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/scripts/test_discovery_benchmark_harness.py"
+	PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/scripts/test_product_value_benchmark.py"
 	PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/scripts/test_project_handoff.py"
 	PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/scripts/test_research_start_packet.py"
 	PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/scripts/test_install_skill.py"
 	python3 -c "import ast,pathlib; ast.parse(pathlib.Path('$(ROOT_DIR)/scripts/legacy_crux_audit_adapter.py').read_text(encoding='utf-8'))"
-	python3 -c "import ast,pathlib; [ast.parse(pathlib.Path(p).read_text(encoding='utf-8')) for p in ['$(ROOT_DIR)/scripts/crux_engine.py','$(ROOT_DIR)/scripts/research_kernel.py','$(ROOT_DIR)/scripts/research_agenda_engine.py','$(ROOT_DIR)/scripts/execution_integrity.py','$(ROOT_DIR)/scripts/codex_deepthink_round_receipt.py','$(ROOT_DIR)/scripts/hypothesis_engine.py','$(ROOT_DIR)/scripts/landscape_engine.py','$(ROOT_DIR)/scripts/framing_feasibility.py','$(ROOT_DIR)/scripts/free_market_observations.py','$(ROOT_DIR)/scripts/market_snapshot_adapter.py','$(ROOT_DIR)/scripts/market_bridge_engine.py','$(ROOT_DIR)/scripts/market_map_engine.py','$(ROOT_DIR)/scripts/opportunity_engine.py','$(ROOT_DIR)/scripts/candidate_gap_engine.py','$(ROOT_DIR)/scripts/candidate_screen_engine.py','$(ROOT_DIR)/scripts/codex_candidate_screen_receipt.py','$(ROOT_DIR)/scripts/codex_claim_verifier_receipt.py','$(ROOT_DIR)/scripts/evidence_snapshot.py','$(ROOT_DIR)/scripts/claim_verification_engine.py','$(ROOT_DIR)/scripts/claim_verifier_runner.py','$(ROOT_DIR)/scripts/process_control.py','$(ROOT_DIR)/scripts/install_skill.py','$(ROOT_DIR)/scripts/research_output.py','$(ROOT_DIR)/scripts/deepthink_orchestrator_v2.py','$(ROOT_DIR)/scripts/report_v2.py','$(ROOT_DIR)/scripts/validate_report_v2.py','$(ROOT_DIR)/scripts/benchmark_harness.py','$(ROOT_DIR)/scripts/discovery_benchmark_harness.py','$(ROOT_DIR)/scripts/project_handoff.py','$(ROOT_DIR)/scripts/research_start_packet.py']]"
+	python3 -c "import ast,pathlib; [ast.parse(pathlib.Path(p).read_text(encoding='utf-8')) for p in ['$(ROOT_DIR)/scripts/crux_engine.py','$(ROOT_DIR)/scripts/research_kernel.py','$(ROOT_DIR)/scripts/material_change_engine.py','$(ROOT_DIR)/scripts/research_agenda_engine.py','$(ROOT_DIR)/scripts/execution_integrity.py','$(ROOT_DIR)/scripts/codex_deepthink_round_receipt.py','$(ROOT_DIR)/scripts/hypothesis_engine.py','$(ROOT_DIR)/scripts/landscape_engine.py','$(ROOT_DIR)/scripts/framing_feasibility.py','$(ROOT_DIR)/scripts/free_market_observations.py','$(ROOT_DIR)/tools/daily_topic.py','$(ROOT_DIR)/scripts/market_snapshot_adapter.py','$(ROOT_DIR)/scripts/market_bridge_engine.py','$(ROOT_DIR)/scripts/market_map_engine.py','$(ROOT_DIR)/scripts/opportunity_engine.py','$(ROOT_DIR)/scripts/candidate_gap_engine.py','$(ROOT_DIR)/scripts/candidate_screen_engine.py','$(ROOT_DIR)/scripts/codex_candidate_screen_receipt.py','$(ROOT_DIR)/scripts/codex_claim_verifier_receipt.py','$(ROOT_DIR)/scripts/evidence_snapshot.py','$(ROOT_DIR)/scripts/claim_verification_engine.py','$(ROOT_DIR)/scripts/claim_verifier_runner.py','$(ROOT_DIR)/scripts/process_control.py','$(ROOT_DIR)/scripts/install_skill.py','$(ROOT_DIR)/scripts/research_output.py','$(ROOT_DIR)/scripts/deepthink_orchestrator_v2.py','$(ROOT_DIR)/scripts/report_v2.py','$(ROOT_DIR)/scripts/validate_report_v2.py','$(ROOT_DIR)/scripts/benchmark_harness.py','$(ROOT_DIR)/scripts/discovery_benchmark_harness.py','$(ROOT_DIR)/scripts/product_value_benchmark.py','$(ROOT_DIR)/scripts/project_handoff.py','$(ROOT_DIR)/scripts/research_start_packet.py']]"
 	env "TRADE_NOTHING_SCRATCH_DIR=$${TMPDIR:-/tmp}/trade-nothing-v2-selftest" PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/scripts/deepthink_orchestrator_v2.py" --selftest
 	@echo "🎉 Current deterministic gates passed."
+
+daily:
+	@PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/tools/daily_topic.py" $(ARGS)
+
+daily-finalize:
+	@if [ -z "$(INPUT)" ]; then echo "Usage: make daily-finalize INPUT=/path/to/daily.json ARGS='--as-of ...'"; exit 1; fi
+	@PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT_DIR)/tools/daily_topic.py" --input-json "$(INPUT)" $(ARGS)
+
+daily-topic: daily
 
 clean:
 	@echo "🧹 Cleaning pycache only. Research state is never deleted here."

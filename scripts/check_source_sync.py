@@ -36,6 +36,7 @@ def controlled_files(root: Path):
     files.extend(sorted((root / "references").glob("*")))
     files.extend(sorted((root / "docs").glob("*.md")))
     files.extend(sorted((root / "scripts").glob("*.py")))
+    files.extend(sorted((root / "tools").glob("*.py")))
     files.extend(sorted((root / "benchmarks").glob("**/*")))
     files.extend(
         sorted(
@@ -67,6 +68,7 @@ def controlled_candidates(root: Path):
     files.extend(sorted((root / "references").glob("*")))
     files.extend(sorted((root / "docs").glob("*.md")))
     files.extend(sorted((root / "scripts").glob("*.py")))
+    files.extend(sorted((root / "tools").glob("*.py")))
     files.extend(sorted((root / "benchmarks").glob("**/*")))
     files.extend(
         sorted(

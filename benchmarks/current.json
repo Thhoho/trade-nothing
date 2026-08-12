@@ -4,9 +4,9 @@
   "operational_method_identity": {
     "schema_version": "trade-nothing.method-identity.v1",
     "scope": "operational-bundle.v1",
-    "method_version": "0.15.0",
-    "contract_sha256": "eb01a3089b760dadd84e8cbec1274bfccad6861f3cdb804b63c871026123c713",
-    "file_count": 84
+    "method_version": "0.16.0",
+    "contract_sha256": "9490d94e848f80982be9a8a321c9154953f95dde778c38701e15ef3ca1b71fd9",
+    "file_count": 87
   },
   "last_calibrated_method_identity": {
     "schema_version": "trade-nothing.method-identity.v1",

@@ -4,9 +4,9 @@ This matrix distinguishes an implemented adapter from a manual protocol mapping.
 `SKILL.md` is not proof that a framework can enforce isolation, produce a valid receipt, or resume
 a run.
 
-## Capability matrix (audited 2026-08-05)
+## Capability matrix (audited 2026-08-12)
 
-| Runtime | Core Detective/Inquisitor/Judge | CandidateScreen | Claim Verifier | Assurance |
+| Runtime | Adaptive research roles | CandidateScreen | Claim Verifier | Assurance |
 |---|---|---|---|---|
 | Antigravity (`agy`) | `deepthink_host_runner.py --runtime antigravity` | two process-bound roles through `agy_candidate_screen_runner.py` | `claim_verifier_runner.py --runtime antigravity` | Implemented and offline contract-tested; live model access remains environment-dependent. |
 | Claude Code | `deepthink_host_runner.py --runtime claude-code` | two process-bound roles through `agy_candidate_screen_runner.py --runtime claude-code` | `claim_verifier_runner.py --runtime claude-code` | Implemented and offline contract-tested; CLI structured-output flags were locally verified, but this release audit did not spend a live model call. |

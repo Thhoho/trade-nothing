@@ -6,26 +6,26 @@ import re
 from pathlib import Path
 
 
-__version__ = "0.15.0"
+__version__ = "0.16.0"
 
 
 def _surface_contracts(version):
     tag = f"v{version}"
     return {
         "SKILL.md": [
-            f"# Trade Nothing {tag} — The Sovereign Alpha Hunter",
-            f"Agenda-Native Adversarial Research ({tag}, recommended)",
-            f"*Trade Nothing {tag} — Hunt Alpha, Not Consensus.*",
+            f"# Trade Nothing {tag} — Value-First Research",
+            "Current truth first. Decision gain over process theatre.",
+            f"*Trade Nothing {tag}",
         ],
         "README.md": [
             f"docs/release-{tag}.md",
-            f"## {tag}: discovery first, verification on demand",
+            f"## {tag}: current truth first, challenge on demand",
             f"**Calibration status:** {tag} is implemented",
             "v0.10 foundation design",
         ],
         "README_zh.md": [
             f"docs/release-{tag}.md",
-            f"## {tag}：发现优先，验证按需",
+            f"## {tag}：当前事实优先，质证按需",
             f"**校准状态：** {tag} 已实现",
             "v0.10 基础设计",
         ],

@@ -9,7 +9,7 @@
 <p align="center">
   <a href="README_zh.md">中文</a> ·
   <a href="SKILL.md">Runtime contract</a> ·
-  <a href="docs/release-v0.15.0.md">v0.15.0 release</a> ·
+  <a href="docs/release-v0.16.0.md">v0.16.0 release</a> ·
   <a href="docs/hypothesis-led-research-v0.10.md">v0.10 foundation design</a>
 </p>
 
@@ -24,9 +24,10 @@ hide.
 It is a research workflow, not an automated trading system. It does not produce an automatic
 buy/sell instruction, target price, expected return, Kelly allocation, or position size.
 
-> **v0.15 product shape implemented.** The Research Agenda is the primary object, opportunity
-> discovery remains central, heavy verification is explicit and selective, and the skill ends at a
-> Deep Research Report with conditional advice. Thesis,
+> **v0.16 value-first core implemented.** Current Reality now precedes the Research Agenda:
+> the first Lead call scans the subject's recent official fact surface, known material omissions
+> block decision-ready delivery, and Challenger/Judge calls are conditional rather than ceremonial.
+> The skill still ends at a Deep Research Report with conditional advice. Thesis,
 > Decision, order, position, portfolio, publication workflow, and cross-product handoff are outside
 > the product boundary. CandidateMap, discovery-first dispatch and the new default renderer are now
 > wired; real-theme effectiveness remains unbenchmarked. See
@@ -36,6 +37,7 @@ buy/sell instruction, target price, expected return, Kelly allocation, or positi
 
 | Layer | What the current version does | Hard boundary |
 |---|---|---|
+| Current truth | Scans named entities across current official disclosures, periodic reports, commercial milestones and capital/regulatory changes; records material events and unresolved leads | Bounded coverage reduces known omissions but cannot prove exhaustive web discovery |
 | Research | Builds a question-native Research Agenda, answers it over bounded adversarial rounds, and keeps blind spots visible | A completed report does not imply that every question is answered |
 | Evidence | Stores model findings and verified host data in one canonical evidence ledger, then recomputes current answers and issues | Historical observations remain auditable but do not stay authoritative forever |
 | Industry → market | Maps causal change → value-transfer path → economic-exposure universe → observed market-carrier universe → horizon-specific setup | Theme membership or price leadership alone cannot establish economic exposure |
@@ -43,6 +45,34 @@ buy/sell instruction, target price, expected return, Kelly allocation, or positi
 | Market data | Freezes candidate and benchmark observations from Tushare, BaoStock, AKShare/Tencent, or CSV and binds them with receipts | Market data is context, not issuer evidence or proof of recommendation quality |
 | Stopping | Continues only for a low-cost, decision-relevant test that can be searched now; waiting conditions remain in the report | A round budget is a safety fuse, not a reason to manufacture progress |
 | Output | Produces a Deep Research Report and a separate canonical Evidence Ledger; focused verification remains explicit | Engineering gates and report rendering do not prove Alpha or investment performance |
+
+## v0.16.0: current truth first, challenge on demand
+
+The earlier architecture could complete multiple rigorous rounds while missing a recent company
+event that a same-model single-agent report found. v0.16 fixes the architectural cause:
+
+- **Retrieval now precedes debate.** `primary_entities` define a subject-level Current Reality Scan
+  before Agenda narrowing. Actual query, checked URL, outcome, and materiality are persisted.
+- **Known omissions fail closed.** An unresolved HIGH material lead or incomplete required fact
+  surface produces `MATERIAL_FACT_GAP`. The report remains available, but decision-ready
+  recommendations are suppressed.
+- **Calls are adaptive.** Agenda-native round 1 normally invokes one Value Lead. A Targeted
+  Challenger runs only for load-bearing answers that need independent attack. Judge runs only for
+  explicit legacy crux audit. Receipts bind the exact roles that actually ran.
+- **The first page exposes value.** Material changes, fact-surface gaps, current judgment,
+  industry-to-market mapping, named alternatives, and the next cheapest validation appear before
+  process diagnostics.
+- **Product value has its own gate.** The current method must match or beat the same-model
+  single-agent baseline on weighted material-fact recall and decision usability, with no more than
+  1.5x cost until incremental value is demonstrated.
+
+> **Calibration status:** v0.16.0 is implemented and deterministic regression gates are in place,
+> but the operational method remains `UNBENCHMARKED_METHOD_CHANGE` until a new same-model,
+> same-question, same-as-of blind comparison is completed. Engineering correctness is not evidence
+> of research effectiveness, Alpha, return, or risk-adjusted return.
+
+Read the [v0.16.0 release note](docs/release-v0.16.0.md) and the concise
+[runtime contract](SKILL.md). The v0.15 section below is retained as architecture history.
 
 ## v0.15.0: discovery first, verification on demand
 
@@ -244,10 +274,10 @@ The recommended `-deepthink2` path is:
 
 1. Frame a bounded, falsifiable question and choose `THESIS_CHALLENGE`,
    `OPPORTUNITY_DISCOVERY`, or `HYBRID`.
-2. Run Framer inline, initialize the deterministic state, then dispatch isolated Detective and
-   Inquisitor roles on the selected open cruxes.
-3. Let Judge score only the cited formal evidence. The engine—not the LLM—updates support and
-   decides whether the run continues, converges, or fuse-breaks.
+2. Run Framer inline and initialize the deterministic state. The first scheduled Value Lead scans
+   each primary entity's current official fact surface before narrowing into Agenda answers.
+3. Execute only the sealed `required_roles`: use a Targeted Challenger for unchallenged
+   load-bearing answers or explicit Landscape coverage, and Judge only for legacy crux audit.
 4. For opportunity work, advance the Research Agenda and CandidateMap first. CandidateScreen and
    snapshot-bound claim verification run only when explicitly requested for a short list.
 5. If useful, design one bounded exploration action. Planning does not authorize execution; only
@@ -336,6 +366,63 @@ are in [`references/data-sources.md`](references/data-sources.md). A successful 
 acquisition and deterministic transformation—not issuer fundamentals, recommendation quality, or
 expected return.
 
+#### Daily observation and dynamic topic
+
+There is one daily entrypoint:
+
+```bash
+make daily
+```
+
+It uses the current Codex sign-in for one read-only, ephemeral market scan. From the same fact cutoff
+and source set, it produces a daily observation plus exactly one research topic and a minimum
+sufficient `0-10` round budget:
+
+- `var/daily/YYYY-MM-DD/observation.{json,md}`
+- `var/daily/YYYY-MM-DD/topic-card.{json,md}`
+
+The observation owns the `C1/C2/C3` change evidence; the topic can only reference those IDs instead
+of inventing a second fact narrative. It covers market state, three real changes, the
+industry-to-market bridge, today's boundary, and the next validation. It is a decision brief, not a
+news digest, full report, or recommendation. Insufficient evidence is marked `DEGRADED`; `NO_TOPIC`
+still leaves an observation and a zero-round budget. The script never creates or resumes a research
+run, spends research rounds, changes the website, publishes, or deploys. Closed sessions skip the
+model and record the calendar boundary. Same-day reruns fail closed unless `ARGS="--replace"` is
+explicit.
+
+Inspect the complete prompt without calling a model:
+
+```bash
+make daily ARGS="--dry-run --as-of 2026-08-12"
+```
+
+A scheduler only needs to execute `make daily`. The old `make daily-topic` remains a compatibility
+alias for the same command. Codex CLI uses the existing ChatGPT/Codex sign-in, so no OpenAI API key
+is stored in this repository; `TUSHARE_TOKEN` remains parent-only.
+
+Canonical daily output is post-close only: on an open session the writer stays closed until 18:00
+Asia/Shanghai. A pre-open test cannot consume the end-of-day slot. If an artifact from an older
+version already did so, the completed-close run moves it intact to
+`var/daily-drafts/YYYY-MM-DD/HHMM` before writing the canonical bundle.
+
+Codex scheduled tasks in `workspace-write` cannot normally reach login state outside the project.
+The repository includes `.codex/rules/daily.rules`, a least-privilege project rule that permits only
+the fixed ephemeral, read-only Codex child used by the daily observer. The child receives no token,
+API-key, or secret environment variables. Trust the project and restart Codex after adding the rule.
+Hosts that do not load project rules can validate and persist an outer agent's schema-valid JSON
+without starting a child process:
+
+```bash
+make daily-finalize INPUT=/path/to/daily.json ARGS="--as-of 2026-08-12"
+```
+
+Research rounds now freeze the same way: ingest host market data before role execution. Once any
+successful role payload exists, new data belongs to the next round unless the operator explicitly
+abandons the unsubmitted checkpoint and reruns the whole round. Answers, phases, dual universes,
+candidate interpretations, and market mechanics inherit the sealed dispatch's market-receipt
+lineage instead of reading mutable state at submit time. Formal reports project current host receipts
+and the canonical evidence plane; stale role interpretations remain audit history.
+
 ## Minimal manual workflow
 
 ```bash
@@ -346,10 +433,10 @@ python3 scripts/deepthink_orchestrator_v2.py --frame --topic "TARGET"
 python3 scripts/deepthink_orchestrator_v2.py --init \
   --topic "TARGET" --frame-json '<framer_json>'
 
-# Submit isolated Detective, Inquisitor, and Judge payloads.
+# Inspect required_roles, execute only those roles, and use --empty-role for omitted payloads.
 python3 scripts/deepthink_orchestrator_v2.py --submit \
-  --topic "TARGET" --det '<detective_json>' \
-  --inq '<inquisitor_json>' --judge '<judge_json>'
+  --topic "TARGET" --det '<lead_or_typed_empty_json>' \
+  --inq '<challenger_or_typed_empty_json>' --judge '<legacy_judge_or_typed_empty_json>'
 
 # Render at every terminal stop; the deterministic gate controls the grade and allowed claims.
 python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET"

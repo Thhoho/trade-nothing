@@ -153,6 +153,37 @@ class ResearchAgendaTests(unittest.TestCase):
         self.assertEqual(question["evidence"][0]["evidence_id"], host["evidence_id"])
         self.assertEqual(len(agenda["evidence_items"]), 1)
 
+    def test_market_answer_lineage_comes_from_dispatch_not_mutable_state(self):
+        agenda = research_agenda_engine.initialize(frame())
+        host = self._host_market_evidence(agenda)
+        state = {
+            "research_agenda": agenda,
+            "rounds": [{}],
+            "market_bridge": {
+                "host_market_snapshots": [{"receipt_id": "receipt-host-market"}]
+            },
+        }
+        payload = {"question_updates": [{
+            "question_id": "RQ2",
+            "answer_status": "ANSWERED",
+            "answer": "旧上下文认为当前相对强弱已经转正。",
+            "answer_is_inference": False,
+            "evidence_ids": [host["evidence_id"]],
+            "strongest_challenge": "新行情可能改变阶段",
+            "missing_information": "当前上下文",
+            "next_question": "当前强弱是否延续？",
+            "next_test_availability": "SEARCH_NOW",
+        }]}
+        research_agenda_engine.harvest_round(
+            state, 1, payload, {}, market_context_receipt_ids=[]
+        )
+        question = next(
+            item for item in research_agenda_engine.projected_questions(state)
+            if item["question_id"] == "RQ2"
+        )
+        self.assertEqual(question["answer_resolution"], "STALE_MARKET_CONTEXT")
+        self.assertNotIn("旧上下文认为", question["current_answer"])
+
     def test_host_market_evidence_cannot_answer_non_market_fact_question(self):
         agenda = research_agenda_engine.initialize(frame())
         host = self._host_market_evidence(agenda)

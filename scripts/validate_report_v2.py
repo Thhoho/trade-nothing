@@ -626,6 +626,7 @@ def validate_report_outcomes(path, state_path=""):
         "state_errors": [],
         "promotion_eligibility": [],
         "publication_eligibility": None,
+        "evidence_plane": None,
         "warnings": warnings,
     }
     if not state_path:
@@ -657,6 +658,9 @@ def validate_report_outcomes(path, state_path=""):
         # borrowed model IDs and the newly minted host facts escape validation.
         market_bridge_engine.refresh_host_market_evidence(state)
         agenda = state.get("research_agenda", {})
+        result["evidence_plane"] = research_kernel.evidence_plane_counts(
+            agenda.get("evidence_items", [])
+        )
         control = research_agenda_engine.control_decision(state)
         if not isinstance(agenda, dict) or not agenda.get("questions"):
             result["state_errors"].append("Agenda-native state has no Research Agenda questions.")
@@ -801,10 +805,20 @@ def main():
         )
         tiers = pub["claim_tiers"]
         print(
-            "CLAIM_TIERS: "
+            "LEGACY_CLAIM_TIERS (compatibility only): "
             f"VERIFIED={','.join(tiers['VERIFIED']) or 'none'} | "
             f"SINGLE_SOURCE={','.join(tiers['SINGLE_SOURCE']) or 'none'} | "
             f"HYPOTHESIS={','.join(tiers['HYPOTHESIS']) or 'none'}"
+        )
+    evidence_plane = outcome.get("evidence_plane")
+    if evidence_plane:
+        print(
+            "CANONICAL_EVIDENCE_PLANE: "
+            f"items={evidence_plane['canonical_evidence_item_count']} | "
+            f"primary={evidence_plane['primary_source_count']} | "
+            f"host_market={evidence_plane['host_market_evidence_count']} | "
+            f"urls={evidence_plane['unique_source_url_count']} | "
+            f"publishers={evidence_plane['independent_publisher_count']}"
         )
     if outcome["promotion_eligibility"]:
         for item in outcome["promotion_eligibility"]:

@@ -249,6 +249,10 @@ def evidence_plane_counts(items):
         "primary_source_count": sum(
             crux_engine.is_primary_citation(item) for item in accepted
         ),
+        "host_market_evidence_count": sum(
+            text(item.get("origin")).upper() == "HOST_MARKET_SNAPSHOT"
+            for item in accepted
+        ),
     }
 
 
@@ -266,7 +270,9 @@ def evidence_boundary(citations, is_inference=False):
     return "FACT" if len(publishers) >= 2 else "SINGLE_SOURCE"
 
 
-def normalize_answer_status(status, boundary, answer):
+def normalize_answer_status(
+    status, boundary, answer, *, evidence=None, next_test_availability="UNKNOWN"
+):
     status = text(status).upper()
     if status == "UNANSWERED":
         status = "OPEN"
@@ -277,6 +283,20 @@ def normalize_answer_status(status, boundary, answer):
         not text(answer) or boundary == "HYPOTHESIS"
     ):
         return "PARTIAL"
+    # A bounded as-of answer is complete when the only remaining observation is
+    # not searchable now.  Previously every future event kept a question
+    # permanently PARTIAL, so 2-3 strong rounds still reported "0 answered".
+    # This does not manufacture certainty: the deferred test remains attached
+    # and reopens the answer when the dated/event/user-data checkpoint arrives.
+    availability = text(next_test_availability).upper() or "UNKNOWN"
+    if (
+        status == "PARTIAL"
+        and text(answer)
+        and boundary != "HYPOTHESIS"
+        and unique_evidence(evidence or [])
+        and availability in {"WAIT_FOR_DATE", "WAIT_FOR_EVENT", "NEEDS_USER_DATA"}
+    ):
+        return "ANSWERED"
     return status
 
 
@@ -310,6 +330,8 @@ def _reconcile_answer_peers(variants):
             item.get("answer_status"),
             text(item.get("evidence_boundary")).upper(),
             item.get("answer"),
+            evidence=item.get("evidence", []),
+            next_test_availability=item.get("next_test_availability", "UNKNOWN"),
         )
     ranked = sorted(variants, key=_variant_rank, reverse=True)
     selected = ranked[0]

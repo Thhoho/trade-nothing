@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bind three completed Codex collaboration agents to one deepthink2 round."""
+"""Bind the adaptively planned Codex agents to one deepthink2 round."""
 from __future__ import annotations
 
 import argparse
@@ -20,19 +20,30 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--round", required=True, type=int)
     parser.add_argument("--dispatch", required=True, type=Path)
-    parser.add_argument("--detective", required=True, type=Path)
-    parser.add_argument("--inquisitor", required=True, type=Path)
-    parser.add_argument("--judge", required=True, type=Path)
-    parser.add_argument("--detective-agent-id", required=True)
-    parser.add_argument("--inquisitor-agent-id", required=True)
-    parser.add_argument("--judge-agent-id", required=True)
+    parser.add_argument("--detective", type=Path)
+    parser.add_argument("--inquisitor", type=Path)
+    parser.add_argument("--judge", type=Path)
+    parser.add_argument("--detective-agent-id", default="")
+    parser.add_argument("--inquisitor-agent-id", default="")
+    parser.add_argument("--judge-agent-id", default="")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     dispatch = _load(args.dispatch)
+    planned_roles = execution_integrity.required_roles(dispatch)
+    paths = {
+        "detective": args.detective,
+        "inquisitor": args.inquisitor,
+        "judge": args.judge,
+    }
+    missing = [role for role in planned_roles if paths.get(role) is None]
+    if missing:
+        raise ValueError("missing payload paths for planned roles: " + ",".join(missing))
     payloads = {
-        "detective": _load(args.detective),
-        "inquisitor": _load(args.inquisitor),
-        "judge": _load(args.judge),
+        role: (
+            _load(paths[role]) if paths.get(role) is not None
+            else {"_execution": {"status": "SKIPPED", "role": role}}
+        )
+        for role in ("detective", "inquisitor", "judge")
     }
     receipt = execution_integrity.build_codex_receipt(
         args.round,

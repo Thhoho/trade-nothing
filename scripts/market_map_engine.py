@@ -179,6 +179,7 @@ def _attention_band(item):
 def _normalize_candidate(
     raw, role, round_num, as_of_date="", evidence_items=None,
     require_canonical_field_evidence=False, evidence_aliases=None, state=None,
+    market_context_receipt_ids=None,
 ):
     if not isinstance(raw, dict):
         return None, "candidate_must_be_object"
@@ -307,6 +308,9 @@ def _normalize_candidate(
         "source_agents": [role],
         "first_seen_round": int(round_num),
         "last_seen_round": int(round_num),
+        "market_context_receipt_ids": sorted(
+            value for value in (market_context_receipt_ids or []) if value
+        ),
         "field_variants": {},
         "field_conflicts": {},
         "field_update_modes": {
@@ -342,6 +346,9 @@ def _normalize_candidate(
     item.update(readiness)
     item["bridge"] = market_bridge_engine.normalize_candidate_bridge(
         state or {}, raw.get("bridge"), role, item
+    )
+    item["bridge"]["market_context_receipt_ids"] = list(
+        item["market_context_receipt_ids"]
     )
     return item, None
 
@@ -421,6 +428,7 @@ def _merge_text(existing, incoming, field):
 
 def _merge_candidate(existing, incoming):
     previous_round = int(existing.get("last_seen_round", 0) or 0)
+    incoming_round = int(incoming.get("last_seen_round", 0) or 0)
     field_merge_results = {}
     for field in CANDIDATE_TEXT_FIELDS:
         field_merge_results[field] = _merge_text(existing, incoming, field)
@@ -503,6 +511,18 @@ def _merge_candidate(existing, incoming):
     )
     existing["bridge"] = market_bridge_engine.merge_candidate_bridge(
         existing.get("bridge", {}), incoming.get("bridge", {})
+    )
+    if incoming_round > previous_round:
+        existing["market_context_receipt_ids"] = list(
+            incoming.get("market_context_receipt_ids", [])
+        )
+    elif incoming_round == previous_round:
+        existing["market_context_receipt_ids"] = sorted(set(
+            existing.get("market_context_receipt_ids", [])
+            + incoming.get("market_context_receipt_ids", [])
+        ))
+    existing["bridge"]["market_context_receipt_ids"] = list(
+        existing.get("market_context_receipt_ids", [])
     )
     readiness = research_kernel.evaluate_setup(
         existing, existing.get("evidence_as_of_date", "")
@@ -684,7 +704,10 @@ def _ensure_map(state):
     return candidate_map
 
 
-def harvest_round(state, round_num, detective=None, inquisitor=None):
+def harvest_round(
+    state, round_num, detective=None, inquisitor=None,
+    market_context_receipt_ids=None,
+):
     """Ingest a bounded, discovery-first map from both role payloads."""
     candidate_map = _ensure_map(state)
     as_of_date = _state_as_of(state)
@@ -695,6 +718,18 @@ def harvest_round(state, round_num, detective=None, inquisitor=None):
         state.get("frame_contract", {}).get("control_mode") == "AGENDA_NATIVE"
         or agenda.get("agenda_source") == "EXPLICIT_WORKPLAN"
     )
+    if market_context_receipt_ids is None:
+        market_context_receipt_ids = sorted(
+            item.get("receipt_id")
+            for item in state.get("market_bridge", {}).get(
+                "host_market_snapshots", []
+            )
+            if isinstance(item, dict) and item.get("receipt_id")
+        )
+    else:
+        market_context_receipt_ids = sorted(
+            value for value in market_context_receipt_ids if value
+        )
     by_identity = {
         _identity(item): item
         for item in candidate_map["candidates"]
@@ -737,6 +772,7 @@ def harvest_round(state, round_num, detective=None, inquisitor=None):
                 require_canonical_field_evidence=require_canonical_field_evidence,
                 evidence_aliases=evidence_aliases,
                 state=state,
+                market_context_receipt_ids=market_context_receipt_ids,
             )
             if reason:
                 audit["rejected"] += 1
@@ -778,7 +814,13 @@ def harvest_round(state, round_num, detective=None, inquisitor=None):
                 field: _text(mechanics.get(field)) for field in MECHANICS_FIELDS
             }
             if any(normalized.values()):
-                normalized.update({"source_agent": role, "round": int(round_num)})
+                normalized.update({
+                    "source_agent": role,
+                    "round": int(round_num),
+                    "market_context_receipt_ids": list(
+                        market_context_receipt_ids
+                    ),
+                })
                 if normalized not in candidate_map["market_mechanics"]:
                     candidate_map["market_mechanics"].append(normalized)
 
@@ -941,6 +983,28 @@ def report_view(state):
         item.get("cheap_discriminating_test")
         for item in candidates if _known(item.get("cheap_discriminating_test"))
     ), "补齐候选的事件窗口、价格预期或拥挤度中成本最低的一项。")
+    market_mechanics = [
+        copy.deepcopy(item)
+        for item in candidate_map.get("market_mechanics", [])
+        if isinstance(item, dict)
+    ]
+    current_market_receipts = {
+        item.get("receipt_id")
+        for item in state.get("market_bridge", {}).get("host_market_snapshots", [])
+        if isinstance(item, dict) and item.get("receipt_id")
+    }
+    stale_market_mechanics_count = 0
+    if current_market_receipts:
+        current_mechanics = [
+            item for item in market_mechanics
+            if current_market_receipts.issubset(set(
+                item.get("market_context_receipt_ids", [])
+            ))
+        ]
+        stale_market_mechanics_count = len(market_mechanics) - len(
+            current_mechanics
+        )
+        market_mechanics = current_mechanics
     return {
         "schema_version": candidate_map.get("schema_version"),
         "result_type": result_type,
@@ -953,7 +1017,8 @@ def report_view(state):
             item for item in candidates
             if "ECONOMIC_SETUP" in item.get("ready_setup_types", [])
         ],
-        "market_mechanics": copy.deepcopy(candidate_map.get("market_mechanics", [])),
+        "market_mechanics": market_mechanics,
+        "stale_market_mechanics_count": stale_market_mechanics_count,
         "market_bridge": bridge_view,
         "coverage": coverage,
         "coverage_claims": copy.deepcopy(candidate_map.get("coverage_claims", {})),

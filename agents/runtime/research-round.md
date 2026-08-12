@@ -1,4 +1,4 @@
-# Research Round Runtime Contract v0.15
+# Research Round Runtime Contract v0.16
 
 This is the machine-facing contract for one bounded research call. The Work
 Window above it is authoritative for the current round. Human reference manuals
@@ -6,8 +6,11 @@ under `agents/*.md` are not available to this call and must not be referenced.
 
 ## Mission and stop rule
 
-Advance only the dispatched Research Agenda questions and directions. Search
-for evidence that separates the current answer from its strongest alternative.
+Follow the Work Window's `role_plan`. A `VALUE_FIRST_LEAD` first scans the
+named subject's current official fact surface, then advances only the dispatched
+Research Agenda questions and directions. A `TARGETED_CHALLENGE` attacks only
+the supplied load-bearing answers. Search for evidence that separates the
+current answer from its strongest alternative.
 Stop when the bounded routes are exhausted; uncertainty is a valid result. Do
 not continue the run, produce a trade, position size, target price, or invent a
 source.
@@ -27,6 +30,21 @@ universe snapshots, six new candidates in round 1, one genuinely new candidate
 later, one new direction, one blind spot, and one new question. Prefer updating
 known candidates and questions. Return empty arrays or `null` when absent.
 
+## Current Reality Scan
+
+The first Lead call owns material-fact recall. For every supplied primary
+entity, attempt every `required_route_kind` before narrowing into the Agenda.
+Each coverage record contains the actual query, at least one concrete URL that
+was checked, and `FOUND`, `NO_RESULT`, or `INSUFFICIENT`.
+
+Put a verified, decision-relevant change in `material_change_items`. Put any
+potentially high-impact change already encountered but not yet verified in
+`material_change_leads`, even if only a search result, media pointer, or filing
+title exposed it. Do not hide such a lead in prose or a limitations footnote.
+Resolve a prior lead through `material_change_lead_updates` or a new item whose
+`resolves_lead_ids` names it. A known unresolved HIGH lead blocks decision-ready
+delivery.
+
 ## Industry-to-market mapping
 
 Map in this order:
@@ -36,9 +54,8 @@ Map in this order:
 2. Build both universes for every claimed horizon: economic exposure (who can
    capture economics) and market trading (which fixed carriers price it).
 3. State one phase reading by horizon, with its strongest alternative and
-   falsifier. Your reading is one view; the engine requires the other role to
-   agree under a verified, distinct-role execution receipt before it can become
-   recommendation-authoritative consensus.
+   falsifier. Your reading is one view; recommendation authority may require a
+   later targeted independent challenge under a verified execution receipt.
 4. Compare each named carrier with the closest mapped alternative. Explain
    why this carrier now and the observable switch condition.
 
@@ -65,6 +82,10 @@ legacy tracks stay empty when the Work Window does not assign them:
   "evidence_items": [],
   "question_updates": [],
   "baseline_finding_updates": [],
+  "material_change_coverage": [],
+  "material_change_items": [],
+  "material_change_leads": [],
+  "material_change_lead_updates": [],
   "direction_updates": [],
   "new_research_directions": [],
   "new_blind_spots": [],
@@ -173,6 +194,52 @@ Core record shapes:
     "linked_crux_id": "",
     "introduced_by_blind_spot": "",
     "next_test_availability": "SEARCH_NOW|WAIT_FOR_DATE|WAIT_FOR_EVENT|NEEDS_USER_DATA|UNKNOWN"
+  }
+}
+```
+
+Material-change shapes:
+
+```json
+{
+  "material_change_coverage": {
+    "entity_id": "E1",
+    "route_kind": "one required_route_kind from the Work Window",
+    "outcome": "FOUND|NO_RESULT|INSUFFICIENT",
+    "query": "actual bounded query used",
+    "checked_urls": ["https://concrete-page"],
+    "note": "what was or was not found"
+  },
+  "material_change_item": {
+    "event_id": "MC-local-1",
+    "entity_id": "E1",
+    "event_type": "PERIODIC_REPORT|CONTRACT_CUSTOMER|OPERATING_METRIC|FINANCING_CAPITAL|OWNERSHIP_GOVERNANCE|REGULATORY_LEGAL|PROJECT_TECHNICAL|POLICY_INDUSTRY|MARKET_STRUCTURE|OTHER",
+    "published_date": "YYYY-MM-DD",
+    "effective_date": "YYYY-MM-DD",
+    "claim": "what changed",
+    "materiality_rationale": "which load-bearing answer changes and why",
+    "decision_impact": "HIGH|MEDIUM|LOW",
+    "affected_question_ids": ["RQ1"],
+    "affected_conclusion_keys": ["revenue-realization"],
+    "evidence_ids": ["EV-R1-D-001"],
+    "status": "VERIFIED|SINGLE_SOURCE|UNRESOLVED|REJECTED",
+    "supersedes_event_ids": [],
+    "resolves_lead_ids": []
+  },
+  "material_change_lead": {
+    "lead_id": "ML-local-1",
+    "entity_id": "E1",
+    "claim": "potential material change seen but not yet verified",
+    "why_it_may_matter": "which conclusion could reverse",
+    "decision_impact": "HIGH|MEDIUM|LOW",
+    "source_url": "https://concrete-page",
+    "observed_date": "YYYY-MM-DD"
+  },
+  "material_change_lead_update": {
+    "lead_id": "ML-local-1",
+    "status": "VERIFIED|REJECTED",
+    "rationale": "current-round disposition",
+    "evidence_ids": ["EV-R2-I-001"]
   }
 }
 ```

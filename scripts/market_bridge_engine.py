@@ -300,7 +300,9 @@ def _merge_path(existing, incoming):
     ))
 
 
-def _normalize_phase(state, raw, role, round_num):
+def _normalize_phase(
+    state, raw, role, round_num, market_context_receipt_ids=None
+):
     if not isinstance(raw, dict) or not raw:
         return None, []
     issues = []
@@ -332,6 +334,9 @@ def _normalize_phase(state, raw, role, round_num):
     evidence, evidence_ids, evidence_issues = _resolve_evidence_ids(
         state, raw.get("evidence_ids", [])
     )
+    context_receipts = sorted(
+        value for value in (market_context_receipt_ids or []) if value
+    )
     identity = {
         "as_of_date": snapshot_date,
         "horizon": horizon,
@@ -339,6 +344,7 @@ def _normalize_phase(state, raw, role, round_num):
         "dominant_pricing_variable": _norm(required["dominant_pricing_variable"]),
         "source_agent": role,
         "round": int(round_num),
+        "market_context_receipt_ids": context_receipts,
     }
     return {
         "phase_snapshot_id": _stable_id("MP-", identity),
@@ -353,6 +359,7 @@ def _normalize_phase(state, raw, role, round_num):
         "evidence_issues": evidence_issues,
         "source_agent": role,
         "round": int(round_num),
+        "market_context_receipt_ids": context_receipts,
     }, []
 
 
@@ -385,7 +392,9 @@ def _normalize_universe_member(state, raw):
     return item, evidence_issues
 
 
-def _normalize_universe(state, raw, role, round_num):
+def _normalize_universe(
+    state, raw, role, round_num, market_context_receipt_ids=None
+):
     if not isinstance(raw, dict):
         return None, ["UNIVERSE_SNAPSHOT_MUST_BE_OBJECT"]
     issues = []
@@ -433,6 +442,9 @@ def _normalize_universe(state, raw, role, round_num):
         issues.append("UNIVERSE_CONSTRUCTION_EVIDENCE_REQUIRED")
     if universe_type not in UNIVERSE_TYPES or horizon not in HORIZONS:
         return None, issues
+    context_receipts = sorted(
+        value for value in (market_context_receipt_ids or []) if value
+    )
     identity = {
         "universe_type": universe_type,
         "horizon": horizon,
@@ -441,6 +453,7 @@ def _normalize_universe(state, raw, role, round_num):
         "member_identities": sorted(item["identity"] for item in members),
         "source_agent": role,
         "round": int(round_num),
+        "market_context_receipt_ids": context_receipts,
     }
     structural_blockers = {
         "UNIVERSE_AS_OF_INVALID",
@@ -477,10 +490,14 @@ def _normalize_universe(state, raw, role, round_num):
         "issues": sorted(set(issues)),
         "source_agent": role,
         "round": int(round_num),
+        "market_context_receipt_ids": context_receipts,
     }, []
 
 
-def harvest_context(state, round_num, detective=None, inquisitor=None):
+def harvest_context(
+    state, round_num, detective=None, inquisitor=None,
+    market_context_receipt_ids=None,
+):
     """Ingest paths and phase readings before CandidateMap resolves path refs."""
     bridge = _ensure(state)
     by_id = {
@@ -495,6 +512,16 @@ def harvest_context(state, round_num, detective=None, inquisitor=None):
         "universes_accepted": 0,
         "rejections": [],
     }
+    if market_context_receipt_ids is None:
+        market_context_receipt_ids = sorted(
+            item.get("receipt_id")
+            for item in bridge.get("host_market_snapshots", [])
+            if isinstance(item, dict) and item.get("receipt_id")
+        )
+    else:
+        market_context_receipt_ids = sorted(
+            value for value in market_context_receipt_ids if value
+        )
     for role, payload in (("detective", detective), ("inquisitor", inquisitor)):
         payload = payload if isinstance(payload, dict) else {}
         raw_paths = payload.get("value_transfer_paths", [])
@@ -516,7 +543,8 @@ def harvest_context(state, round_num, detective=None, inquisitor=None):
                 bridge["path_aliases"][f"{role}:{path['path_key']}"] = path_id
 
         phase, issues = _normalize_phase(
-            state, payload.get("market_phase_snapshot"), role, round_num
+            state, payload.get("market_phase_snapshot"), role, round_num,
+            market_context_receipt_ids,
         )
         if phase is not None:
             phase["source_payload_sha256"] = (
@@ -535,7 +563,8 @@ def harvest_context(state, round_num, detective=None, inquisitor=None):
         raw_universes = raw_universes if isinstance(raw_universes, list) else []
         for raw_universe in raw_universes[:4]:
             universe, issues = _normalize_universe(
-                state, raw_universe, role, round_num
+                state, raw_universe, role, round_num,
+                market_context_receipt_ids,
             )
             if universe is None:
                 audit["rejections"].extend(
@@ -922,6 +951,7 @@ def ingest_host_market_snapshot(state, artifact):
         "candidate_identity": identity,
         "candidate": deepcopy(artifact.get("candidate")),
         "market_session_date": receipt["market_session_date"],
+        "available_from_round": len(state.get("rounds", [])) + 1,
         "receipt_id": receipt["receipt_id"],
         "upstream_acquisition_receipt_id": receipt[
             "upstream_acquisition_receipt_id"
@@ -1085,6 +1115,18 @@ def refresh_candidate_bridge(state, candidate_item, bridge=None):
     grounding and issue codes are derived facts and must never be append-only.
     """
     bridge = bridge if isinstance(bridge, dict) else {}
+    current_market_receipts = {
+        item.get("receipt_id")
+        for item in _ensure(state).get("host_market_snapshots", [])
+        if isinstance(item, dict) and item.get("receipt_id")
+    }
+    interpreted_market_receipts = set(
+        bridge.get("market_context_receipt_ids", [])
+    )
+    stale_market_context = bool(
+        current_market_receipts
+        and not current_market_receipts.issubset(interpreted_market_receipts)
+    )
     raw = {
         "value_path_refs": list(bridge.get("value_path_ids", [])),
         "economic_exposure_strength": bridge.get(
@@ -1111,6 +1153,24 @@ def refresh_candidate_bridge(state, candidate_item, bridge=None):
     refreshed = normalize_candidate_bridge(
         state, raw, "canonical_projection", candidate_item
     )
+    refreshed["market_context_receipt_ids"] = sorted(
+        interpreted_market_receipts
+    )
+    refreshed["market_context_status"] = (
+        "STALE" if stale_market_context else "CURRENT"
+    )
+    if stale_market_context:
+        refreshed["market_recognition"].update({
+            "effective": "UNKNOWN",
+            "grounded": False,
+            "rationale": (
+                "宿主行情已在该候选解释之后更新；保留当前行情事实，"
+                "等待同一上下文下重算相对强弱与市场选择。"
+            ),
+        })
+        refreshed.setdefault("issues", []).append(
+            "MARKET_INTERPRETATION_STALE_CONTEXT"
+        )
     refreshed["source_agents"] = sorted(set(bridge.get("source_agents", [])))
     # These two codes describe real, grounded role disagreement.  Other issue
     # codes are current-state derivations and are deliberately recomputed.
@@ -1217,15 +1277,20 @@ def _projection(economic, market):
 
 def _universe_view(state):
     bridge = _ensure(state)
+    current_market_receipts = {
+        item.get("receipt_id")
+        for item in bridge.get("host_market_snapshots", [])
+        if isinstance(item, dict) and item.get("receipt_id")
+    }
     result = {}
-    for horizon in HORIZONS:
+    for horizon in sorted(HORIZONS):
         horizon_view = {
             "types": {},
             "complete": False,
             "all_member_identities": [],
         }
         all_members = set()
-        for universe_type in UNIVERSE_TYPES:
+        for universe_type in sorted(UNIVERSE_TYPES):
             snapshots = [
                 deepcopy(item) for item in bridge.get("universe_snapshots", [])
                 if isinstance(item, dict)
@@ -1234,6 +1299,25 @@ def _universe_view(state):
             ]
             if not snapshots:
                 continue
+            if current_market_receipts and universe_type == "MARKET_TRADING":
+                current_context = [
+                    item for item in snapshots
+                    if current_market_receipts.issubset(set(
+                        item.get("market_context_receipt_ids", [])
+                    ))
+                ]
+                if not current_context:
+                    horizon_view["types"][universe_type] = {
+                        "status": "STALE_CONTEXT",
+                        "member_identities": [],
+                        "snapshots": [],
+                        "stale_snapshot_count": len(snapshots),
+                        "required_market_receipt_ids": sorted(
+                            current_market_receipts
+                        ),
+                    }
+                    continue
+                snapshots = current_context
             latest_round = max(int(item.get("round", 0) or 0) for item in snapshots)
             latest = [
                 item for item in snapshots
@@ -1406,7 +1490,12 @@ def finalize_candidates(
 def _phase_view(state):
     bridge = _ensure(state)
     result = {}
-    for horizon in HORIZONS:
+    current_market_receipts = {
+        item.get("receipt_id")
+        for item in bridge.get("host_market_snapshots", [])
+        if isinstance(item, dict) and item.get("receipt_id")
+    }
+    for horizon in sorted(HORIZONS):
         snapshots = [
             deepcopy(item) for item in bridge.get("phase_snapshots", [])
             if isinstance(item, dict) and item.get("horizon") == horizon
@@ -1415,6 +1504,27 @@ def _phase_view(state):
             continue
         latest_round = max(int(item.get("round", 0) or 0) for item in snapshots)
         latest = [item for item in snapshots if int(item.get("round", 0) or 0) == latest_round]
+        if current_market_receipts:
+            current_context = [
+                item for item in latest
+                if current_market_receipts.issubset(set(
+                    item.get("market_context_receipt_ids", [])
+                ))
+            ]
+            if not current_context:
+                result[horizon] = {
+                    "status": "STALE_CONTEXT",
+                    "phase": "UNRESOLVED",
+                    "competing_phases": [],
+                    "source_agents": [],
+                    "verified_source_agents": [],
+                    "grounded_source_agents": [],
+                    "snapshots": [],
+                    "stale_snapshot_count": len(latest),
+                    "required_market_receipt_ids": sorted(current_market_receipts),
+                }
+                continue
+            latest = current_context
         phases = sorted(set(item.get("phase") for item in latest))
         source_agents = sorted(set(
             _text(item.get("source_agent")) for item in latest
@@ -1470,7 +1580,7 @@ def report_view(state, candidates):
         universe_by_horizon=universe_by_horizon,
         value_paths=_ensure(state).get("value_paths", []),
     )
-    priorities = {horizon: [] for horizon in HORIZONS}
+    priorities = {horizon: [] for horizon in sorted(HORIZONS)}
     unresolved = []
     priority_levels = {
         "CROSS_SECTIONAL_PRIORITY",
@@ -1542,11 +1652,17 @@ def dispatch_context(state, max_paths=4, candidate_tickers=None):
         _text(value) for value in (candidate_tickers or []) if _text(value)
     }
     if selected_tickers:
-        trusted_snapshots = [
-            item for item in trusted_snapshots
-            if _text((item.get("candidate") or {}).get("ticker"))
-            in selected_tickers
-        ]
+        # Selection affects order, never visibility.  Filtering the host data
+        # plane through the current candidate queue caused primary-subject
+        # snapshots to disappear from a round even though the run had ingested
+        # them, producing logically impossible "snapshot exists / does not
+        # exist" reports.
+        trusted_snapshots.sort(key=lambda item: (
+            0 if _text((item.get("candidate") or {}).get("ticker"))
+            in selected_tickers else 1,
+            -int(str(item.get("market_session_date", "0")).replace("-", "") or 0),
+            item.get("candidate_identity", ""),
+        ))
     return {
         "value_paths": [{
             "path_id": item.get("path_id"),

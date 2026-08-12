@@ -3,6 +3,7 @@
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 import deepthink_orchestrator_v2 as orchestrator
 
@@ -163,6 +164,26 @@ class AgendaNativeReplayTests(unittest.TestCase):
             os.environ["TRADE_NOTHING_EVOLUTION_PATH"] = self.old_evolution
         self.tmp.cleanup()
 
+    def test_explicit_landscape_second_side_uses_adaptive_challenger(self):
+        policy = {"control_mode": "AGENDA_NATIVE"}
+        landscape_plan = {
+            "assignments": {"detective": ["L3"], "inquisitor": ["L1", "L2"]}
+        }
+        with mock.patch.object(
+            orchestrator.material_change_engine, "delivery_gate",
+            return_value={"blockers": []},
+        ), mock.patch.object(
+            orchestrator.material_change_engine, "challenge_targets",
+            return_value=[],
+        ):
+            plan = orchestrator._adaptive_role_plan(
+                {}, 2, policy, landscape_plan=landscape_plan
+            )
+        self.assertEqual(plan["required_roles"], ["inquisitor"])
+        self.assertIn(
+            "EXPLICIT_LANDSCAPE_SECOND_SIDE_PROBE", plan["reason_codes"]
+        )
+
     def test_evidence_free_answer_claims_remain_reportable_but_not_complete(self):
         topic = "zhuque-replay-answerable"
         initialized = orchestrator.cmd_init(topic, _frame())
@@ -173,13 +194,13 @@ class AgendaNativeReplayTests(unittest.TestCase):
             topic, _answered_payload(), {}, {"crux_signals": {}}
         )
 
-        self.assertEqual(result["status"], "ready_for_report")
+        self.assertEqual(result["status"], "research_more_requires_authorization")
         self.assertEqual(result["audit_convergence"]["decision"], "continue")
         self.assertEqual(
             result["research_control"]["product_readiness"],
-            "DELIVERABLE_CURRENT_QUESTION_ANSWERABLE",
+            "DELIVERABLE_MATERIAL_FACT_GAP",
         )
-        self.assertFalse(result["research_control"]["more_research_recommended"])
+        self.assertTrue(result["research_control"]["more_research_recommended"])
         self.assertTrue(result["report_always_available"])
         report = orchestrator.cmd_report(topic)
         self.assertEqual(report["status"], "report_data_ready")

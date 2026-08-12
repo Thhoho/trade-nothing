@@ -50,6 +50,7 @@ class InstallSkillTests(unittest.TestCase):
             self.assertFalse(stale_philosophy.exists())
             self.assertTrue(legacy_state.is_file())
             self.assertTrue(legacy_memory.is_file())
+            self.assertTrue((target / "tools" / "daily_topic.py").is_file())
             self.assertEqual(check_source_sync.compare(REPO_ROOT, target), [])
             manifest = json.loads(
                 (target / install_skill.MANIFEST_NAME).read_text(encoding="utf-8")
@@ -84,6 +85,7 @@ class InstallSkillTests(unittest.TestCase):
         }
         self.assertTrue(operational.issubset(published))
         self.assertIn("agents/runtime/research-round.md", published)
+        self.assertIn("tools/daily_topic.py", published)
 
 
 if __name__ == "__main__":

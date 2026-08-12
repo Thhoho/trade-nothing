@@ -698,7 +698,8 @@ def _question_by_id(agenda):
 
 
 def _ingest_role_updates(
-    agenda, round_num, role, payload, audit, accepted_evidence=None
+    agenda, round_num, role, payload, audit, accepted_evidence=None,
+    market_context_receipt_ids=None,
 ):
     by_id = _question_by_id(agenda)
     allowed_citations = _accepted_citations(
@@ -763,8 +764,15 @@ def _ingest_role_updates(
             current_boundary = _evidence_boundary(
                 evidence, raw.get("answer_is_inference") is True
             )
+            next_test_availability = _next_test_availability(
+                raw.get("next_test_availability")
+            )
             normalized_status = research_kernel.normalize_answer_status(
-                status, current_boundary, answer
+                status,
+                current_boundary,
+                answer,
+                evidence=evidence,
+                next_test_availability=next_test_availability,
             )
             variant = {
                 "round": round_num,
@@ -777,8 +785,9 @@ def _ingest_role_updates(
                 "strongest_challenge": _text(raw.get("strongest_challenge")),
                 "missing_information": _text(raw.get("missing_information")),
                 "next_question": _text(raw.get("next_question")),
-                "next_test_availability": _next_test_availability(
-                    raw.get("next_test_availability")
+                "next_test_availability": next_test_availability,
+                "market_context_receipt_ids": sorted(
+                    value for value in (market_context_receipt_ids or []) if value
                 ),
             }
             if not any(
@@ -1383,7 +1392,10 @@ def _ingest_blind_spots(agenda, round_num, submissions, audit):
         accepted += 1
 
 
-def harvest_round(state, round_num, detective=None, inquisitor=None):
+def harvest_round(
+    state, round_num, detective=None, inquisitor=None,
+    market_context_receipt_ids=None,
+):
     agenda = state.get("research_agenda")
     if not isinstance(agenda, dict):
         agenda = initialize({
@@ -1424,13 +1436,24 @@ def harvest_round(state, round_num, detective=None, inquisitor=None):
         "rejected_new_blind_spots": [],
     }
     submissions = (("detective", detective or {}), ("inquisitor", inquisitor or {}))
+    if market_context_receipt_ids is None:
+        market_context_receipt_ids = sorted(
+            item.get("receipt_id")
+            for item in state.get("market_bridge", {}).get("host_market_snapshots", [])
+            if isinstance(item, dict) and item.get("receipt_id")
+        )
+    else:
+        market_context_receipt_ids = sorted(
+            value for value in market_context_receipt_ids if value
+        )
     for role, payload in submissions:
         accepted_evidence = _ingest_evidence_items(
             agenda, round_num, role, payload, audit
         )
         _ingest_new_directions(agenda, round_num, role, payload, audit)
         _ingest_role_updates(
-            agenda, round_num, role, payload, audit, accepted_evidence
+            agenda, round_num, role, payload, audit, accepted_evidence,
+            market_context_receipt_ids,
         )
         _ingest_baseline_updates(
             agenda, round_num, role, payload, audit, accepted_evidence
@@ -2114,14 +2137,32 @@ def summary(state):
 
 def projected_questions(state):
     agenda = state.get("research_agenda", {})
+    current_market_receipts = {
+        item.get("receipt_id")
+        for item in state.get("market_bridge", {}).get("host_market_snapshots", [])
+        if isinstance(item, dict) and item.get("receipt_id")
+    }
     projected_questions = []
     for raw in agenda.get("questions", []):
         if not isinstance(raw, dict):
             continue
         item = deepcopy(raw)
-        resolution = research_kernel.reconcile_answer_variants(
-            item.get("answer_variants", [])
+        variants = item.get("answer_variants", [])
+        variants = variants if isinstance(variants, list) else []
+        market_sensitive = _text(item.get("question_type")).upper() in {
+            "MARKET", "PRICING", "CANDIDATE"
+        }
+        contextual_variants = [
+            variant for variant in variants
+            if isinstance(variant, dict)
+            and current_market_receipts.issubset(set(
+                variant.get("market_context_receipt_ids", [])
+            ))
+        ] if current_market_receipts and market_sensitive else variants
+        stale_market_context = bool(
+            current_market_receipts and market_sensitive and not contextual_variants
         )
+        resolution = research_kernel.reconcile_answer_variants(contextual_variants)
         if resolution:
             item.update({
                 "answer_status": resolution["answer_status"],
@@ -2134,6 +2175,21 @@ def projected_questions(state):
                     "next_test_availability", "UNKNOWN"
                 ),
                 "answer_resolution": resolution["resolution"],
+                "market_context_status": "CURRENT",
+            })
+        elif stale_market_context:
+            item.update({
+                "answer_status": "PARTIAL",
+                "current_answer": (
+                    "宿主可信行情已在上一答案之后更新；旧角色解释保留在审计历史，"
+                    "正式报告只采用当前宿主快照事实，阶段与横向排序等待同上下文重算。"
+                ),
+                "evidence_boundary": "HYPOTHESIS",
+                "missing_information": "按当前宿主行情重算市场阶段、拥挤度和替代项排序。",
+                "next_question": "当前快照是否改变原市场阶段与候选相对优先级？",
+                "next_test_availability": "SEARCH_NOW",
+                "answer_resolution": "STALE_MARKET_CONTEXT",
+                "market_context_status": "STALE",
             })
         projected_questions.append(item)
     return projected_questions

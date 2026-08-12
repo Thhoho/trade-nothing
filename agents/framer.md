@@ -1,4 +1,4 @@
-# Trade Nothing v0.15.0 — The Framer (立题门 · 开局智能体)
+# Trade Nothing v0.16.0 — The Framer (立题门 · 开局智能体)
 
 > **Purpose**: The cheap gate that turns a raw topic into a research objective, a bounded workplan,
 > an auditable question agenda, and a set of testable proposition directions. Cruxes, comparisons,
@@ -24,6 +24,10 @@ Given a raw topic, do nine things and nothing else (do not search during framing
    must say why it matters, what would count as answered, 1–3 bounded search routes, decision
    impact (`HIGH|MEDIUM|LOW`), estimated research cost (`LOW|MEDIUM|HIGH`), and whether the missing
    answer blocks a conditional recommendation.
+   Before those questions, name 1–4 `primary_entities` whose current official fact surface must
+   be scanned. A single-company question normally has one listed-company entity; a thematic
+   question may name the industry/event plus the few companies or projects whose changes would
+   overturn the answer. This is retrieval scope, not evidence or a candidate recommendation.
 3. **Turn the questions into 2–8 research directions**: concrete propositions or routes that can be
    supported, challenged, continued, or replaced by a new viewpoint after evidence arrives. Each
    direction must link back to one or more Agenda questions, state why it matters, and name the
@@ -108,6 +112,15 @@ authorized round; any additional round requires an explicit caller budget or lat
   "thesis_seed": "<one-sentence provisional initial view, including 'direction unknown' when appropriate>",
   "research_workplan": {
     "research_objective": "<what this topic must ultimately explain and advise>",
+    "primary_entities": [
+      {
+        "entity_id": "E1",
+        "name": "<company, project, event, industry, technology, or asset>",
+        "entity_type": "LISTED_COMPANY | PRIVATE_COMPANY | PROJECT | EVENT | INDUSTRY | TECHNOLOGY | ASSET | OTHER",
+        "ticker": "<required for LISTED_COMPANY; otherwise empty>",
+        "exchange": "<required for LISTED_COMPANY; otherwise empty>"
+      }
+    ],
     "baseline_findings": [
       {
         "finding_id": "BF1",

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Trade Nothing v0.15.0 — Crux Orchestrator  (-deepthink2; the only research pipeline)
+Trade Nothing v0.16.0 — Crux Orchestrator  (-deepthink2; value-first adaptive research)
 
 Deterministic state machine. Control flow lives in code; the LLM only produces content.
 
@@ -42,6 +42,7 @@ SKILL_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, SCRIPT_DIR)
 import crux_engine
 import research_agenda_engine
+import material_change_engine
 import hypothesis_engine
 import landscape_engine
 import legacy_crux_audit_adapter
@@ -85,6 +86,13 @@ def _contract_text(*relative_paths):
                 + f"\n[END CONTRACT: {relative_path}]"
             )
     return "\n\n".join(chunks)
+
+
+def _stable_json(value):
+    """Canonical prompt serialization; mapping insertion order is never semantics."""
+    return json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
 
 
 def _work_window(stage, role, objective, authoritative_inputs, output_product,
@@ -466,6 +474,7 @@ def _validate_frame(frame):
         issues.extend(_validate_logic_graph(frame.get("logic_graph"), crux_role_by_id))
     agenda_issues = research_agenda_engine.validate_frame(frame)
     issues.extend(agenda_issues)
+    issues.extend(material_change_engine.validate_frame(frame))
     issues.extend(hypothesis_engine.validate_frame(frame))
     issues.extend(landscape_engine.validate_frame(frame))
     # An explicit Research Agenda owns the runtime budget. The old feasibility
@@ -1031,7 +1040,8 @@ def frame_prompt(topic, start_context=None, briefing_context=None):
             "立题：输出 frame_schema_version=trade-nothing.frame.v2 / decision_question / "
             "question_type / logic_graph / horizon / as_of_date / "
             "forecast_target_date / "
-            "research_intent / unit_of_analysis / thesis_seed / research_workplan(4–8个待回答问题；"
+            "research_intent / unit_of_analysis / thesis_seed / research_workplan(1–4个"
+            "primary_entities + 4–8个待回答问题；"
             "重跑且显式提供旧报告时另含最多8条 baseline_findings) / premise_audit / "
             "candidate_cruxes（Agenda-native 默认 []；仅显式 legacy crux audit 才输出 1–5 条）/ "
             "forbidden_consensus / no_edge_precheck / suggested_max_rounds。"
@@ -1136,10 +1146,117 @@ def _crux_scope_compact(state, open_ids):
     return "\n".join(lines)
 
 
+def empty_role_payload(role, round_num):
+    """Return a typed no-op payload for roles the adaptive plan did not invoke."""
+    common = {
+        "round": int(round_num),
+        "evidence_items": [],
+        "question_updates": [],
+        "baseline_finding_updates": [],
+        "direction_updates": [],
+        "new_research_directions": [],
+        "new_blind_spots": [],
+        "new_research_questions": [],
+        "material_change_coverage": [],
+        "material_change_items": [],
+        "material_change_leads": [],
+        "material_change_lead_updates": [],
+        "value_transfer_paths": [],
+        "market_phase_snapshot": None,
+        "carrier_universe_snapshots": [],
+        "market_mechanics": {},
+        "market_map_candidates": [],
+        "market_map_coverage": {
+            "concrete_instrument_search": False,
+            "alternative_paths": False,
+            "price_and_crowding": False,
+            "event_window": False,
+            "routes": [],
+            "note": "role not required by adaptive plan",
+        },
+        "crux_evidence": [],
+        "hypothesis_sparks": [],
+        "proxy_trails": [],
+        "landscape_findings": [],
+        "opportunity_seeds": [],
+        "_execution": {"status": "SKIPPED", "role": role},
+    }
+    if role == "judge":
+        return {
+            "crux_signals": {},
+            "new_cruxes": [],
+            "_execution": {"status": "SKIPPED", "role": role},
+        }
+    return common
+
+
+def _adaptive_role_plan(state, round_num, policy, landscape_plan=None):
+    """Choose the smallest role set that can add decision information."""
+    if policy.get("control_mode") != "AGENDA_NATIVE":
+        return {
+            "mode": "LEGACY_THREE_ROLE_AUDIT",
+            "required_roles": ["detective", "inquisitor", "judge"],
+            "reason_codes": ["LEGACY_CRUX_COMPATIBILITY"],
+            "challenge_targets": [],
+        }
+    gate = material_change_engine.delivery_gate(state)
+    targets = material_change_engine.challenge_targets(state)
+    landscape_assignments = (
+        (landscape_plan or {}).get("assignments", {})
+        if isinstance(landscape_plan, dict) else {}
+    )
+    if int(round_num) <= 1:
+        return {
+            "mode": "VALUE_FIRST_LEAD",
+            "required_roles": ["detective"],
+            "reason_codes": ["REALITY_SCAN_BEFORE_DEBATE"],
+            "challenge_targets": [],
+        }
+    if gate.get("blockers"):
+        return {
+            "mode": "VALUE_FIRST_LEAD",
+            "required_roles": ["detective"],
+            "reason_codes": sorted({
+                str(item.get("code") or "MATERIAL_FACT_GAP")
+                for item in gate.get("blockers", []) if isinstance(item, dict)
+            }),
+            "challenge_targets": [],
+        }
+    if targets:
+        return {
+            "mode": "TARGETED_CHALLENGE",
+            "required_roles": ["inquisitor"],
+            "reason_codes": ["LOAD_BEARING_CLAIMS_UNCHALLENGED"],
+            "challenge_targets": targets,
+        }
+    # A complete Landscape is opt-in. Once the Current Reality gate is clear,
+    # its missing second-side probes are real work, so the same adaptive
+    # scheduler—not a parallel fixed-role loop—gives them the next call.
+    if landscape_assignments.get("inquisitor"):
+        return {
+            "mode": "TARGETED_CHALLENGE",
+            "required_roles": ["inquisitor"],
+            "reason_codes": ["EXPLICIT_LANDSCAPE_SECOND_SIDE_PROBE"],
+            "challenge_targets": [],
+        }
+    return {
+        "mode": "VALUE_FIRST_FOLLOW_UP",
+        "required_roles": ["detective"],
+        "reason_codes": ["AGENDA_MARGINAL_TEST"],
+        "challenge_targets": [],
+    }
+
+
 def dispatch_prompts(state, round_num):
     """Generate closed, round-scoped work windows plus compact runtime contracts."""
     policy = _round_policy(state, round_num)
     open_ids = policy["dispatch_cruxes"]
+    landscape_plan = landscape_engine.ensure_round_plan(
+        state, round_num, dispatch_cruxes=open_ids
+    )
+    role_plan = _adaptive_role_plan(
+        state, round_num, policy, landscape_plan=landscape_plan
+    )
     research_questions = (
         policy.get("selected_research_questions")
         if policy.get("control_mode") == "AGENDA_NATIVE"
@@ -1175,9 +1292,29 @@ def dispatch_prompts(state, round_num):
         ]
         for role in ("detective", "inquisitor")
     }
-    landscape_plan = landscape_engine.ensure_round_plan(
-        state, round_num, dispatch_cruxes=open_ids
+    dispatch_context = {
+        "round": round_num,
+        "decision_question": state.get("decision_question"),
+        "horizon": state.get("horizon"),
+        "frame_contract": state.get("frame_contract", {}),
+        "policy": policy,
+        "research_questions": research_questions,
+        "research_directions": research_directions,
+        "baseline_findings": baseline_findings,
+        "candidate_focus": candidate_focus,
+        "market_bridge": bridge_context,
+        "landscape_assignments": landscape_plan.get("assignments", {}),
+        "coverage_assignments": coverage_assignments,
+        "role_plan": role_plan,
+        "material_change": material_change_engine.report_view(state),
+    }
+    market_context_receipt_ids = sorted(
+        item.get("receipt_id")
+        for item in bridge_context.get("trusted_market_snapshots", [])
+        if isinstance(item, dict) and item.get("receipt_id")
     )
+    dispatch_context["market_context_receipt_ids"] = market_context_receipt_ids
+    context_sha256 = run_registry.canonical_json_hash(dispatch_context)
     fc = state.get("forbidden_consensus", [])
     scope = _crux_scope_compact(state, open_ids)
     resolved = [
@@ -1210,11 +1347,11 @@ def dispatch_prompts(state, round_num):
     )
     agenda_directive = (
         "\n📚 Research Agenda（本轮必须推进）:\n"
-        f"{json.dumps(research_questions, ensure_ascii=False)}\n"
+        f"{_stable_json(research_questions)}\n"
         "\n🧩 本轮研究方向/待质证论点:\n"
-        f"{json.dumps(research_directions, ensure_ascii=False)}\n"
+        f"{_stable_json(research_directions)}\n"
         "\n🧭 既有关键发现待处置（前次线索，不是本轮证据）:\n"
-        f"{json.dumps(baseline_findings, ensure_ascii=False)}\n"
+        f"{_stable_json(baseline_findings)}\n"
         "每条必须输出 baseline_finding_updates：用本轮 evidence_items 将其标为 "
         "REVERIFIED 或 SUPERSEDED；若与当前问题无关则 OUT_OF_SCOPE 并说明理由；"
         "仍不能判断则 UNRESOLVED。不得静默遗漏，也不得把旧 URL 直接继承为证据。\n"
@@ -1245,7 +1382,7 @@ def dispatch_prompts(state, round_num):
         ]
         return (
             "\n🗺 Landscape 路径质证（硬分配）:\n"
-            f"{json.dumps(packets, ensure_ascii=False)}\n"
+            f"{_stable_json(packets)}\n"
             "严格按本调用内嵌 runtime contract 的 Landscape 边界输出。"
         )
     # Scheduling contract (the only per-round policy that changes).
@@ -1278,8 +1415,8 @@ def dispatch_prompts(state, round_num):
         " HYPOTHESIS/INFERENCE 标签，不得用缺证据为理由把具名线索删空。完整字段"
         "不自动产生推荐，WATCH_ONLY/FAILURE_HEDGE 仍是反证。同步给出"
         " market_mechanics 与 market_map_coverage。\n"
-        f"现有价值路径与阶段读数: {json.dumps(bridge_context, ensure_ascii=False)}\n"
-        f"现有候选补全队列: {json.dumps(candidate_focus, ensure_ascii=False)}\n"
+        f"现有价值路径与阶段读数: {_stable_json(bridge_context)}\n"
+        f"现有候选补全队列: {_stable_json(candidate_focus)}\n"
         + (
             "首轮可建立候选广度；每个角色最多新增 6 个。"
             if round_num <= 1 else
@@ -1293,12 +1430,13 @@ def dispatch_prompts(state, round_num):
     )
     # ── Assemble the common dynamic section ──
     common = (
+        f"调度上下文: {context_sha256}（本轮所有角色必须使用同一上下文）\n"
         f"决策问题: {state['decision_question']} | 视野: {state['horizon']} | "
         f"as-of: {state.get('frame_contract', {}).get('as_of_date', '—')}\n"
         f"分析单元: {state.get('frame_contract', {}).get('unit_of_analysis', '—')} | "
         f"立题状态: {state.get('frame_contract', {}).get('quality_status', 'UNVERIFIED')}\n"
         "立题前提（HYPOTHESIS 非事实）:\n"
-        f"{json.dumps(state.get('frame_contract', {}).get('premise_audit', []), ensure_ascii=False)}\n"
+        f"{_stable_json(state.get('frame_contract', {}).get('premise_audit', []))}\n"
         f"本轮证据质证上下文（不得替代 Research Agenda）:\n{scope}\n"
         f"{retired_ctx}\n"
         f"历史负面先验（必须显式检查）:\n"
@@ -1308,6 +1446,70 @@ def dispatch_prompts(state, round_num):
         f"{exploration_directive}\n"
         f"{scope_directive}"
         f"{discovery_directive}"
+    )
+    material_change_context = material_change_engine.report_view(state)
+    if policy.get("control_mode") == "AGENDA_NATIVE":
+        lead_common = (
+            f"调度上下文: {context_sha256}\n"
+            f"决策问题: {state['decision_question']} | 视野: {state['horizon']} | "
+            f"as-of: {state.get('frame_contract', {}).get('as_of_date', '—')}\n"
+            f"分析单元: {state.get('frame_contract', {}).get('unit_of_analysis', '—')}\n"
+            "立题前提（HYPOTHESIS，不是事实）:\n"
+            f"{_stable_json(state.get('frame_contract', {}).get('premise_audit', []))}\n"
+            "本调用必须回答的问题:\n"
+            f"{_stable_json(research_questions)}\n"
+            "相关承重方向:\n"
+            f"{_stable_json(research_directions)}\n"
+            "待复核的旧发现线索:\n"
+            f"{_stable_json(baseline_findings)}\n"
+            "已有市场桥与宿主快照:\n"
+            f"{_stable_json(bridge_context)}\n"
+            "需要补全的候选（最多三项）:\n"
+            f"{_stable_json(candidate_focus)}\n"
+            f"平庸共识禁区: {fc}\n"
+            f"{discovery_directive}"
+        )
+        target_ids = {
+            item.get("question_id")
+            for item in role_plan.get("challenge_targets", [])
+            if isinstance(item, dict) and item.get("question_id")
+        }
+        agenda_report = research_agenda_engine.report_view(state)
+        target_evidence = [
+            item for item in agenda_report.get("evidence_items", [])
+            if isinstance(item, dict)
+            and target_ids.intersection(item.get("question_ids", []))
+        ]
+        challenge_common = (
+            f"调度上下文: {context_sha256}\n"
+            f"决策问题: {state['decision_question']} | 视野: {state['horizon']} | "
+            f"as-of: {state.get('frame_contract', {}).get('as_of_date', '—')}\n"
+            "待质证的承重答案:\n"
+            f"{_stable_json(role_plan.get('challenge_targets', []))}\n"
+            "这些答案当前绑定的证据:\n"
+            f"{_stable_json(target_evidence[:16])}\n"
+            "已经核实的重大变化与仍开放的重大线索:\n"
+            f"{_stable_json(material_change_context)}\n"
+            "只输出能推翻、限定或独立验证上述承重答案的增量。"
+        )
+    else:
+        lead_common = common
+        challenge_common = common
+    lead_directive = (
+        "\n\n🧱 Current Reality Scan（先于 Agenda）:\n"
+        f"{_stable_json(material_change_context)}\n"
+        "若这是 VALUE_FIRST_LEAD，先逐主体完成每个 required_route_kind：必须记录"
+        "实际 query、至少一个具体 checked_url 和 FOUND/NO_RESULT/INSUFFICIENT。"
+        "把会改变结论的已核实事件放入 material_change_items；搜索结果中已经看见、"
+        "但尚未核实的潜在重大变化必须放入 material_change_leads，不能藏在局限性脚注。"
+        "HIGH lead 未核实会阻断 decision-ready 交付。完成事实面后才推进 Agenda。"
+    )
+    challenge_directive = (
+        "\n\n⚔️ Targeted Challenge（只打承重结论）:\n"
+        f"{_stable_json(role_plan.get('challenge_targets', []))}\n"
+        "只检查上述答案的最强替代解释、证据冲突和失效条件；不要重新做全题扫描、"
+        "不要重复 CandidateMap。若发现新的重大事实，仍须写入 material_change_items"
+        "或 material_change_leads。"
     )
     # ── Role-specific prompts ──
     det_task = (
@@ -1327,6 +1529,7 @@ def dispatch_prompts(state, round_num):
             ["unselected questions", "automatic continuation", "trade outputs", "invented evidence", "recursive candidate expansion"],
             "Agenda projection, Market Bridge, CandidateMap projection, then evidence-only legacy Judge",
             required_semantics={
+                "role_plan": role_plan,
                 "coverage_route_kinds": coverage_assignments["detective"],
                 "coverage_route_shape": {
                     "coverage_field": list(market_map_engine.COVERAGE_FIELDS),
@@ -1343,7 +1546,7 @@ def dispatch_prompts(state, round_num):
             "agents/runtime/research-round.md", "agents/runtime/detective.md"
         ) + "\n\n"
         + f"[Detective · runtime contract · model={model_for('detective')}] Round {round_num}\n"
-        f"{common}\n"
+        f"{lead_common}{lead_directive}\n"
         f"{landscape_directive('detective')}\n"
         f"{det_task}"
         "完成条件: 先回答被调度问题并绑定 evidence_id，再输出价值路径、阶段读数和候选"
@@ -1378,7 +1581,11 @@ def dispatch_prompts(state, round_num):
             ["unselected questions", "automatic continuation", "trade outputs", "rhetorical veto", "recursive candidate expansion"],
             "Agenda projection, Market Bridge, CandidateMap projection, then evidence-only legacy Judge",
             required_semantics={
-                "coverage_route_kinds": coverage_assignments["inquisitor"],
+                "role_plan": role_plan,
+                "coverage_route_kinds": (
+                    coverage_assignments["inquisitor"]
+                    if role_plan.get("mode") == "LEGACY_THREE_ROLE_AUDIT" else []
+                ),
                 "coverage_route_shape": {
                     "coverage_field": list(market_map_engine.COVERAGE_FIELDS),
                     "route_kind": coverage_assignments["inquisitor"],
@@ -1394,7 +1601,7 @@ def dispatch_prompts(state, round_num):
             "agents/runtime/research-round.md", "agents/runtime/inquisitor.md"
         ) + "\n\n"
         + f"[Inquisitor · runtime contract · model={model_for('inquisitor')}] Round {round_num}\n"
-        f"{common}\n"
+        f"{challenge_common}{challenge_directive}\n"
         f"{landscape_directive('inquisitor')}\n"
         f"{inq_task}{new_crux_text}\n"
         f"{free_roam_text}\n"
@@ -1423,12 +1630,16 @@ def dispatch_prompts(state, round_num):
         "严格按 judge.md 的 JSON 输出。"
     )
     return {
+        "context_sha256": context_sha256,
+        "market_context_receipt_ids": market_context_receipt_ids,
         "open_cruxes": policy["open_cruxes"],
         "dispatch_cruxes": open_ids,
         "research_questions": research_questions,
         "research_directions": research_directions,
         "round_policy": policy,
         "landscape_assignments": landscape_plan.get("assignments", {}),
+        "role_plan": role_plan,
+        "required_roles": role_plan["required_roles"],
         "detective_prompt": det,
         "inquisitor_prompt": inq,
         "judge_prompt": judge,
@@ -1631,6 +1842,52 @@ def cmd_ingest_market_snapshot(topic, artifact):
     state = _load(topic)
     if not state:
         return {"status": "error", "reason": "状态不存在，请先 --init。"}
+    receipt_id = ""
+    if isinstance(artifact, dict):
+        receipt_id = str(
+            ((artifact.get("market_snapshot") or {}).get("adapter_receipt") or {}).get(
+                "receipt_id"
+            ) or ""
+        ).strip()
+    already_present = bool(receipt_id) and any(
+        isinstance(item, dict) and item.get("receipt_id") == receipt_id
+        for item in state.get("market_bridge", {}).get("host_market_snapshots", [])
+    )
+    run_id = str(os.environ.get("TRADE_NOTHING_RUN_ID") or "").strip()
+    round_num = len(state.get("rounds", [])) + 1
+    checkpoint = (
+        run_registry.load_checkpoint(run_id, f"round-{round_num}")
+        if run_id else {}
+    )
+    execution_records = list(
+        (checkpoint.get("roles") or {}).values()
+        if isinstance(checkpoint.get("roles"), dict) else []
+    )
+    if isinstance(checkpoint.get("judge"), dict):
+        execution_records.append(checkpoint["judge"])
+    executed = any(
+        isinstance(item, dict)
+        and isinstance(item.get("payload"), dict)
+        and item.get("exit_code") == 0
+        and item.get("payload_sha256")
+        == run_registry.canonical_json_hash(item.get("payload"))
+        for item in execution_records
+    )
+    if executed and not already_present:
+        return {
+            "status": "market_snapshot_rejected",
+            "topic": topic,
+            "reason": "ROUND_CONTEXT_ALREADY_EXECUTED",
+            "round": round_num,
+            "checkpoint_path": run_registry.checkpoint_path(
+                run_id, f"round-{round_num}"
+            ),
+            "instruction": (
+                "本轮角色已经在冻结上下文中执行；不得把新行情事后混入同一轮。"
+                "保留当前 checkpoint，先提交本轮；新快照进入下一轮。若要让本轮使用"
+                "该快照，必须由操作者显式废弃当前未提交 checkpoint 后重新执行。"
+            ),
+        }
     result = market_bridge_engine.ingest_host_market_snapshot(state, artifact)
     _save(topic, state)
     status_map = {
@@ -1710,6 +1967,9 @@ def cmd_init(topic, frame, runtime_isolation="unverified", start_packet=None,
     state["forbidden_consensus"] = frame.get("forbidden_consensus", [])
     state["thesis_seed"] = frame.get("thesis_seed", "")
     state["research_agenda"] = research_agenda_engine.initialize(frame)
+    state["material_change_register"] = material_change_engine.initialize(
+        frame, topic
+    )
     state["frame_contract"] = {
         "quality_status": _frame_quality_status(frame),
         "question_type": frame.get("question_type"),
@@ -1804,7 +2064,9 @@ def cmd_submit(topic, detective, inquisitor, judge, round_receipt=None):
         return {"status": "error", "reason": "状态不存在，请先 --init。"}
     agenda_native = research_agenda_engine.is_agenda_native(state)
     if agenda_native:
-        pre_control = research_agenda_engine.control_decision(state)
+        pre_control = material_change_engine.augment_research_control(
+            state, research_agenda_engine.control_decision(state)
+        )
         if (
             len(state.get("rounds", [])) > 0
             and pre_control.get("authorization_remaining", 0) <= 0
@@ -1836,7 +2098,6 @@ def cmd_submit(topic, detective, inquisitor, judge, round_receipt=None):
         }
     round_num = len(state["rounds"]) + 1
     dispatch = dispatch_prompts(state, round_num)
-    judge_host_raw = json.loads(json.dumps(judge, ensure_ascii=False))
     if round_receipt:
         receipt_validation = execution_integrity.validate_round_receipt(
             round_receipt, round_num, dispatch, detective, inquisitor, judge
@@ -1860,6 +2121,14 @@ def cmd_submit(topic, detective, inquisitor, judge, round_receipt=None):
             "runner_kind": "",
             "blockers": ["round_execution_receipt_missing"],
         }
+    planned_roles = set(execution_integrity.required_roles(dispatch))
+    if "detective" not in planned_roles:
+        detective = empty_role_payload("detective", round_num)
+    if "inquisitor" not in planned_roles:
+        inquisitor = empty_role_payload("inquisitor", round_num)
+    if "judge" not in planned_roles:
+        judge = empty_role_payload("judge", round_num)
+    judge_host_raw = json.loads(json.dumps(judge, ensure_ascii=False))
     judge = _sanitize_judge_for_agent_support(judge, detective, inquisitor)
     policy = _round_policy(state, round_num)
     admitted_new_cruxes, deferred_new_cruxes = _admit_new_cruxes(
@@ -1887,17 +2156,24 @@ def cmd_submit(topic, detective, inquisitor, judge, round_receipt=None):
     scenario_path_audit = hypothesis_engine.ingest_scenario_paths(
         state, round_num, inquisitor
     )
+    market_context_receipt_ids = dispatch.get("market_context_receipt_ids", [])
     research_agenda_audit = research_agenda_engine.harvest_round(
+        state, round_num, detective=detective, inquisitor=inquisitor,
+        market_context_receipt_ids=market_context_receipt_ids,
+    )
+    material_change_audit = material_change_engine.harvest_round(
         state, round_num, detective=detective, inquisitor=inquisitor
     )
     # Agenda evidence is the canonical plane.  Market Bridge ingests typed
     # value-transfer paths and time-phase readings next; CandidateMap can then
     # resolve same-payload path refs while binding fields to canonical evidence.
     market_bridge_audit = market_bridge_engine.harvest_context(
-        state, round_num, detective=detective, inquisitor=inquisitor
+        state, round_num, detective=detective, inquisitor=inquisitor,
+        market_context_receipt_ids=market_context_receipt_ids,
     )
     candidate_map_audit = market_map_engine.harvest_round(
-        state, round_num, detective=detective, inquisitor=inquisitor
+        state, round_num, detective=detective, inquisitor=inquisitor,
+        market_context_receipt_ids=market_context_receipt_ids,
     )
     crux_probe_audit = _crux_probe_audit(
         state,
@@ -1934,6 +2210,9 @@ def cmd_submit(topic, detective, inquisitor, judge, round_receipt=None):
         if agenda_native else None
     )
     if research_control:
+        research_control = material_change_engine.augment_research_control(
+            state, research_control
+        )
         state["last_research_control"] = research_control
         state.setdefault("research_runtime", {})["status"] = (
             "AWAITING_AUTHORIZATION"
@@ -1961,6 +2240,7 @@ def cmd_submit(topic, detective, inquisitor, judge, round_receipt=None):
     state["rounds"][-1]["market_bridge_audit"] = market_bridge_audit
     state["rounds"][-1]["candidate_map_audit"] = candidate_map_audit
     state["rounds"][-1]["research_agenda_audit"] = research_agenda_audit
+    state["rounds"][-1]["material_change_audit"] = material_change_audit
     state["rounds"][-1]["hypothesis_escalation"] = hypothesis_escalation
     state["rounds"][-1]["payload_repair_audit"] = {
         "historical_agent_evidence_keys_backfilled": (
@@ -1993,6 +2273,7 @@ def cmd_submit(topic, detective, inquisitor, judge, round_receipt=None):
             "opportunity_harvest": harvest,
             "candidate_map": market_map_engine.summary(state),
             "research_agenda": research_agenda_engine.summary(state),
+            "material_change": material_change_engine.report_view(state),
             "research_control": research_control,
             "landscape_coverage": landscape_engine.summary(state),
             "hypothesis_exploration": hypothesis_engine.summary(state),
@@ -3617,7 +3898,9 @@ def cmd_resume_blocked(topic, extra_rounds=0):
         }
         out.update(dispatch_prompts(state, current_round + 1))
         _save(topic, state)
-        out["research_control"] = research_agenda_engine.control_decision(state)
+        out["research_control"] = material_change_engine.augment_research_control(
+            state, research_agenda_engine.control_decision(state)
+        )
         out["instruction"] = (
             "只处理 Agenda 选中的最高影响未决问题。crux 是质证上下文；"
             "不得重跑已回答问题或扩建下游流程。"
@@ -3696,7 +3979,9 @@ def cmd_report(topic, challenge_only=False, report_view="research", include_synt
     degraded_extras = {}
     agenda_native = research_agenda_engine.is_agenda_native(state)
     research_control = (
-        research_agenda_engine.control_decision(state) if agenda_native else None
+        material_change_engine.augment_research_control(
+            state, research_agenda_engine.control_decision(state)
+        ) if agenda_native else None
     )
     if not converged and not agenda_native:
         resolution = cmd_resolution_memo(topic)
@@ -3709,9 +3994,12 @@ def cmd_report(topic, challenge_only=False, report_view="research", include_synt
             "continuation_packet": resolution.get("continuation_packet"),
         }
     elif agenda_native and research_control.get("more_research_recommended"):
+        continuation = research_agenda_engine.continuation_packet(state)
+        continuation["material_change_gate"] = material_change_engine.delivery_gate(state)
+        continuation["challenge_targets"] = material_change_engine.challenge_targets(state)
         degraded_extras = {
             "unresolved_question_ids": research_control.get("open_question_ids", []),
-            "continuation_packet": research_agenda_engine.continuation_packet(state),
+            "continuation_packet": continuation,
         }
 
     rd = crux_engine.report_data(state)
@@ -3750,6 +4038,7 @@ def cmd_report(topic, challenge_only=False, report_view="research", include_synt
             **verification_counts,
             **candidate_map_counts,
             "research_agenda": research_agenda_counts,
+            "material_change": material_change_engine.report_view(state),
             "model": None,
             "rendering_mode": "DETERMINISTIC_NO_LLM_CALL",
             "report_view": report_view,
@@ -3797,7 +4086,7 @@ def _jload(s):
     return json.loads(s) if s else {}
 
 def main():
-    ap = argparse.ArgumentParser(description="Trade Nothing v0.15.0 Crux Orchestrator")
+    ap = argparse.ArgumentParser(description="Trade Nothing v0.16.0 Crux Orchestrator")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--frame", action="store_true")
     g.add_argument("--init", action="store_true")
@@ -3823,7 +4112,9 @@ def main():
     g.add_argument("--create-run", action="store_true")
     g.add_argument("--adopt-run", action="store_true")
     g.add_argument("--selftest", action="store_true")
+    g.add_argument("--empty-role", choices=["detective", "inquisitor", "judge"])
     ap.add_argument("--topic", default="")
+    ap.add_argument("--round-number", type=int, default=1)
     ap.add_argument("--run-id", default="")
     ap.add_argument("--state-path", default="")
     ap.add_argument("--frame-json", default="")
@@ -3881,6 +4172,12 @@ def main():
                     choices=["verified", "degraded", "unverified"])
     ap.add_argument("--verifier-isolation-receipt", default="")
     a = ap.parse_args()
+    if a.empty_role:
+        print(json.dumps(
+            empty_role_payload(a.empty_role, a.round_number),
+            ensure_ascii=False, indent=2,
+        ))
+        return
     if a.selftest:
         return selftest()
     if a.create_run or a.adopt_run:

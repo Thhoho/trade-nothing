@@ -616,6 +616,39 @@ class OrchestratorTests(unittest.TestCase):
         self.assertEqual(second["dispatch_cruxes"][0], "C3")
         self.assertEqual(len(second["dispatch_cruxes"]), 2)
 
+    def test_dispatch_hash_is_independent_of_python_hash_seed(self):
+        code = r'''
+import json
+import deepthink_orchestrator_v2 as orchestrator
+import crux_engine
+st = crux_engine.new_state(
+    "stable", "stable question", "3-6M",
+    [{"id":"C1","label":"one"},{"id":"C2","label":"two"}],
+)
+out = orchestrator.dispatch_prompts(st, 1)
+print(json.dumps({
+    "context": out["context_sha256"],
+    "detective": orchestrator.run_registry.canonical_json_hash(
+        out["detective_prompt"]
+    ),
+}, sort_keys=True))
+'''
+        outputs = []
+        for seed in ("1", "777"):
+            env = dict(os.environ)
+            env["PYTHONHASHSEED"] = seed
+            completed = subprocess.run(
+                [sys.executable, "-c", code],
+                cwd=os.path.dirname(__file__),
+                env=env,
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            outputs.append(completed.stdout.strip())
+        self.assertEqual(outputs[0], outputs[1])
+
     def test_equal_fairness_cruxes_use_research_attention_as_tie_break(self):
         st = crux_engine.new_state(
             "attention", "attention", "3-6M",

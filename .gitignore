@@ -40,6 +40,7 @@ desktop.ini
 # Generated outputs
 *.xlsx
 outputs/
+/var/
 snapshots*.json
 *.db
 *.db-shm

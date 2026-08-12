@@ -8,15 +8,18 @@
 
 ## System boundary
 
-Trade Nothing is a topic-led iterative research workflow around public evidence and market
-mechanisms. LLMs answer Research Agenda questions, produce challenges, blind spots, optional
+Trade Nothing is a value-first research workflow around public evidence and market mechanisms.
+LLMs first discover the named subject's current material changes, then answer Research Agenda
+questions, produce targeted challenges, blind spots, optional
 hypotheses, concrete candidate maps and synthesis. Deterministic
 code protects citation integrity and bounded execution; it must not make control-state completion
 the definition of opportunity quality.
 
-`research_kernel.py` is the only shared deterministic semantic core. It validates evidence,
+`research_kernel.py` is the shared deterministic evidence semantic core. It validates evidence,
 reconciles answer/direction variants, normalizes listed-instrument identity and evaluates setup
-readiness. It owns no workflow state, scheduling, authorization or lifecycle.
+readiness. `material_change_engine.py` is a separate, small current-truth register and delivery
+gate. It owns subject coverage, material-change lineage and known-omission blocking; it is not a
+second lifecycle or research state machine. Neither module schedules models or authorizes actions.
 
 Every LLM call is also an explicit semantic interface. The prompt physically embeds a `WORK WINDOW`
 and the exact role/protocol contract; a filename such as `detective.md` is never treated as though an
@@ -25,8 +28,9 @@ inputs, output product, forbidden work, completion test and next consumer. The s
 therefore binds the instructions actually seen by the model, not merely a pointer to them.
 
 The host runtime—not the skill—owns agent isolation, model execution, web access, and user
-authorization. A run may claim isolated multi-agent debate only when the host actually dispatched
-Detective, Inquisitor and Judge into three distinct contexts and bound all prompts and payloads.
+authorization. A run may claim adaptive isolated execution only when the host dispatched exactly
+the roles in `required_roles` and bound their prompts and payloads. A skipped role is not an
+invocation.
 
 `execution_integrity.py` is an orthogonal execution-truth kernel. It does not interpret evidence or
 own a workflow state. It classifies a report as current verified orchestration, unverified state-only
@@ -46,9 +50,14 @@ degraded; it is labelled accurately.
 
 ```mermaid
 flowchart TD
-    U["Research topic"] --> A["Research Agenda"]
-    A --> R["Search + challenge current questions"]
+    U["Research topic + as-of"] --> P["Primary entities"]
+    P --> T["Current Reality Scan"]
+    T --> G["Material Change Gate"]
+    G --> A["Research Agenda"]
+    A --> R["Value Lead answers current questions"]
     R --> Q["Answered / partial / disputed / open"]
+    Q -. "load-bearing claim only" .-> H["Targeted Challenger"]
+    H --> Q
     Q --> X["New blind spots + new questions"]
     X --> A
     Q --> P["ValueTransferPath: constraint + profit-pool shift"]
@@ -71,7 +80,7 @@ flowchart TD
 ### Host runtime
 
 - Read `SKILL.md` and dispatch the requested workflow.
-- Run Detective and Inquisitor in separate contexts when supported.
+- Run only the adaptive `required_roles`, each in a separate context when supported.
 - Record isolation as `verified`, `unverified`, or `degraded`.
 - Provide current web/data access and preserve source URLs.
 - Deliver the complete embedded work window to each isolated process and bind it in the runtime
@@ -83,8 +92,8 @@ flowchart TD
 - Require explicit process-runtime configuration; never infer Claude or Antigravity from an
   installed binary alone.
 - Run capability preflight before creating or mutating a registered run.
-- Bind each claimable round to three distinct host identities, exact prompt hashes and exact payload
-  hashes; preserve the Judge host payload separately from the engine-enriched Judge record.
+- Bind each claimable round to the exact adaptive role plan, distinct host identities, exact prompt
+  hashes and exact payload hashes; preserve the Judge host payload only for legacy Judge rounds.
 - Derive report execution markers and round wording from current state and method identity.
 - Give inline research no run ID, numbered-round claim, named-role theatre or isolation claim.
 - Mirror each persisted stage-envelope status into the run manifest so paused work cannot remain
@@ -99,6 +108,10 @@ flowchart TD
 - Emits closed semantic work windows and embeds the exact Framer, research-role, Judge,
   CandidateScreen and Claim Verifier contracts in their prompts.
 - Initializes a Research Agenda and harvests answer updates, conflicts, blind spots and new questions.
+- Initializes the Current Reality register, dispatches the first Lead before debate, and blocks
+  decision-ready language when required subject coverage or a known HIGH material lead is open.
+- Emits the smallest role plan that can add information: Lead for fact gaps, Challenger for
+  unchallenged load-bearing answers, Judge only for explicit legacy crux audit.
 - Reprioritizes unresolved Agenda questions in each compact dispatch prompt.
 - Harvests Market Bridge after Agenda evidence and before CandidateMap so same-round candidates can
   bind typed value paths, market-phase readings and canonical evidence IDs.
@@ -112,8 +125,10 @@ flowchart TD
 - Uses locked, atomic JSON writes. Legacy state is never auto-loaded; adoption requires an exact
   explicit state path.
 
-### Detective and Inquisitor
+### Value Lead and Targeted Challenger
 
+- Lead completes the subject-level material-change coverage before Agenda narrowing. Challenger
+  receives only target claims, their current evidence and relevant material-change state.
 - Return `question_updates`, plus at most one lineage-bound new blind spot and one lineage-bound new
   question per role when they can name the exact decision change.
 - Return per-crux structured evidence in `crux_evidence` and `crux_attacks`.
@@ -126,6 +141,17 @@ flowchart TD
 - Express load-bearing industry conclusions as shortest value-transfer paths, distinguish the
   economic-exposure universe from observed trading carriers, and compare each preferred candidate
   with one mapped alternative at an explicit horizon.
+
+### `material_change_engine.py`
+
+- Initializes 1–4 primary entities and deterministic required fact-surface routes by entity type.
+- Accepts coverage only with an actual query and concrete checked URL.
+- Binds material changes to same-round canonical Agenda evidence and affected question IDs.
+- Keeps unverified but already encountered material leads visible until evidence resolves or rejects
+  them.
+- Projects superseded events out of Current Truth while preserving them for audit.
+- Emits `CURRENT_TRUTH_BOUNDED` or `MATERIAL_FACT_GAP`; it never selects a security or makes a trade
+  recommendation.
 
 ### `market_snapshot_adapter.py`
 
@@ -197,6 +223,8 @@ flowchart TD
 
 ### Judge
 
+- Runs only for an explicitly requested legacy crux audit; Agenda-native research does not call it
+  by default.
 - Scores only evidence already present in the two agent payloads.
 - Does not search, invent citations, generate probabilities, or make a trade decision.
 - Emits one bounded signal per crux plus verbatim citation objects.

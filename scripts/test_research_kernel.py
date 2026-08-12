@@ -165,6 +165,20 @@ class ReconciliationKernelTests(unittest.TestCase):
         self.assertEqual(result["answer_status"], "ANSWERED")
         self.assertEqual(result["next_test_availability"], "WAIT_FOR_EVENT")
 
+    def test_deferred_checkpoint_closes_current_as_of_answer(self):
+        result = research_kernel.reconcile_answer_variants([{
+            "round": 2,
+            "role": "detective",
+            "answer_status": "PARTIAL",
+            "answer": "截至截止日合同尚未发生，现阶段不构成经济暴露。",
+            "evidence_boundary": "SINGLE_SOURCE",
+            "evidence": [normalized("issuer-source.com.cn")],
+            "missing_information": "未来合同结果",
+            "next_test_availability": "WAIT_FOR_EVENT",
+        }])
+        self.assertEqual(result["answer_status"], "ANSWERED")
+        self.assertEqual(result["next_test_availability"], "WAIT_FOR_EVENT")
+
     def test_same_tier_direction_conflict_is_unresolved(self):
         records = [
             {

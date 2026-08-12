@@ -10,6 +10,7 @@ import deepthink_host_runner as runner
 import deepthink_orchestrator_v2 as orchestrator
 import process_control
 import run_registry
+import test_agenda_native_control as agenda_fixture
 
 
 def evidence_plan(crux_id):
@@ -120,6 +121,38 @@ class HostRunnerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "run_purpose_drift"):
             orchestrator._save(self.context["topic"], state)
         os.environ["TRADE_NOTHING_RUN_PURPOSE"] = "PRODUCTION_RESEARCH"
+
+    def test_agenda_native_first_round_runs_only_value_lead(self):
+        context = run_registry.create_manifest(
+            "Adaptive value-first topic", run_purpose="PRODUCTION_RESEARCH"
+        )
+        run_registry.bind_context(context)
+        initialized = orchestrator.cmd_init(
+            context["topic"], agenda_fixture._agenda_only_frame(),
+            runtime_isolation="verified",
+        )
+        self.assertEqual(initialized["required_roles"], ["detective"])
+        calls = []
+
+        def successful(role, prompt, host_bin, timeout_seconds,
+                       allow_agent_tools=False, workdir="",
+                       host_runtime="antigravity"):
+            calls.append(role)
+            self.assertIn("Current Reality Scan", prompt)
+            return result(role, prompt, orchestrator.empty_role_payload(role, 1) | {
+                "_execution": {"status": "COMPLETED", "role": role}
+            })
+
+        with mock.patch.object(runner, "_run_role", side_effect=successful):
+            completed = runner.execute_round(
+                context, agy_bin="agy", timeout_seconds=60
+            )
+        self.assertNotEqual(completed["status"], "paused_runtime_failure")
+        self.assertEqual(calls, ["detective"])
+        state = orchestrator._load(context["topic"])
+        receipt = state["rounds"][0]["execution_receipt"]
+        self.assertEqual(receipt["required_roles"], ["detective"])
+        self.assertEqual(set(receipt["roles"]), {"detective"})
 
     def test_permission_bypass_is_explicit(self):
         safe = runner._command("agy", "p", 60)

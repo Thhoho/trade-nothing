@@ -44,10 +44,12 @@ because it remains `HYPOTHESIS_ONLY`; rhetorical novelty never satisfies an evid
 The engine first preserves fairness by fewest prior attempts and crux-dispatch alignment. Within an
 equal fairness class it uses the hypothesis ledger's bounded research-attention score, then
 `path_id`, so high-asymmetry, near-signal, cheap-to-test paths are examined earlier without starving
-the rest. This is not candidate ranking, probability, or promotion credit. Each round, it assigns at
-most two role-unprobed paths to the Detective and at most two to the Inquisitor. Both roles must
-eventually probe every path. Each role
-returns exactly one `landscape_findings` item per assignment:
+the rest. This is not candidate ranking, probability, or promotion credit. The engine may reserve at
+most two role-unprobed paths for the Value Lead and at most two for the Targeted Challenger in a
+round plan. The adaptive scheduler still invokes only the role needed by Current Reality, Agenda,
+or missing Landscape coverage; an uninvoked reservation is not a probe. Because a complete
+Landscape is explicit opt-in, both roles must eventually probe every path before Landscape coverage
+can complete. Each invoked role returns exactly one `landscape_findings` item per assignment:
 
 ```json
 {

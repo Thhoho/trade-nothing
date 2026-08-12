@@ -1,0 +1,20 @@
+# Permit only the bounded daily observer to cross the outer scheduled-task
+# sandbox. The child process itself stays read-only and receives no secrets.
+prefix_rule(
+    pattern = [
+        "/Applications/ChatGPT.app/Contents/Resources/codex",
+        "exec",
+        "--ephemeral",
+        "--sandbox",
+        "read-only",
+    ],
+    decision = "allow",
+    justification = "Run the bounded Trade Nothing daily observer; the child remains read-only and receives no provider secrets.",
+    match = [
+        "/Applications/ChatGPT.app/Contents/Resources/codex exec --ephemeral --sandbox read-only --color never --output-schema /tmp/schema.json --output-last-message /tmp/result.json -C /Users/xiaweiqi/Documents/trade-nothing -",
+    ],
+    not_match = [
+        "/Applications/ChatGPT.app/Contents/Resources/codex exec --ephemeral --sandbox danger-full-access -",
+        "/Applications/ChatGPT.app/Contents/Resources/codex exec --yolo -",
+    ],
+)
