@@ -6,6 +6,13 @@ economics to market behavior by horizon, and produces one auditable decision sna
 [中文](README_zh.md) · [Architecture](docs/architecture.md) ·
 [v0.18.0 release](docs/release-v0.18.0.md) · [Data sources](references/data-sources.md)
 
+> **Current daily-use method: the thin constitution (`rebuild/SKILL.md`).** It is a one-page
+> prompt-level skill (zero mandatory Python) validated by two blind A/B gates — closed-packet
+> reasoning (6 cases, [`docs/rebuild-ab-phase1-results.md`](docs/rebuild-ab-phase1-results.md)) and
+> a live retrieval A/B ([`docs/rebuild-ab-phase2-results.md`](docs/rebuild-ab-phase2-results.md)) —
+> at 0.91–1.02x baseline token cost. Cognitive anchors persist in [`anchors/`](anchors/). The v0.18
+> kernel below remains the auditable engine reserved for a future online service.
+
 ## What it is
 
 Trade Nothing is a Skill and a small deterministic harness for company, event, industry, thematic,
