@@ -55,3 +55,9 @@ snapshots*.json
 /dfd_analysis_article.md
 /dfd_desk_narrative.md
 /Trade_Nothing_完整运行记录_线上服务架构参考.md
+
+# Personal run artifacts and research reports (not for public repo)
+/.runs/
+/reports/
+/.codex/
+/scratch/

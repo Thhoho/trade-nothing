@@ -1,4 +1,4 @@
 interface:
   display_name: "Trade Nothing"
-  short_description: "Adversarial, evidence-gated investment research"
-  default_prompt: "Use $trade-nothing to research this question with explicit evidence, adversarial checks, and no unsupported promotion."
+  short_description: "Harness-first, evidence-bound investment research"
+  default_prompt: "Use $trade-nothing to research this investment question with current material facts, a bounded value loop, one evidence-linked DecisionSnapshot, and a native Codex child Challenger only when it can change the conclusion."

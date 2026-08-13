@@ -1,258 +1,206 @@
 ---
 name: trade-nothing
 description: >
-  Value-first investment research for standard Q&A and -deepthink2. It first
-  discovers what materially changed for the named subject, then answers a
-  bounded Research Agenda, maps industry economics into market carriers by
-  horizon, invokes an independent challenger only for load-bearing claims, and
-  delivers an evidence-labelled Deep Research Report. Use for company, event,
-  industry, thematic, A-share, commercial-space, AI-chain, photovoltaic, and
-  similar research. It does not own orders, positions, portfolios, publication,
-  or downstream handoff.
+  Value-first investment research for standard Q&A and -deepthink2. Use for
+  companies, events, industries, themes, A-shares, commercial space, AI chains,
+  photovoltaics, and similar questions requiring current material facts,
+  industry-to-market mapping, concrete securities, market boundaries, optional
+  bounded Challenger review with explicit provenance, and an evidence-labelled report. It ends at research;
+  it does not own orders, positions, portfolios, publication, or handoff.
 ---
 
-# Trade Nothing v0.16.0 — Value-First Research
+# Trade Nothing v0.18.0 — Harness-First Research
 
-> 先找全会改写结论的当期事实，再解释产业与市场，最后才做质证和审计。
+> 先找全会改写结论的当期事实，再解释产业如何进入市场；每个付费动作都必须带来可验证增量。
 
 **Skill root:** `./`
 
-## 1. Product promise
+## What the product must add
 
-Trade Nothing 的产品不是“跑完一个复杂流程”，而是比同模型裸研究更稳定地交付三种增量：
+Produce more decision value than the same model researching unaided:
 
-1. **Current truth**：主体最近发生了什么，哪些旧事实已被取代；
-2. **Decision gain**：这些变化如何改变产业逻辑、市场载体、时点和条件性建议；
-3. **Trust boundary**：事实、单一来源、推断和假说清楚分开，重大遗漏不能藏在脚注。
+1. **Current truth** — identify material facts as of a named cutoff and replace stale premises;
+2. **Decision gain** — show how those facts change causality, economics, market stage, carriers,
+   alternatives, triggers and invalidations;
+3. **Trust boundary** — keep source fact, single-source observation, inference, hypothesis and
+   execution proof distinct.
 
-默认研究路径：
+Missing a load-bearing current fact found by a comparable baseline is product failure. Passing
+tests, calling more roles, collecting more URLs or writing a longer report is not investment value.
 
-```text
-问题与 as-of
-  -> Primary Entities
-  -> Current Reality Scan（主体级近期事实面）
-  -> Material Change Gate（重大变化 / 已知重大线索）
-  -> Research Agenda（只研究仍会改变判断的问题）
-  -> Lead synthesis
-  -> Targeted Challenge（仅在承重结论需要时）
-  -> Current Truth projection
-  -> 产业价值转移 × 市场载体 × 时间视野
-  -> Deep Research Report
-```
+Stop at an evidence-bounded Deep Research Report. Never create orders, positions, portfolios,
+target prices, return promises, publication or downstream handoff without separate authorization.
 
-不得把流程完成、收据齐全、报告更长或候选更多当成产品价值。若同模型单次研究找到了关键
-事实而 Skill 没找到，Skill 就失败了。
+## The kernel
 
-## 2. Boundary
+Persist only four semantic objects:
 
-范围内：事实变化、因果机制、替代解释、产业价值转移、经济暴露池、市场交易池、价格与
-拥挤、具体证券、条件性 setup、风险、下一验证和报告。
+- `TaskSpec`: question, as-of, exact 0–10 budget, entities, mandatory fact surfaces and questions;
+- `EvidenceStore`: canonical EvidenceItems and auditable SourceChecks;
+- `DecisionSnapshot`: the only user-facing conclusion;
+- `RunLedger`: method identity, dispatch/payload lineage, real calls, budget, failures and inputs.
 
-范围外：Thesis/Decision 状态、订单、仓位、组合、收益承诺、提醒、自动发布和跨系统 handoff。
-任何外部副作用仍需用户另行授权。
+The Value Lead alone replaces `DecisionSnapshot`. Tools and host adapters append evidence; a real
+Challenger returns only a bounded `ChallengePacket`; the renderer creates content-addressed,
+verified user/audit views from the same Snapshot. Do not create a second thesis, Agenda, CandidateMap, lifecycle or
+report conclusion.
 
-报告可写“条件性优先关注 / 继续观察 / 当前回避”，但必须给触发、失效、最接近替代项、
-价格/筹码边界和证据标签；不得生成目标价、仓位或执行指令。
+The kernel has two clocks: a committed Snapshot remains valid against the evidence frontier at
+which the Lead wrote it, while later host/Challenger appends become pending obligations for the next
+Lead. Never repair a host append by editing the Snapshot or deleting appended evidence.
 
-## 3. Research rules
-
-### 3.1 Reality before Agenda
-
-Framer 必须输出 1–4 个 `primary_entities` 和 4–8 个 Research Agenda 问题。Framer 不浏览；
-实体和前提只是检索范围，不是证据。
-
-首个 Lead 调用先完成每个实体的 `required_route_kinds`。每条覆盖必须保存实际 query、至少一个
-具体 checked URL，以及 `FOUND / NO_RESULT / INSUFFICIENT`。对公司至少检查：
-
-- 官方披露索引；
-- 最新定期报告；
-- 合同、客户、订单、产销与经营里程碑；
-- 融资、资本、股权、治理、监管与诉讼。
-
-项目、事件和主题使用运行时给出的等价路线。`INSUFFICIENT` 不算完成；真实查过的
-`NO_RESULT` 是有效负结果。
-
-已核实、会改变承重结论的事件进入 `material_change_items`。搜索中已经看到但尚未核实的
-潜在重大变化进入 `material_change_leads`，不能只写进“局限性”。任何开放的 HIGH lead，或
-任何未完成的主体事实面，令交付状态成为 `MATERIAL_FACT_GAP`：报告仍可交付，但不得输出
-decision-ready 推荐。
-
-### 3.2 Agenda is a question ledger, not a ceremony
-
-问题状态为 `OPEN / PARTIAL / ANSWERED / DISPUTED`。每个答案显示当前证据边界、最强反例、
-缺失数据和下一测试可用性：`SEARCH_NOW / WAIT_FOR_DATE / WAIT_FOR_EVENT /
-NEEDS_USER_DATA / UNKNOWN`。
-
-只在低成本、高影响且 `SEARCH_NOW` 时建议下一轮。等待事件或用户数据不消耗研究预算。
-旧报告中的关键发现最多提取 8 条作为 `baseline_findings`；本轮必须逐条标为
-`REVERIFIED / SUPERSEDED / OUT_OF_SCOPE / UNRESOLVED`，不得继承旧证据等级。
-
-### 3.3 Adaptive roles
-
-- **Framer**：定义问题、实体与检索范围；不研究。
-- **Value Lead（兼容名 Detective）**：先扫 Current Reality，再回答 Agenda，并把产业逻辑映射
-  到市场和具体载体。
-- **Targeted Challenger（兼容名 Inquisitor）**：只攻击已形成的承重答案，或补齐用户显式要求
-  的 Landscape 第二侧探测；不重做全题扫描，不重复 CandidateMap。
-- **Judge**：只服务显式 legacy crux audit。Agenda-native 默认不调用。
-- **Parent**：只消费确定性 Current Truth、Agenda、Market Bridge 与证据账本生成报告。
-
-运行器返回的 `required_roles` 是本轮唯一调用计划：首轮通常只有 Lead；事实门未清时继续
-Lead；事实门已清但承重答案只有单侧研究，或显式 Landscape 尚缺第二侧覆盖时，才调用
-Challenger；Judge 不得空转。省略角色必须
-用 `SKIPPED` payload 表示，执行收据只绑定真实调用的角色。
-
-隔离和收据证明“调用确实发生”，不证明研究有效或有 Alpha。
-
-### 3.4 Industry-to-market mapping
-
-严格区分：
+## One useful-action loop
 
 ```text
-工程/政策事实 -> 约束变化 -> 利润池转移 -> 公司经济暴露
-                                   ↓
-事件与叙事 -> 增量资金 -> 市场交易载体 -> 拥挤/验证/分化
+bounded WorkingSet -> one ActionIntent -> acquire/reconcile evidence
+-> append evidence and execution truth -> replace DecisionSnapshot atomically
+-> deterministic validation -> stop or compile the next WorkingSet
 ```
 
-先写最短 `ValueTransferPath`，再分别固定经济暴露池与市场交易池。每个具名候选必须有公司名、
-ticker（上市证券）、时间视野、最近替代项、为何现在优先、切换条件、触发和失效。
+An ActionIntent names a likely target, uncertainty, evidence needed, expected decision delta, stop
+condition and cost bound. It is a call-scoped declaration, not a prediction that one exact field
+must change. The kernel requires an actual new EvidenceItem or SourceCheck in every research loop
+and a real semantic Snapshot delta. Control intent to continue stays in the packet/ledger, not in
+user-facing next-validation fields.
 
-市场按 `EVENT_DAYS / TACTICAL_WEEKS / EARNINGS_QUARTERS / STRUCTURAL_YEARS` 分开解释。
-技术成功、股价弹性和利润兑现不是一件事；不得用一个全局股票顺序覆盖四种视野。
+Budget is a ceiling, not a target: `0` synthesizes supplied evidence; `1` performs the first Current
+Reality Scan; `2–10` funds only unresolved actions that can change the decision. A Challenger costs
+one loop; Lead resolution does not add a search loop. Stop early when no executable action can
+change the Snapshot. Never auto-retry timeout, quota, authentication, permission or invalid JSON.
 
-`SETUP_READY` 只表示字段完整。没有价值路径、宿主行情回执、替代比较和时点理由时，候选只能
-作为研究线索。`WATCH_ONLY / FAILURE_HEDGE` 不能变成推荐。
+## Current reality is the fact gate
 
-### 3.5 Evidence language
+Complete every TaskSpec fact surface. Each SourceCheck records its security identity when relevant,
+bounded window, real query or provider endpoint, concrete checked URLs, outcome and limitation.
+`NO_RESULT` requires a precise negative scope; `INSUFFICIENT` remains a hard gap. Every new
+EvidenceItem must be bound by a same-input SourceCheck.
 
-- `FACT`：来源直接支持；
-- `SINGLE_SOURCE`：只有一个真实来源；
-- `INFERENCE`：从已引事实推导；
-- `HYPOTHESIS`：待验证机制或映射。
+For listed companies, enumerate the official disclosure index over the longer of “since the latest
+periodic report” and 120 days, capped by as-of. A complete manifest records every title, URL, date,
+disposition and reason. Open every potentially material item. Loss, impairment, related-party
+borrowing, equity incentives, pledges, unlocks, guarantees, financing, contracts, litigation and
+control changes cannot be dismissed by a template title reason. `OPENED_RELEVANT` entries require
+matching evidence. Model assertion alone cannot complete this gate: the manifest must enter through
+a host input or a controlled fixture. An optional external CLI's output remains caller-reported and
+must be reconciled into an explicit host input before it can satisfy this gate.
 
-数字必须带具体 URL、发布者和日期。重复来源不重复计数。假说可以启发搜索，但不得冒充事实、
-候选、价格证据或推荐权限。
+Inspect at least financial/audit/cash-flow reality; operations, customers, orders and milestones;
+control, pledge, freeze and related parties; unlocks, holdings changes, buybacks and financing;
+investment, disposal, litigation, regulation and listing risk. Do not substitute a few thematic
+keyword searches for bounded index enumeration.
 
-## 4. Modes
+Every HIGH EvidenceItem must appear in `material_changes`, `open_material_gaps`, or a reasoned
+`non_material_evidence_disposition`. Facts use `FACT`; one genuine source uses `SINGLE_SOURCE`;
+reasoning uses `INFERENCE`; an unverified mechanism uses `HYPOTHESIS`.
 
-### Standard Q&A
+A material-title EvidenceItem cannot be closed with “not important” prose. Its EvidenceItem first
+needs at least two host-extracted `document_facts`: typed fact, locator, verbatim excerpt, controlled
+event type/anchor and document SHA-256. The same hash must appear in the binding SourceCheck's
+acquisition receipts as `docsha256:<hash>`. The Lead cannot author these facts. It then chooses exactly one outcome:
+material change, open gap, or non-material disposition. The last names a decision dimension,
+explains why the body facts do not change the decision and states a concrete reversal condition.
+The kernel derives the event family from subject, event type and host anchor; the Lead does not submit
+that internal ID and cannot merge unrelated events or count duplicate announcements as separate changes.
 
-直接回答，必要时浏览当前资料；说明截止日和不确定性。普通问题不要启动完整运行器。
+Every structured number uses typed `measures` with one registered metric, numeric value, compatible
+unit/dimension, explicit `subject_id`, as-of, period and registered basis ID. The kernel owns the
+canonical metric definition; an unregistered alias or prose basis fails closed. `number` must be
+JSON `null`; never put an opaque string or dictionary there. Do not restate values in factual prose:
+the deterministic formatter owns scale and display. Each EvidenceItem binds at most one security,
+and every measure subject must equal one of that item's entities or its single security. Every
+measure needs a concrete publisher URL and ISO date no later than as-of.
 
-### `-deepthink2` — recommended deep research
+## Connect industry to market without collapsing them
 
-1. 读取本文件；如用户说“最新 Skill 重跑”，先用当前 source method identity 创建新 run，
-   不继承旧结论。
-2. Framer 内联生成 frame；不浏览，不调用子代理。
-3. 初始化后读取 `required_roles`，只执行列出的 prompt。
-4. 提交角色 JSON 与执行收据；引擎更新重大变化、Agenda、Market Bridge 和 Current Truth。
-5. 预算允许且引擎仍识别出高价值缺口时继续；否则立即报告。
-6. 始终交付 `deep_research_report_markdown` 与 Evidence Ledger。
+Keep two paths visible:
 
-注册运行器（Antigravity / Claude Code）会自动执行自适应计划：
-
-```bash
-python3 scripts/deepthink_host_runner.py start --topic "TARGET" \
-  --frame-json '<framer_output>' --run-purpose PRODUCTION_RESEARCH \
-  --runtime antigravity --round-budget 1
-python3 scripts/deepthink_host_runner.py resume --run-id "RUN-..." \
-  --runtime antigravity --round-budget 2
-python3 scripts/deepthink_host_runner.py status --run-id "RUN-..."
+```text
+fact -> constraint change -> profit-pool shift -> company economic exposure
+narrative/event -> marginal capital -> market carrier -> crowding/verification/divergence
 ```
 
-Codex collaboration 手动运行时，先创建/初始化 run；读取 dispatch 的 `required_roles`。只给实际
-角色派发 prompt。对省略角色用下列命令生成 typed empty payload；收据命令只传实际角色的
-payload 与 agent ID：
+Explain `EVENT_DAYS`, `TACTICAL_WEEKS`, `EARNINGS_QUARTERS` and `STRUCTURAL_YEARS` separately.
+Never use one timeless stock rank.
 
-```bash
-python3 scripts/deepthink_orchestrator_v2.py --empty-role inquisitor --round-number 1
-python3 scripts/deepthink_orchestrator_v2.py --empty-role judge --round-number 1
-python3 scripts/codex_deepthink_round_receipt.py --round 1 --dispatch dispatch.json \
-  --detective detective.json --detective-agent-id "/root/lead" \
-  --output round-1-receipt.json
-```
+Always distinguish an observed market carrier from a qualified research candidate.
+`market_carriers_by_horizon` names what marginal capital is trading, why, the closest alternative
+and switch condition; it is not a recommendation and may exist even when no setup qualifies.
+The closest alternative is either `UNKNOWN` or one canonical `ticker@MIC` with its own
+security-bound market evidence; free-text or borrowed evidence cannot create a comparison.
 
-只有 dispatch 明确包含 Judge 时才运行 `execution_integrity.py seal-judge-prompt`。提交命令仍提供
-Lead、Challenger、Judge 三个 JSON 文件，其中省略者为 typed empty payload。
+A `CONDITIONAL_PRIORITY` candidate needs canonical `ticker@MIC`, horizon, economic exposure, market
+role, why now, closest alternative, switch condition, trigger, invalidation and price/crowding
+boundary. It binds one value-transfer path, one same-horizon market view, role-qualified
+security-bound `exposure_evidence_ids` and `market_evidence_ids`, and their union. One EvidenceItem
+may carry multiple honest roles; do not duplicate an observation merely to satisfy topology. When
+the Lead discovers a new
+priority security, the kernel automatically creates all listed-company fact-surface obligations for
+that security; industry-level coverage can no longer bypass company reality. `WATCH`,
+`EXPLORE` and `NO_SETUP` are not recommendations. `WATCH` still requires a concrete security,
+economic-exposure evidence, market-state evidence, why-now, trigger, invalidation and crowding
+boundary. `NO_SETUP` is an empty sentinel, never a named alternative. Negative calls such as `AVOID` or
+`SHORT` are outside this research contract and cannot be smuggled in as candidate stances.
 
-默认一轮是授权边界；额外轮次必须由用户明确给预算。429、超时、权限失败和无效 JSON 保留
-checkpoint，不自动重试。宿主不足时可做 `INLINE_DEGRADED_RESEARCH`，但不得借用失败 run、
-伪造角色或声称完成 N 轮。
+## Challenge and execution truth
 
-执行真实性标签：
+Lead self-countercase and Challenger output are different. Request a Challenger only for named,
+load-bearing claims that can change the Snapshot. It receives only those claims and relevant
+evidence, cannot write the Snapshot, and cannot spawn another role.
 
-- `ORCHESTRATED_VERIFIED`：当前 method identity、注册 run、state 与每轮 adaptive receipt 匹配；
-- `STATE_ONLY_UNVERIFIED`：有状态更新但没有完整收据；
-- `HISTORICAL_REPLAY`：state 来自不同方法版本；
-- `INLINE_DEGRADED_RESEARCH`：当前上下文直接研究，无可声明轮次。
+In Codex, use one native child agent as the default Challenger. The parent supplies the bounded
+prompt returned by `research_loop.py`; the child returns only one ChallengePacket; the parent
+records child and parent IDs as `HARNESS_SUBAGENT / HARNESS_REPORTED / SEPARATE_CONTEXT_REPORTED`.
+This is a caller-reported host provenance record; the parent ID must
+equal the latest accepted Lead agent. It does not itself prove context separation, a different
+model or cryptographic process attestation. An optional external process is recorded honestly as
+`HOST_PROCESS / PROCESS_REPORTED / PROCESS_CONTEXT_REPORTED`; this binds the caller's process fields
+and payload but is not an unforgeable host attestation. A manual parent receipt remains
+`SELF_DECLARED / UNVERIFIED`. Never collapse these into one “verified” label. The Lead resolves
+real attacks as `ACCEPTED`, `PARTIAL`, `REJECTED` or `UNRESOLVED`.
 
-### Other modes
+The repository deliberately exposes no API that stamps an arbitrary process dictionary as verified.
+A future strong process proof must be minted by an application-side host that owns spawn, wait,
+exit status and payload capture; until then, the CLI adapter remains a weak, explicit provenance
+class rather than a false trust boundary.
 
-- `-scan`：实验性雷达，不得包装成全市场扫描；
-- `-calibrate`：历史断言审计，仅在用户要求时持久化；
-- `-premortem`：对称构造 bull/base/bear、触发、传导和失效，不编概率或幅度。
+## How to run
 
-## 5. Report order
+For standard Q&A, answer directly with current sources and a named as-of; do not register a deep run.
 
-1. 核心判断与明确边界；
-2. Current Reality gate、重大变化、开放重大线索；
-3. Research Agenda 答案、最强质证与缺口；
-4. 产业价值转移和各时间视野的市场运行；
-5. 经济暴露池 × 市场交易池、具体证券和最近替代项；
-6. 条件性事件/经济 setup，或明确说明为何不能给；
-7. 新盲点、情景、风险、下一最低成本验证；
-8. Evidence Ledger、执行真实性与方法边界。
+For `-deepthink2`, honor the exact budget, create explicit entities/questions in TaskSpec, and start
+a new current-method run. A generic topic-only deep run is rejected. In Codex, start with
+`--execution-mode HARNESS_ORCHESTRATED`, follow each returned WorkingSet, and use native tools for
+Lead research. When `call_mode=CHALLENGER`, spawn exactly one native child agent with the returned
+prompt, wait for its JSON, create a harness-reported receipt, submit it, then let the parent Lead
+resolve. Do not invoke Claude CLI from inside Codex.
 
-原始角色 payload、状态机字段和收据留在审计视图，不能占据首屏。零候选只有在完成具名证券、
-替代、价格、筹码和失败路径搜索后才是有效结论。
+`research_host_runner.py` is an optional cross-environment/cross-model adapter only when a user
+explicitly chooses it. Claude authentication or CLI permission failure must never block the native
+Codex path, and the adapter cannot satisfy host-only official-index/body-extraction gates by itself.
+Exact packet, receipt, resume and host-ingest commands are in
+[references/research-loop-contract.md](references/research-loop-contract.md).
 
-## 6. Data sources
+Use host data rather than model-reported prices. The bounded path is acquisition
+(`free_market_observations.py`) -> frozen metrics (`market_snapshot_adapter.py`) -> canonical research
+input (`research_market_input.py`) -> `research_loop.py ingest-host`. It binds market observations to
+the discovered security without pretending price action proves economic exposure. See
+[references/data-sources.md](references/data-sources.md). Never place `TUSHARE_TOKEN` in prompts,
+state, receipts, reports or installed files.
 
-研究公开事实时优先一手官方来源。A 股行情按当前课题有界采集：
+## Delivery and acceptance
 
-```bash
-python3 scripts/free_market_observations.py --help
-python3 scripts/market_snapshot_adapter.py --help
-```
+Render only `DecisionSnapshot`: judgment/boundary; Current Reality and gaps; question answers and
+self-countercases; value paths and market by horizon; securities, alternatives, triggers and
+invalidations; real challenges; next validation; Evidence Ledger and execution truth. A degraded
+report is valid, but every material gap, unresolved challenge and runtime failure remains visible.
+`report-user`, `report-audit` and `report-bundle` are content-addressed, read-only outputs whose
+complete run, RunLedger, state, method, renderer and content hashes must pass bundle verification. Deliver
+the user artifact exactly; never prepend a second conclusion or patch a unit in copied Markdown.
 
-可选 Tushare Pro、BaoStock、AKShare 腾讯或 CSV。宿主用 `--ingest-market-snapshot` 摄入完整
-adapter 产物后，行情才进入可信数据平面。`TUSHARE_TOKEN` 只存在于宿主父进程环境，不得进入
-prompt、state、收据、报告或 Skill 安装目录。详细替换方式见 `references/data-sources.md`。
+Run `make test` and `python3 scripts/version.py` after method changes. These prove implementation,
+not effectiveness. Claim improvement only after blind, same-model, same-as-of, comparable-budget
+forward tests show zero frozen P0 omissions, no false challenge provenance, no semantic
+contradiction, usefulness above baseline on at least four of five diverse cases, and cost no greater
+than `1.5x` baseline.
 
-## 7. Product acceptance
-
-工程验证：
-
-```bash
-python3 scripts/version.py
-python3 scripts/benchmark_current.py --check --source-repo .
-python3 scripts/product_value_benchmark.py --help
-make test
-```
-
-首次建立盲评文件时读 `references/product-value-assessment.md`；它给出最短 key、assessment
-和真实报告文件绑定示例，不进入日常研究上下文。
-
-方法变更只有在同模型、同问题、同 as-of、可比预算下同时满足以下条件才值得保留：
-
-- 加权重大事实召回不低于 single-agent baseline；
-- 决策可用性更高，且无事实/假说洗白；
-- 在尚未证明增益前，总成本不超过 baseline 的 1.5 倍；
-- 若连续真实课题无收益，删除冗余角色或模块，不用更多流程掩盖失败。
-
-工程测试、固定 fixture、`ORCHESTRATED_VERIFIED` 和报告成功渲染都不证明研究效果、Alpha
-或收益。产品效果必须由真实主题对照与盲评决定。
-
-## 8. Hard guardrails
-
-1. 已知 HIGH 重大线索未处置时，不得写 decision-ready 结论。
-2. 旧事实被新事实取代时，Current Truth 只能展示新版本；历史版本留审计。
-3. 不得强制凑股票；无上市载体必须给搜索边界。
-4. `NO_EDGE / NO_USABLE_SETUP / AVOID / SHORT` 不得互相替代。
-5. 新 URL、来源数、轮次数、候选数和报告长度不是成功指标。
-6. 预算、外部写入、安装、推送、发布和交易动作均需当前明确授权。
-7. Skill 到 Deep Research Report 为止，不创建下游业务状态。
-
----
-
-*Trade Nothing v0.16.0 — Current truth first. Decision gain over process theatre.*
+*One evidence truth. One decision truth. Every action earns its cost.*

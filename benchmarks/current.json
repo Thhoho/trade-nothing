@@ -3,10 +3,10 @@
   "calibration_status": "UNBENCHMARKED_METHOD_CHANGE",
   "operational_method_identity": {
     "schema_version": "trade-nothing.method-identity.v1",
-    "scope": "operational-bundle.v1",
-    "method_version": "0.16.0",
-    "contract_sha256": "9490d94e848f80982be9a8a321c9154953f95dde778c38701e15ef3ca1b71fd9",
-    "file_count": 87
+    "scope": "operational-bundle.v2",
+    "method_version": "0.18.0",
+    "contract_sha256": "f9cd0fd00f8a4dc6d2d64d05dfdd33a61271c704ba6a3de41c6cae58032714e5",
+    "file_count": 13
   },
   "last_calibrated_method_identity": {
     "schema_version": "trade-nothing.method-identity.v1",

@@ -6,26 +6,28 @@ import re
 from pathlib import Path
 
 
-__version__ = "0.16.0"
+__version__ = "0.18.0"
 
 
 def _surface_contracts(version):
     tag = f"v{version}"
     return {
         "SKILL.md": [
-            f"# Trade Nothing {tag} — Value-First Research",
-            "Current truth first. Decision gain over process theatre.",
-            f"*Trade Nothing {tag}",
+            f"# Trade Nothing {tag} — Harness-First Research",
+            "## The kernel",
+            "## One useful-action loop",
+            "HARNESS_SUBAGENT / HARNESS_REPORTED",
+            "*One evidence truth",
         ],
         "README.md": [
             f"docs/release-{tag}.md",
-            f"## {tag}: current truth first, challenge on demand",
+            f"## {tag}: harness-first, portable semantic core",
             f"**Calibration status:** {tag} is implemented",
             "v0.10 foundation design",
         ],
         "README_zh.md": [
             f"docs/release-{tag}.md",
-            f"## {tag}：当前事实优先，质证按需",
+            f"## {tag}：宿主能力优先，可移植语义内核",
             f"**校准状态：** {tag} 已实现",
             "v0.10 基础设计",
         ],
@@ -36,25 +38,16 @@ def _surface_contracts(version):
         f"docs/release-{tag}.md": [
             f"# Trade Nothing {tag}",
             "`UNBENCHMARKED_METHOD_CHANGE`",
-            "historical",
+            "Historical compatibility",
         ],
-        "agents/framer.md": [f"# Trade Nothing {tag} — The Framer"],
-        "agents/detective.md": [f"# Trade Nothing {tag} — The Detective"],
-        "agents/inquisitor.md": [f"# Trade Nothing {tag} — The Inquisitor"],
-        "agents/judge.md": [f"# Trade Nothing {tag} — The Judge"],
-        "scripts/crux_engine.py": [f"Trade Nothing {tag} — Crux Engine"],
-        "scripts/deepthink_orchestrator_v2.py": [
-            f"Trade Nothing {tag} — Crux Orchestrator",
-            f'Trade Nothing {tag} Crux Orchestrator',
+        "scripts/research_core.py": ["single-writer research core", "RUN_SCHEMA"],
+        "scripts/research_loop.py": ["ActionIntent-driven runtime", "def dispatch(run)"],
+        "scripts/research_report.py": ["Pure DecisionSnapshot -> Markdown renderer"],
+        "scripts/research_host_runner.py": [f"one {tag} external-process request"],
+        "scripts/research_market_input.py": [
+            "receipt-bound market snapshot", "def build_fragment",
         ],
-        "scripts/model_tiers.py": [f"Trade Nothing {tag} — Model Tiering Policy"],
-        "scripts/report_v2.py": [
-            f"Trade Nothing {tag} — Compact Formal Report Renderer"
-        ],
-        "scripts/tier1_providers.py": [
-            f"Trade Nothing {tag} — Tier-1 Structured Data Providers",
-            f'TradeNothing/{version} research',
-        ],
+        "scripts/method_identity.py": ["ACTIVE_METHOD_PATHS", "operational-bundle.v2"],
     }
 
 
@@ -81,15 +74,6 @@ def version_consistency_errors(base_dir=None):
     target_label = f"Trade Nothing v{__version__}"
     active_label_files = [
         "SKILL.md",
-        "agents/framer.md",
-        "agents/detective.md",
-        "agents/inquisitor.md",
-        "agents/judge.md",
-        "scripts/crux_engine.py",
-        "scripts/deepthink_orchestrator_v2.py",
-        "scripts/model_tiers.py",
-        "scripts/report_v2.py",
-        "scripts/tier1_providers.py",
     ]
     label_pattern = re.compile(r"Trade Nothing v\d+\.\d+(?:\.\d+)?")
     for relative in active_label_files:

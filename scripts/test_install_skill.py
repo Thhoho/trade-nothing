@@ -84,8 +84,15 @@ class InstallSkillTests(unittest.TestCase):
             for path in method_identity._operational_paths(REPO_ROOT)
         }
         self.assertTrue(operational.issubset(published))
-        self.assertIn("agents/runtime/research-round.md", published)
+        self.assertIn("references/research-loop-contract.md", published)
         self.assertIn("tools/daily_topic.py", published)
+        self.assertIn("agents/openai.yaml", published)
+        self.assertIn("scripts/free_market_observations.py", published)
+        self.assertIn("scripts/market_snapshot_adapter.py", published)
+        self.assertNotIn("agents/judge.md", published)
+        self.assertNotIn("agents/detective.md", published)
+        self.assertNotIn("scripts/deepthink_orchestrator_v2.py", published)
+        self.assertNotIn("README.md", published)
 
 
 if __name__ == "__main__":

@@ -32,14 +32,15 @@ def _copy_semantic_fixture(destination):
 
 
 class VersionSemanticTests(unittest.TestCase):
-    def test_method_identity_includes_nested_runtime_contracts(self):
+    def test_method_identity_contains_only_generated_runtime_authorities(self):
         paths = {
             path.relative_to(ROOT).as_posix()
             for path in method_identity._operational_paths(ROOT)
         }
-        self.assertIn("agents/runtime/research-round.md", paths)
-        self.assertIn("agents/runtime/detective.md", paths)
-        self.assertIn("agents/runtime/inquisitor.md", paths)
+        self.assertIn("scripts/research_loop.py", paths)
+        self.assertIn("references/research-loop-contract.md", paths)
+        self.assertNotIn("agents/detective.md", paths)
+        self.assertNotIn("scripts/deepthink_orchestrator_v2.py", paths)
 
     def test_current_repository_passes_semantic_audit(self):
         self.assertEqual(version.version_consistency_errors(ROOT), [])
@@ -48,16 +49,16 @@ class VersionSemanticTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = Path(tmp)
             _copy_semantic_fixture(fixture)
-            judge = fixture / "agents/judge.md"
-            judge.write_text(
-                judge.read_text(encoding="utf-8").replace(
+            skill = fixture / "SKILL.md"
+            skill.write_text(
+                skill.read_text(encoding="utf-8").replace(
                     f"Trade Nothing v{version.__version__}", "Trade Nothing v0.10", 1
                 ),
                 encoding="utf-8",
             )
             errors = version.version_consistency_errors(fixture)
             self.assertTrue(
-                any("agents/judge.md: stale active label" in error for error in errors),
+                any("SKILL.md: stale active label" in error for error in errors),
                 errors,
             )
             historical = fixture / "docs/hypothesis-led-research-v0.10.md"

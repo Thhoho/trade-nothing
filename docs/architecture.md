@@ -1,325 +1,328 @@
-# Trade Nothing Architecture
+# Trade Nothing v0.18 Architecture
 
-> Product target: `docs/topic-led-research-product.md`. The default product ends at a Deep Research
-> Report with conditional recommendations. Components that create or promote Thesis, Decision,
-> order, position, portfolio,
-> publication, or cross-product handoff are legacy compatibility surfaces, not part of the target
-> architecture.
+Trade Nothing is a bounded investment-research harness. Its job is not to make a model look busy;
+its job is to make the final answer more current, more decision-useful and more auditable than the
+same model working without the Skill.
 
-## System boundary
+## 1. Design thesis
 
-Trade Nothing is a value-first research workflow around public evidence and market mechanisms.
-LLMs first discover the named subject's current material changes, then answer Research Agenda
-questions, produce targeted challenges, blind spots, optional
-hypotheses, concrete candidate maps and synthesis. Deterministic
-code protects citation integrity and bounded execution; it must not make control-state completion
-the definition of opportunity quality.
+The previous architecture accumulated useful controls but distributed meaning across Research
+Agenda, material-change state, cruxes, CandidateMap, role payloads, report synthesis and runtime
+envelopes. Each local component could be valid while the final report still missed a decisive fact
+or contradicted itself.
 
-`research_kernel.py` is the shared deterministic evidence semantic core. It validates evidence,
-reconciles answer/direction variants, normalizes listed-instrument identity and evaluates setup
-readiness. `material_change_engine.py` is a separate, small current-truth register and delivery
-gate. It owns subject coverage, material-change lineage and known-omission blocking; it is not a
-second lifecycle or research state machine. Neither module schedules models or authorizes actions.
+v0.18 keeps the single-writer choice and adds one execution boundary:
 
-Every LLM call is also an explicit semantic interface. The prompt physically embeds a `WORK WINDOW`
-and the exact role/protocol contract; a filename such as `detective.md` is never treated as though an
-isolated process can magically read it. Each window names the stage, role, objective, authoritative
-inputs, output product, forbidden work, completion test and next consumer. The stored prompt hash
-therefore binds the instructions actually seen by the model, not merely a pointer to them.
+> Evidence may be appended by many mechanisms; decision meaning has exactly one writer and one
+> persistent representation.
 
-The host runtime—not the skill—owns agent isolation, model execution, web access, and user
-authorization. A run may claim adaptive isolated execution only when the host dispatched exactly
-the roles in `required_roles` and bound their prompts and payloads. A skipped role is not an
-invocation.
+> The host owns identity, tools, isolation, waiting and cancellation. The portable kernel owns only
+> research semantics, evidence lineage, budgets, transitions and rendering truth.
 
-`execution_integrity.py` is an orthogonal execution-truth kernel. It does not interpret evidence or
-own a workflow state. It classifies a report as current verified orchestration, unverified state-only
-work, historical replay, or inline degraded research from method identity, registered state and
-hash-bound host receipts. This keeps two independent truths separate:
+The framework therefore persists four objects only:
 
-```text
-Research Agenda + evidence + CandidateMap -> what the report may conclude
-Run manifest + exact prompts + payloads + host receipts -> what the report may claim was executed
-```
+| Object | Owns | Must not own |
+|---|---|---|
+| `TaskSpec` | question, as-of, budget, entities, mandatory fact surfaces, answerable questions | conclusions |
+| `EvidenceStore` | canonical EvidenceItems and auditable SourceChecks | ranking or recommendation |
+| `DecisionSnapshot` | all user-facing judgment and uncertainty | runtime truth |
+| `RunLedger` | dispatches, hashes, calls, failures, budget and execution labels | research conclusions |
 
-Neither plane can manufacture facts for the other. A failed run remains failed even if a parent
-later writes good analysis, and good analysis is not discarded merely because its execution mode is
-degraded; it is labelled accurately.
+Historical engines remain available in the v0.16 baseline commit and selected source archaeology,
+but an explicit allowlist excludes them from the active method identity and installed Skill.
 
-## Default topic-led flow
+## 2. Semantic ownership
 
 ```mermaid
-flowchart TD
-    U["Research topic + as-of"] --> P["Primary entities"]
-    P --> T["Current Reality Scan"]
-    T --> G["Material Change Gate"]
-    G --> A["Research Agenda"]
-    A --> R["Value Lead answers current questions"]
-    R --> Q["Answered / partial / disputed / open"]
-    Q -. "load-bearing claim only" .-> H["Targeted Challenger"]
-    H --> Q
-    Q --> X["New blind spots + new questions"]
-    X --> A
-    Q --> P["ValueTransferPath: constraint + profit-pool shift"]
-    P --> M["Market phase by horizon"]
-    P --> E1["Economic-exposure universe"]
-    M --> E2["Observed trading-carrier universe"]
-    E1 --> C["CandidateMap + closest-alternative comparison"]
-    E2 --> C
-    C --> E["EVENT_SETUP"]
-    C --> N["ECONOMIC_SETUP"]
-    E --> S["Scenario tree + triggers + invalidations"]
-    N --> S
-    S --> V["Verify only the leading candidates when explicitly requested"]
-    S --> B["Deep Research Report + advice"]
-    V --> B
+flowchart LR
+    U["User question"] --> T["TaskSpec"]
+    T --> W["Bounded WorkingSet"]
+    E["EvidenceStore"] --> W
+    D["Current DecisionSnapshot"] --> W
+    L["RunLedger"] --> W
+    W --> A["Value Lead: one ActionIntent"]
+    A --> X["Search / data / optional Challenger"]
+    X --> E
+    X --> L
+    E --> N["Full DecisionSnapshot replacement"]
+    A --> N
+    N --> V["Deterministic validation"]
+    V --> D
+    D --> R["Pure report renderer"]
 ```
 
-## Responsibilities
+The Value Lead is the only semantic writer. A Challenger can attack named claims but cannot write
+the Snapshot. Code can reject invalid meaning but cannot manufacture meaning. The renderer cannot
+upgrade, rank, infer or reconcile; it only formats a validated Snapshot.
 
-### Host runtime
+This separation is the core invariant:
 
-- Read `SKILL.md` and dispatch the requested workflow.
-- Run only the adaptive `required_roles`, each in a separate context when supported.
-- Record isolation as `verified`, `unverified`, or `degraded`.
-- Provide current web/data access and preserve source URLs.
-- Deliver the complete embedded work window to each isolated process and bind it in the runtime
-  receipt; an empty work directory plus a filename reference is not a valid role contract.
-- Never treat a report as authorization to trade.
+```text
+model: meaning
+code: contracts and lineage
+host harness: tools, identity, isolation and lifecycle
+renderer: presentation
+```
 
-### `execution_integrity.py` and the execution gateway
+## 3. Action-driven Agent Loop
 
-- Require explicit process-runtime configuration; never infer Claude or Antigravity from an
-  installed binary alone.
-- Run capability preflight before creating or mutating a registered run.
-- Bind each claimable round to the exact adaptive role plan, distinct host identities, exact prompt
-  hashes and exact payload hashes; preserve the Judge host payload only for legacy Judge rounds.
-- Derive report execution markers and round wording from current state and method identity.
-- Give inline research no run ID, numbered-round claim, named-role theatre or isolation claim.
-- Mirror each persisted stage-envelope status into the run manifest so paused work cannot remain
-  nominally `active`.
+There is no fixed Framer → Detective → Inquisitor → Judge procession. TaskSpec framing is an inline
+compiler step. Each paid research loop is bound to one `ActionIntent`:
 
-### `deepthink_orchestrator_v2.py`
+```text
+target_snapshot_field
+current_uncertainty
+evidence_needed
+expected_decision_delta
+stop_condition
+cost_bound
+```
 
-- Loads negative-prior memory through `TRADE_NOTHING_EVOLUTION_PATH`.
-- Stores state under `TRADE_NOTHING_SCRATCH_DIR/v2-state`.
-- Uses readable topic slugs plus a hash suffix to prevent collisions.
-- Dispatches unresolved Agenda questions and their relevant research directions after each round.
-- Emits closed semantic work windows and embeds the exact Framer, research-role, Judge,
-  CandidateScreen and Claim Verifier contracts in their prompts.
-- Initializes a Research Agenda and harvests answer updates, conflicts, blind spots and new questions.
-- Initializes the Current Reality register, dispatches the first Lead before debate, and blocks
-  decision-ready language when required subject coverage or a known HIGH material lead is open.
-- Emits the smallest role plan that can add information: Lead for fact gaps, Challenger for
-  unchallenged load-bearing answers, Judge only for explicit legacy crux audit.
-- Reprioritizes unresolved Agenda questions in each compact dispatch prompt.
-- Harvests Market Bridge after Agenda evidence and before CandidateMap so same-round candidates can
-  bind typed value paths, market-phase readings and canonical evidence IDs.
-- Harvests CandidateMap as a discovery projection while applying the shared evidence and setup
-  invariants; this does not promote a candidate.
-- Returns `ready_for_report` directly after convergence; it never starts CandidateScreen or gap
-  work from the default path.
-- Rejects Judge citations that cannot be matched to agent JSON.
-- Enforces configured maximum rounds and blocks only the FORMAL grade after a fuse; an exploratory
-  report remains available.
-- Uses locked, atomic JSON writes. Legacy state is never auto-loaded; adoption requires an exact
-  explicit state path.
+The host compiles a WorkingSet containing the exact current task, Snapshot hash, relevant evidence,
+hard obligations, remaining budget and one next call. It deliberately omits raw role history and
+parallel state objects.
 
-### Value Lead and Targeted Challenger
+Some model hosts do not expose the order of hidden tool calls, so the ledger does not pretend a
+packet-time ActionIntent proves per-tool precommit. `target_snapshot_field` is a routing hint, not a
+promise that one exact field must change. The enforceable invariant is outcome-based: a research
+call must add a new canonical EvidenceItem or SourceCheck and produce a real semantic Snapshot
+delta. Empty or no-delta calls are rejected without consuming budget.
 
-- Lead completes the subject-level material-change coverage before Agenda narrowing. Challenger
-  receives only target claims, their current evidence and relevant material-change state.
-- Return `question_updates`, plus at most one lineage-bound new blind spot and one lineage-bound new
-  question per role when they can name the exact decision change.
-- Return per-crux structured evidence in `crux_evidence` and `crux_attacks`.
-- Attach claim, number or null, source, concrete URL, date, and source tier.
-- State uncertainty explicitly; an unsourced number is omitted or null.
-- May not present rhetorical repetition as new evidence.
-- Map up to six concrete carriers per role in the first round. Later rounds complete the supplied
-  focus queue and may add at most one genuinely different carrier per role. An uncited lead stays
-  EXPLORE.
-- Express load-bearing industry conclusions as shortest value-transfer paths, distinguish the
-  economic-exposure universe from observed trading carriers, and compare each preferred candidate
-  with one mapped alternative at an explicit horizon.
+Possible calls are:
 
-### `material_change_engine.py`
+- `LEAD_RESEARCH`: obtain evidence and atomically update the Snapshot;
+- `CHALLENGER`: attack an already named load-bearing claim;
+- `LEAD_RESOLUTION`: reconcile a real ChallengePacket without consuming another search loop;
+- `LEAD_SYNTHESIS`: budget-zero synthesis from supplied evidence;
+- `REPORT`: no model call; pure rendering only.
 
-- Initializes 1–4 primary entities and deterministic required fact-surface routes by entity type.
-- Accepts coverage only with an actual query and concrete checked URL.
-- Binds material changes to same-round canonical Agenda evidence and affected question IDs.
-- Keeps unverified but already encountered material leads visible until evidence resolves or rejects
-  them.
-- Projects superseded events out of Current Truth while preserving them for audit.
-- Emits `CURRENT_TRUTH_BOUNDED` or `MATERIAL_FACT_GAP`; it never selects a security or makes a trade
-  recommendation.
+A loop is a ceiling, not a quota. The system stops when no currently executable action has enough
+expected decision gain to justify its cost. Additional loops require explicit authorization and the
+total can never exceed ten.
 
-### `market_snapshot_adapter.py`
+## 4. Current Reality as a recall problem
 
-- Accepts frozen, source-bound candidate and benchmark observations; it never fetches or guesses a
-  market calendar.
-- Computes reproducible 5/20/60-day returns and excess returns, 60-day drawdown, 20-day volume ratio
-  and current turnover when enough observations exist.
-- Binds the exact packet, normalized snapshot payload, market session and sources in a
-  content-addressed receipt, so post-adapter metric edits fail closed.
-- Provides market facts to Market Bridge; it does not classify an industry, select a security or
-  authorize a recommendation.
+The repeated product failure was not weak prose; it was incomplete retrieval. A few semantically
+plausible searches can miss a pledge, unlock, financing plan, control event, cancellation or other
+fact that completely changes the recommendation.
 
-### `free_market_observations.py`
+For this reason, `TaskSpec` adds non-removable fact surfaces by entity type. A listed company must
+first enumerate the official disclosure index over a bounded window, inspect the complete title
+set, and open every potentially HIGH item across financials, operations, ownership/control, capital
+actions and legal/regulatory risk. Theme keywords are a second pass, never a substitute.
 
-- Collects exactly one A-share candidate and one benchmark from one explicitly selected source:
-  Tushare Pro, BaoStock, AKShare's bounded Tencent history endpoint, or a source-linked CSV export.
-- Never scans the whole market, selects an automatic fallback, retries a failed source, bypasses the
-  host proxy, or installs an optional dependency.
-- Tushare equity prices are forward-adjusted and anchored to the latest observed session; the free
-  providers retain their explicit adjustment policy. Every path freezes the as-of date, provider
-  version, session, source URL and normalized series hashes in an acquisition receipt. A second
-  source is a separately authorized observation.
-- Feeds `market_snapshot_adapter.py`; it does not admit evidence, reconcile issuer facts, discover a
-  concept universe or recommend a security.
+`SourceCheck` is an auditable retrieval result, not “the model says it searched.” It records:
 
-### `market_bridge_engine.py`
+- actual queries;
+- source/index URL;
+- concrete checked document URLs;
+- date window;
+- fact surface;
+- `FOUND`, bounded `NO_RESULT`, or honest `INSUFFICIENT`;
+- whether required index enumeration completed;
+- the full title/URL/date/disposition/reason manifest, whose length must equal the recorded count;
+- runtime-assigned acquisition origin and any adapter receipt IDs.
 
-- Normalizes question-linked `ValueTransferPath` records and preserves evidence boundaries.
-- Preserves competing market-phase readings by horizon instead of advancing a fixed phase state;
-  one role is `SINGLE_VIEW`, and only two-role agreement is `CONSENSUS`. Recommendation authority
-  additionally requires a verified distinct-role execution receipt plus current, non-hypothesis
-  phase evidence from both roles; duplicated unverified payload slots are `UNVERIFIED_CONSENSUS`.
-- Owns an append-only host market-snapshot projection. Explicit ingestion validates adapter and
-  normalized-snapshot hashes, the complete upstream acquisition-receipt envelope, and the candidate
-  identity hash; it also validates canonical price/activity evidence, current dates, relative
-  strength and market activity before a snapshot can ground market recognition. Model-authored
-  snapshots cannot write this plane.
-- Grounds economic strength in candidate-specific economic evidence and a non-hypothesis
-  value-transfer path.
-- Projects candidates into confirmed leader, latent economic, event beta, low priority or unresolved
-  lanes without a composite score or expected-return claim.
-- Grants report-level conditional-priority authority only when a mapped alternative, current reason,
-  switch condition, evidence-grounded value path, two-role phase consensus, complete dual universe,
-  trusted market snapshot and time horizon are all visible. `WATCH_ONLY` and `FAILURE_HEDGE` never
-  receive recommendation authority.
+A complete official index cannot be created by an ordinary Lead or optional CLI packet. It must come
+from an explicit host input or a controlled fixture. A caller-reported process result may first be
+reconciled by the host, but the process label alone grants no acquisition authority.
+Every relevant title must be opened and evidence-bound; title-level dismissals retain a reason.
 
-### Runtime contracts
+The manifest remains in EvidenceStore for audit and regression. Context compilation replaces it
+with a count and SHA-256 on later calls, so stronger retrieval proof does not become permanent
+prompt bloat.
 
-- Human-facing role manuals remain under `agents/*.md` for design history and review.
-- Actual Detective/Inquisitor calls embed the compact shared contract in
-  `agents/runtime/research-round.md` plus one role overlay. Every work window therefore carries its
-  mission, authoritative inputs, output product, forbidden actions and exact core schemas without
-  injecting the 30KB legacy manuals.
+Every HIGH EvidenceItem creates a deterministic obligation. It must be visible as a material
+change, remain an explicit gap, or receive a structured non-material disposition. For a
+material-title document, the EvidenceItem first needs at least two host-extracted body facts with
+typed fact kind, locator, excerpt, controlled event type/anchor and a document SHA-256 registered on
+the binding SourceCheck. The Lead then selects exactly one of material change, open gap or
+non-material disposition. The kernel deterministically derives the event family from subject, type
+and anchor; the model never submits that internal ID. It cannot merge unrelated events, and one family can occupy only one aggregate material
+change or open-gap entry. A forgotten, duplicated or shallowly dismissed item makes
+`DECISION_READY` impossible.
 
-### `market_map_engine.py`
+Enumeration count is not materiality recall. A completed manifest may not title-dismiss losses,
+impairments, related-party borrowing, incentives, pledges, unlocks, guarantees, financing,
+contracts, litigation or control changes with a generic reason. Those titles require
+`OPENED_RELEVANT` plus a bound EvidenceItem. This turns the real missed-fact failure into a regression gate
+instead of rewarding a superficially complete 80/80 index.
 
-- Requires ticker for listed equities and rejects abstract prose as a listed candidate.
-- Uses exchange-qualified identity and rejects placeholder tickers.
-- Merges the same concrete instrument without pooling it into a confidence or return score.
-- Treats `REFINE` and `REPLACE` as snapshot deltas, not conflicts. Only an explicit `CHALLENGE`
-  between mutually exclusive field claims can block setup readiness.
-- Requires field-bound evidence, a valid catalyst window and no unresolved critical-field conflict
-  before a setup becomes ready.
-- Separates event beta from economic capture and preserves substitute/failure paths.
-- Emits `EXPLORE`, `SETUP_READY`, or bounded `NO_USABLE_SETUP`; these are report result types, not
-  lifecycle states.
-- Treats those result types as completeness signals only. Market Bridge, not setup completeness,
-  determines whether the report may express a cross-sectional conditional priority.
+## 5. Atomic semantic transactions
 
-### Judge
+A LeadPacket proposes new evidence/checks and one complete Snapshot replacement. Acceptance is
+transactional:
 
-- Runs only for an explicitly requested legacy crux audit; Agenda-native research does not call it
-  by default.
-- Scores only evidence already present in the two agent payloads.
-- Does not search, invent citations, generate probabilities, or make a trade decision.
-- Emits one bounded signal per crux plus verbatim citation objects.
-- Ignores Agenda answers and blind spots for scoring so prose cannot launder evidence.
+1. validate the call-scoped ActionIntent and host receipt lineage;
+2. normalize and deduplicate new evidence;
+3. validate SourceChecks against TaskSpec and the combined evidence store;
+4. validate Snapshot version, base hash, as-of, schema and evidence references;
+5. recompute hard obligations and visible evidence union;
+6. derive candidate-security reality obligations and validate challenge provenance;
+7. require an observation delta plus a real semantic Snapshot change;
+8. append the call receipt and commit all four objects together.
 
-### `research_agenda_engine.py`
+Any failure commits nothing. There is no partial “evidence accepted but conclusion rejected” state
+and no patch whose omitted fields accidentally erase prior meaning.
 
-- Makes the topic workplan the primary research ledger.
-- Preserves answer variants and evidence boundaries rather than overwriting disagreement.
-- Accepts formal `evidence_items` only inside the as-of boundary, canonicalizes duplicates, and
-  binds IDs only to declared questions/directions. Legacy crux evidence remains compatible.
-- Allows blind spots to reprioritize research but not alter crux signals, candidate promotion, or execution.
-- Admits at most two new questions and two new blind spots per round. New questions require a parent,
-  a bounded success test and a named decision change; a promoted blind spot is not counted again as
-  separate research debt.
-- Recommends another round only for a fresh, low-cost test with material decision value. Repeating
-  the same answer status/evidence boundary across two attempted rounds is diminishing-return debt,
-  not an automatic continuation reason.
+`consumed_evidence_ids` equals the exact union of evidence referenced anywhere in the Snapshot. It
+is a checksum-like semantic invariant, not a manually curated bibliography.
 
-### `research_kernel.py`
+The kernel explicitly has two clocks:
 
-- Rejects invalid/future-dated evidence and derives publisher identity from URLs.
-- Reconciles all answer and direction variants deterministically across roles and rounds. `DISPUTED`
-  describes epistemic uncertainty; it does not by itself mean the roles contradict each other.
-- Prevents weak unsupported dissent from erasing stronger evidence while preserving the challenge.
-- Normalizes listed-instrument identity and evaluates field-level conditional setup readiness.
-- Defines no statuses beyond interpreting caller records and emits no lifecycle transition.
+- **committed clock**: a Snapshot is replayed and validated against the exact evidence/check/
+  challenge frontier recorded on its accepting Lead action;
+- **pending clock**: host inputs and Challenger packets appended after that frontier create
+  obligations for the next Lead.
 
-### `crux_engine.py`
+Without this split, new evidence retroactively makes a historical Snapshot invalid and tempts host
+repair scripts to edit conclusions or delete evidence. v0.18 forbids both: EvidenceStore and
+RunLedger histories are append-only, while a Snapshot replacement requires exactly one accepted
+Lead action and receipt.
 
-- Rejects invalid and bare-domain citations.
-- De-duplicates evidence by normalized URL + claim + number per crux.
-- Requires source diversity before a crux can retire.
-- Applies a bounded, deterministic debate-support update.
-- Returns `continue`, `converge`, or `fuse_break`.
+## 6. Harness-first challenge without theatre
 
-The support value is an uncalibrated workflow heuristic. Constants such as gain, decay, and
-clamps are control parameters, not estimates learned from market outcomes.
+A Challenger is useful only when disagreement can change a load-bearing conclusion. It receives
+exact target claim IDs and relevant evidence, not the entire topic. In Codex, one native child agent
+is the default Challenger. The host orchestrates a separate context and reports identity; the
+semantic kernel binds the exact prompt, payload, target claims and base Snapshot without treating
+the caller's report as application-side attestation.
 
-### `report_v2.py`
+Execution truth has three explicit levels:
 
-- Renders Deep Research Report by default: Agenda answers, challenges, blind spots, value transfer,
-  market phases, concrete map, closest-alternative comparisons, conditional advice, event/economic setups, scenarios, triggers, invalidations,
-  evidence labels and next tests.
-- Keeps Decision Brief, Candidate Cards and the full evidence ledger as explicit compatibility
-  views only.
-- Generates no target price, expected return, scenario probability, Kelly allocation, or size.
-- Uses a deterministic renderer by default. Only an explicitly requested compatibility synthesis
-  packet names a model and carries a citation whitelist.
-- Separates complete answers from evidence-bounded partial/disputed progress, and keeps exhaustive
-  question, direction, blind-spot and candidate histories in the audit view instead of flooding the
-  default report.
-- Groups conditional priorities by event, tactical, earnings and structural horizons; it does not
-  reuse one global candidate order across incompatible clocks.
+- `HARNESS_SUBAGENT / HARNESS_REPORTED / SEPARATE_CONTEXT_REPORTED`: the latest accepted Lead reports a distinct child identity
+  and separate Codex context. This does not prove a different model or cryptographic process
+  boundary;
+- `HOST_PROCESS / PROCESS_REPORTED / PROCESS_CONTEXT_REPORTED`: an optional external adapter records
+  what its caller observed:
 
-## Formal-grade gates
+  - a different agent/process identity from the latest Lead;
+  - a reported process ID and host runtime;
+  - exact prompt SHA-256 and payload SHA-256;
+  - the expected call mode, target challenge and base Snapshot hash;
+- `SELF_DECLARED / UNVERIFIED`: a manual parent receipt proves only content lineage and can never
+  satisfy a Challenger dispatch.
 
-A report is always deliverable. It receives the compatibility `FORMAL` research grade only when
-all are true:
+An arbitrary `VERIFIED` string has no authority. The requested orchestration mode is always reported
+separately from achieved provenance. There is no Judge role in the active loop. The Lead must
+explicitly accept, partially accept, reject or leave unresolved each bounded attack. Harness and
+external-process records are both honest weak provenance until an application host supplies an
+unforgeable attestation callback.
 
-1. Every crux is resolved or monitorable.
-2. The research status is stable and no new crux has appeared for the dry-round window.
-3. The engine returned `converge`, not `continue` or `fuse_break`.
-4. Every crux has at least two distinct, concrete, valid source URLs.
+The cross-environment rule is deliberately asymmetric: native harness capabilities are preferred
+inside each host; the portable contract does not emulate spawning, permissions, waits or process
+management. External Claude Code or Antigravity CLIs remain explicit adapters and their failure
+cannot block the native Codex path.
 
-The report remains a research artifact requiring human judgment. The grade creates no publication,
-trade, position, or handoff permission.
+The repository exposes no `attest_host_record(dict)`-style stamping API. A future strong process
+proof must be returned by an application-side host that itself owns child creation, communication,
+termination and result capture; repository code cannot create trust by signing caller-provided
+fields. Until then the optional adapter is deliberately `PROCESS_REPORTED`.
 
-## State and side effects
+## 7. Industry-to-market bridge
 
-- Runtime state: `TRADE_NOTHING_SCRATCH_DIR/v2-state`.
-- Generated artifacts: `TRADE_NOTHING_OUTPUT_DIR`.
-- Research vault: `TRADE_NOTHING_VAULT_DIR`.
-- Evolution memory: `TRADE_NOTHING_EVOLUTION_PATH`.
-- Local issue harvesting is allowed by `--harvest`.
-- The published skill exposes no notification, webhook, portfolio, or order-execution entry point.
+The Snapshot keeps two causal paths distinct:
 
-Source installation never deletes runtime JSON, scratch files, or personal research artifacts.
-It recoverably quarantines stale files on the managed code surface and treats installed
-`Methodology_Evolution.md`, `scripts/.state`, and target `.git` as inert extras. Active memory
-defaults to the external vault, and state defaults to scratch.
+```text
+technical/policy fact -> constraint change -> profit-pool shift -> company economic exposure
+event/narrative -> marginal capital -> trading carrier -> crowding/verification/divergence
+```
 
-Runtime capability is stage-specific. Antigravity and Claude Code have bounded OS-process adapters;
-Codex has manual collaboration receipt builders; Gemini, Hermes, and OpenHands are protocol-only in
-this release. See `references/runtime-compatibility.md`.
+The first explains who may earn money. The second explains what the market may trade now. They may
+point to different securities and change at different speeds, so the Snapshot writes separate views
+for event days, tactical weeks, earnings quarters and structural years.
 
-## Retired v1
+A market carrier is not a recommendation. `market_carriers_by_horizon` records what marginal
+capital is trading, why it is traded, the closest alternative and switch condition even when no
+candidate qualifies. `candidates_by_horizon` separately records research stance.
 
-`deepthink_engine.py`, `deepthink_orchestrator.py`, and `dungs_argumentation.py` were removed in
-v0.13.0. Their LFI, Bayesian posterior, and sizing utilities were uncalibrated heuristics, they
-maintained a second state format under `scripts/.state/`, and their harvest path silently missed
-`-deepthink2` state. `crux_engine.py` plus `deepthink_orchestrator_v2.py` are now the only research
-pipeline. Historical v1 artifacts are readable through Git history and must not be presented as
-real market probabilities or safe sizing.
+An alternative is not a prose comparison. It is `UNKNOWN` or one canonical `ticker@MIC` backed by
+market evidence bound exclusively to that security. This makes “why this carrier rather than the
+closest substitute” part of the same auditable market map.
 
-Older portfolio, target-price, scenario-sizing, spreadsheet-model, and unbounded notification-daemon
-implementations live only under `legacy/`. The installer treats any copy of those files on a managed
-skill surface as stale code and moves it to the recoverable quarantine.
+A conditional priority is not produced by a score. It requires a complete comparative argument:
+identity, horizon, economic exposure, market role, why now, closest alternative, switch condition,
+trigger, invalidation, price/crowding boundary and evidence. Completeness allows discussion; it does
+not prove alpha.
+
+The connection is executable, not merely two non-empty fields. Evidence carries a canonical
+`ticker@MIC` binding and one or more semantic roles such as `ECONOMIC_EXPOSURE`, `MARKET_STATE` or
+`CURRENT_REALITY`. One observation may honestly serve several roles; duplicating it merely to make
+two sets disjoint is forbidden. Candidate exposure references must intersect a selected value path,
+and market references must intersect the same-horizon market view. The active host bundle
+retains the bounded Tushare/BaoStock/AKShare/CSV observation and market-snapshot adapters, while
+provider success remains `SINGLE_SOURCE` market context rather than economic exposure.
+
+Structured numbers are typed measures, never opaque `number` strings. A controlled metric registry
+owns definition and allowed units; a controlled basis ID replaces prose identity; each measure has
+an explicit subject, and each EvidenceItem binds at most one security. Metric, raw value, unit,
+subject, as-of, period and basis are bound into evidence and host-input hashes; one formatter owns
+display scale. Model-authored unit-bearing numeric prose is rejected after Unicode/Markdown
+canonicalization; a typed measure is the only numeric source rendered to the report. This closes
+unit-conversion error, metric/value borrowing, prose-basis conflict evasion, cross-security leakage
+and report-side value drift.
+
+When a priority security is discovered under an industry/event TaskSpec, the core derives the full
+listed-company fact-surface obligations for that security. It does not mutate TaskSpec or introduce
+a candidate lifecycle. Receipt-bound market snapshots can be converted into canonical host input
+and appended between Lead calls; that append writes EvidenceStore/RunLedger only and recompiles an
+unspent dispatch.
+
+## 8. Execution and recovery
+
+`RunLedger` binds every accepted packet to a pending dispatch. A repeated dispatch with the same
+state is idempotent. A mismatched payload, prompt or base hash is rejected without mutation.
+
+Timeout, invalid JSON, permission denial, authentication failure and quota exhaustion are recorded
+once. The harness never auto-retries because a technically identical repeat can duplicate cost,
+hide an unknown outcome or create an untraceable semantic fork. A run with a prior Lead Snapshot can
+still deliver a visibly degraded report.
+
+A model call whose hash-bound JSON violates the packet contract is real cost but not semantic
+progress. RunLedger records it as a rejection, commits no evidence or Snapshot, and gives the exact
+errors to the next WorkingSet. The user must explicitly resume; the harness neither forgets the
+cost nor repeats a context-free repair automatically.
+
+Registered state is written under the scratch directory and keyed by immutable `run_id`. Resume
+requires the pinned active method identity to match; an old run is historical input, not current
+truth under a new method.
+
+Report delivery is also one truth. Content-addressed `report-user-<hash>.md` and
+`report-audit-<hash>.md` artifacts are pure views of the same validated run; a content-addressed
+report-bundle manifest binds their hashes to the complete run and RunLedger, TaskSpec, EvidenceStore,
+DecisionSnapshot, method identity and exact renderer source. A verifier recomputes both artifacts
+before delivery and on demand. The delivery instruction forbids manual prepends, copied
+unit fixes or a second synthesized conclusion.
+
+## 9. Active and legacy boundaries
+
+The v0.16 baseline commit preserves the complete pre-v0.17 system; selected old engines and tests
+also remain as source archaeology. They are not part of the active method identity and are
+quarantined from installed Skill copies.
+In particular, new runs must not load or dispatch:
+
+- crux convergence and Judge;
+- parallel Research Agenda or CandidateMap state;
+- opportunity/thesis lifecycle;
+- report-side semantic synthesis;
+- portfolio, order, publication or handoff objects.
+
+The active installed bundle is an explicit allowlist. Adding a file to the repository does not give
+it semantic authority.
+
+## 10. What engineering proof means
+
+Deterministic tests establish atomicity, lineage, evidence visibility, budget bounds, report purity,
+failure behavior and installation isolation. They do not establish investment value.
+
+Method improvement requires blind forward comparison against the same model, as-of and comparable
+budget. The current release remains `UNBENCHMARKED_METHOD_CHANGE` until diverse cases show:
+
+- zero frozen P0 current-fact omissions;
+- no false challenge provenance;
+- no contradiction between core judgment, material facts and recommendation;
+- greater decision usefulness on at least four of five cases;
+- total cost no greater than 1.5 times the baseline.
+
+That distinction keeps a clean kernel from becoming another beautifully tested vehicle nobody can
+drive.

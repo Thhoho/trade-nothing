@@ -1,174 +1,125 @@
-# Data Acquisition and Governance Protocol (v0.15)
+# Data Sources and Replacement Contract
 
-This protocol covers read-only research acquisition. It does not authorize an order, portfolio
-mutation, background daemon, notification, webhook, automatic retry, or external publication.
-Provider availability is environment-dependent; a successful HTTP response is not evidence that a
-claim is true.
+Trade Nothing does not make one vendor authoritative for conclusions. A provider supplies an
+observation; the Lead turns only source-bound observations into EvidenceItems. Official disclosures
+remain the fact gate for company events.
 
-Provider scripts respect the host proxy configuration by default. Set
-`TRADE_NOTHING_DISABLE_PROXY=1` only when the user explicitly authorizes bypassing configured
-proxies for a bounded request.
+## Recommended A-share stack
 
-## 1. Source order
-
-Use the strongest source that directly supports the claim:
-
-| Priority | Source class | Typical use | Admission rule |
+| Need | Default | Free fallback | Boundary |
 |---|---|---|---|
-| P0 | Regulator, exchange, issuer filing, official dataset | legal status, filings, audited figures, permits | exact document URL and date |
-| P1 | Customer/counterparty record or named primary-data publisher | orders, qualification, shipment, capacity, physical constraint | claim-aligned passage and publisher identity |
-| P2 | Reputable secondary reporting | context and leads | label single-source claims; trace important claims upstream |
-| P3 | Forum, social post, search snippet, aggregator | hypothesis/proxy discovery only | never count as independent verification without the underlying document |
+| Announcements and company events | exchange / issuer official disclosure | CSRC or issuer mirror | enumerate the official index first |
+| Trading calendar and stable structured fields | Tushare Pro when configured | BaoStock | provider row is contextual until source/date are recorded |
+| Daily OHLCV / adjustment factors | Tushare Pro | BaoStock; AKShare as bounded fallback | never infer company exposure from price alone |
+| Fast public snapshots / concept exploration | AKShare | public web source | unstable endpoints may degrade; record provider and cutoff |
+| Overseas macro / filings | official central bank, statistics agency, SEC/issuer | public data portal | primary source preferred |
 
-Local vault material is a lead unless its original publisher, date, URL, and claim-aligned content
-are preserved. Re-publications of one upstream item do not create independent evidence.
+BaoStock is the zero-cost baseline. AKShare is useful but its upstream endpoints change, so warnings
+and empty frames must be treated as typed provider failure rather than silently accepted data.
+Tushare is the preferred optional structured source after the user configures a token.
 
-## 2. Supported read-only helpers
+## Configure Tushare Pro
 
-The following commands fetch or transform research data; none produces a trade instruction:
+Set one host environment variable; do not edit Skill files and do not configure each agent copy
+separately:
 
 ```bash
-# Primary/public data adapters. Availability and rate limits vary by environment.
-python3 scripts/tier1_providers.py --fred DGS10
-python3 scripts/tier1_providers.py --edgar NVDA --form 10-K
-python3 scripts/tier1_providers.py --comtrade 156 0 854143 2023
-
-# Configured macro observations.
-python3 scripts/verified_fetcher.py --all
-
-# Event helper.
-python3 scripts/catalyst_calendar.py --sector solar
-
-# Explicitly selected, bounded free A-share observations. It never auto-falls back.
-python3 scripts/free_market_observations.py --input free-market-request.json \
-  --output market-observations.json
-
-# Provider-neutral market snapshot from frozen candidate + benchmark observations.
-# The input owns source URLs; the adapter does not fetch or accept model evidence IDs.
-python3 scripts/market_snapshot_adapter.py --input market-observations.json \
-  --output market-snapshot.json
-
-# Explicitly bind the complete adapter artifact to one registered run.
-python3 scripts/deepthink_orchestrator_v2.py --ingest-market-snapshot \
-  --run-id RUN_ID --market-snapshot market-snapshot.json
-
-# Read-only radar preview. Persistence requires explicit authorization.
-python3 scripts/logic_radar_v2.py
-python3 scripts/logic_radar_v2.py --write-evolution  # only after explicit user approval
+launchctl setenv TUSHARE_TOKEN "YOUR_TOKEN"
 ```
 
-Quotes and trigger thresholds are context fields. They do not become
-probabilities, expected returns, target prices, or sizing inputs.
+For the current terminal session:
 
-The market snapshot adapter computes 5/20/60-session return and benchmark excess return, 60-session
-drawdown, 20-session volume ratio and current turnover when enough observations exist. When the
-selected provider supplies them, it also preserves current provider volume ratio, PE(TTM), PB,
-total market cap and float market cap with explicit CNY units. Candidate
-and benchmark must end on the same observed session. Its receipt binds both the input packet and the
-normalized snapshot payload. It proves deterministic transformation, not that the provider is
-complete or that the result predicts returns. Content-addressed receipts are integrity and lineage
-proofs, not cryptographic signatures from the provider; explicit host ingestion remains the trust
-root and must never be delegated to a model role.
+```bash
+export TUSHARE_TOKEN="YOUR_TOKEN"
+```
 
-At host ingestion, the verified artifact mints candidate-bound canonical evidence for price/relative
-strength/valuation and for volume/turnover/activity. Those IDs are outputs of the trusted data plane,
-not inputs supplied by a research role. Market and pricing questions may reference those host IDs
-directly; they must not recreate the same observation as model-authored evidence.
+Restart Codex, Claude or Gemini after changing the launch environment. Verify presence without
+printing the secret:
 
-### Bounded A-share request
+```bash
+python3 -c 'import os; print("configured" if os.getenv("TUSHARE_TOKEN") else "missing")'
+```
 
-The compatibility-named `free_market_observations.py` adapter fetches only one candidate and one
-benchmark over a 90–730 calendar-day window. The caller must explicitly select exactly one of
-`TUSHARE`, `BAOSTOCK`, `AKSHARE_TENCENT`, or `CSV`; there is no `AUTO` mode. A second provider
-attempt is a new bounded acquisition, not an invisible fallback.
+The token is host-only. It must never enter a prompt, TaskSpec, EvidenceStore, RunLedger receipt,
+report, installed Skill file, Git commit or diagnostic excerpt. Model subprocess environments are
+sanitized; a tool that needs the provider should execute through a narrow host-side adapter.
+
+## Provider adapter contract
+
+Any replacement source should return a bounded observation object with:
 
 ```json
 {
-  "as_of_date": "2026-08-11",
-  "lookback_calendar_days": 180,
-  "provider": "TUSHARE",
-  "candidate": {
-    "name": "贵州茅台", "ticker": "600519", "exchange": "XSHG",
-    "asset_type": "EQUITY"
-  },
-  "benchmark": {
-    "name": "沪深300", "ticker": "000300", "exchange": "XSHG",
-    "asset_type": "INDEX"
-  }
+  "provider": "provider name",
+  "dataset": "exact endpoint/table",
+  "symbol": "canonical identity",
+  "as_of": "YYYY-MM-DD",
+  "retrieved_at": "ISO datetime",
+  "source_url": "concrete documentation or record URL",
+  "rows": [],
+  "adjustment": "none|qfq|hfq|not_applicable",
+  "calendar": "exchange calendar identity",
+  "status": "READY|NO_RESULT|DEGRADED",
+  "limitation": "bounded limitation"
 }
 ```
 
-For `CSV`, add `csv_path`, the actual upstream `source_url`, and optional `source` to each asset.
-Accepted headers are `date/日期`, `close/收盘/收盘价`, optional `volume/成交量`, and optional
-`turnover_rate/换手率`. A local filename is not an upstream citation.
+Requirements:
 
-`TUSHARE` reads `TUSHARE_TOKEN` only in the parent acquisition process. For equities it joins
-`daily`, `adj_factor`, and `daily_basic`, converts close to forward-adjusted values anchored to the
-latest session on or before the research cutoff, and attaches current turnover, valuation, and
-market-cap fields. For indices it uses `index_daily`. The token is never written to the request,
-receipt, state, prompt, or report. The bounded Antigravity and Claude host adapters strip it before
-launching model-role subprocesses; Codex collaboration-process isolation remains host-owned, so its
-roles must consume the frozen artifact rather than invoke the provider.
+- normalize ticker, exchange, dates, units, currency and adjustment mode before comparison;
+- freeze an explicit as-of and reject future rows;
+- distinguish `NO_RESULT` from provider failure;
+- use bounded timeout and row limits;
+- record endpoint and provider version when available;
+- never auto-fallback in a way that merges incompatible adjustment or calendar semantics;
+- do not convert an API success into `FACT` without a concrete source/date boundary.
 
-`TUSHARE`, `BAOSTOCK`, and `AKSHARE_TENCENT` are market-data observations, not issuer evidence.
-Missing packages, network failures, empty windows and session mismatches return explicit failure
-statuses. The acquisition receipt binds provider version, request, market session and normalized
-series hashes. `market_snapshot_adapter.py` verifies that receipt before calculating metrics, so
-post-acquisition edits fail closed. BaoStock 0.8.9 exposes no total request timeout, so the adapter
-isolates it in a child process and enforces a 20-second wall-clock boundary.
+To replace a provider, implement this observation contract and map the output into canonical
+EvidenceItems/SourceChecks. The research core does not need a new state machine or vendor-specific
+decision logic.
 
-The complete adapter artifact—not only its nested `market_snapshot`—must be ingested through the
-orchestrator command above. The artifact carries the complete upstream acquisition receipt and binds
-the candidate identity plus normalized snapshot in the adapter receipt. Ingestion itself creates the
-canonical Agenda evidence; it does not require or accept borrowed model evidence IDs. The snapshot
-must contain at least one benchmark-relative return and one volume/turnover metric. Ingestion is
-idempotent by receipt and rejects a conflicting artifact for the same candidate and market session.
-Model-role payloads cannot invoke this command or expose the Tushare token.
+## Active bounded market path
 
-### Replacing or adding a provider
+The installed Skill includes a three-step host-side path:
 
-Changing among built-in sources only requires changing the explicit `provider` field. Do not add an
-automatic fallback: a second source is a separately visible acquisition attempt with its own receipt.
+```bash
+python3 scripts/free_market_observations.py \
+  --input market-request.json --output market-observations.json
+python3 scripts/market_snapshot_adapter.py \
+  --input market-observations.json --output market-snapshot.json
+python3 scripts/research_market_input.py \
+  --input market-snapshot.json --entity-id E1 --claim-id MV-MARKET-1 \
+  --output research-input.json
+python3 scripts/research_loop.py ingest-host \
+  --run-id "RUN-..." --fragment research-input.json
+```
 
-For a vendor API, database, or MCP service that is not built in, choose one of two boundaries:
+`market-request.json` names one explicit provider (`TUSHARE`, `BAOSTOCK`, `AKSHARE_TENCENT`, or
+`CSV`), one candidate, one benchmark, an as-of date, and a 90–730 day bounded lookback. There is no
+automatic provider fallback. The first adapter freezes source rows and a content-addressed
+acquisition receipt; the second calculates as-of relative returns, drawdown, volume/turnover and
+available valuation/liquidity fields without making a recommendation. The third requires both
+receipts and emits one security-bound EvidenceItem/SourceCheck fragment. `ingest-host` appends it to
+EvidenceStore/RunLedger, consumes no model budget, writes no conclusion, and recompiles any unspent
+Lead dispatch.
 
-1. Export candidate and benchmark observations to the `CSV` contract, including the real upstream
-   URL and publisher identity; or
-2. Add one collector to `free_market_observations.py` that emits the same normalized packet and
-   acquisition receipt as the existing collectors.
+Run credentialed acquisition in the host: child-model environments deliberately do not receive
+`TUSHARE_TOKEN`. The converter maps the observation into `SINGLE_SOURCE`,
+`fact_surface=MARKET_PRICE_LIQUIDITY`, `security_ids=["ticker@MIC"]`, semantic roles and typed
+measures. Every metric comes from the controlled registry and carries raw value, canonical unit,
+explicit `subject_id`, as-of, period and registered basis; the kernel supplies its definition.
+`number` stays JSON `null`. The receipt-bound SourceCheck and full EvidenceItem content are hashed
+into host-input lineage. Structured-provider success is market context, not proof of company
+economic exposure.
 
-Either route must preserve candidate identity, benchmark identity, cutoff date, a shared latest
-session, source lineage, and content hashes. The downstream snapshot adapter and research kernel
-must remain provider-neutral. An MCP tool response or model summary is transport output, not trusted
-evidence, until the host freezes and ingests it through this contract.
+## Installation
 
-## 3. Acquisition rules
+The deterministic Skill has no mandatory third-party dependency. Optional local providers can be
+installed independently after approval:
 
-1. Freeze `as_of_date` before gathering evidence. Reject documents published after the cutoff.
-2. Record a concrete document URL, publisher, publication date, claim, and the relevant number or
-   exact content span. A bare domain, search-result URL, or snippet is not a citation.
-3. Keep raw acquisition separate from claim admission. The deterministic gate decides whether an
-   item is valid, duplicate, independent, and in scope.
-4. For decisive web claims, capture immutable content with `scripts/evidence_snapshot.py`, then use
-   the independent Claim Verifier contract in `claim-verification-protocol.md`.
-5. Never silently replace a failed primary source with a weaker source. Record the failure and label
-   the fallback source class.
-6. Do not retry a rate-limited or failed provider automatically unless the caller explicitly grants
-   another bounded attempt.
+```bash
+python3 -m pip install baostock akshare tushare
+```
 
-## 4. Provider and plugin boundary
-
-`scripts/tier1_providers.py`, `scripts/verified_fetcher.py`, `scripts/verified_crawler.py`, and
-`scripts/free_market_observations.py` are
-read-only acquisition adapters. A provider response must still
-pass the citation and independence gates.
-
-Optional Python providers execute local code and transmit bounded queries to the explicitly selected
-service. Secrets belong in environment or host-managed credential stores and must never be written
-into a report, state file, prompt, child-model environment, or installation manifest.
-
-## 5. Failure reporting
-
-When data cannot be obtained, return a bounded status such as `SOURCE_UNAVAILABLE`,
-`RATE_LIMITED`, `AUTH_REQUIRED`, or `SNAPSHOT_FAILED`, plus the attempted source and safe next
-action. Missing data remains missing; it must not be filled with model memory or an uncited number.
+Provider installation and token configuration are host concerns. `make install` synchronizes Skill
+code to agent environments but never copies credentials or changes Python packages.

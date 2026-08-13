@@ -7,7 +7,23 @@ from pathlib import Path
 import method_identity
 
 
-ROOT_FILES = (
+# The installed Skill is intentionally smaller than the repository.  It contains
+# only the active method identity plus the dependency/license surface.  Old engines,
+# tests, release notes and benchmark fixtures stay in source control, not in an
+# agent's semantic/search path.
+PUBLISHED_EXTRA_PATHS = (
+    "agents/openai.yaml",
+    "references/data-sources.md",
+    "scripts/research_host_runner.py",
+    "scripts/model_process_runtime.py",
+    "scripts/codex_research_receipt.py",
+    "scripts/install_skill.py",
+    "scripts/check_source_sync.py",
+    "tools/daily_topic.py",
+    "LICENSE",
+    "requirements.txt",
+)
+MANAGED_ROOT_CANDIDATES = (
     "SKILL.md", "README.md", "README_zh.md", "CONTRIBUTING.md",
     "LICENSE", "requirements.txt", "Makefile",
 )
@@ -30,21 +46,11 @@ FORBIDDEN_PUBLISHED_PATHS = frozenset({
 
 
 def controlled_files(root: Path):
-    files = [root / name for name in ROOT_FILES]
-    files.extend(sorted((root / "agents").rglob("*.md")))
-    files.extend(sorted((root / "agents").rglob("*.yaml")))
-    files.extend(sorted((root / "references").glob("*")))
-    files.extend(sorted((root / "docs").glob("*.md")))
-    files.extend(sorted((root / "scripts").glob("*.py")))
-    files.extend(sorted((root / "tools").glob("*.py")))
-    files.extend(sorted((root / "benchmarks").glob("**/*")))
-    files.extend(
-        sorted(
-            path
-            for path in (root / "assets").glob("**/*")
-            if path.name != ".DS_Store"
-        )
-    )
+    files = [root / relative for relative in method_identity.ACTIVE_METHOD_PATHS]
+    files.extend(root / relative for relative in PUBLISHED_EXTRA_PATHS)
+    missing = [path.relative_to(root).as_posix() for path in files if not path.is_file()]
+    if missing:
+        raise ValueError("published bundle inputs missing: " + ", ".join(missing))
     controlled = [path for path in files if path.is_file()]
     forbidden = sorted(
         path.relative_to(root).as_posix()
@@ -62,7 +68,7 @@ def controlled_candidates(root: Path):
     """Files that can affect the installed operational bundle."""
     if not root.is_dir():
         return []
-    files = [root / name for name in ROOT_FILES if (root / name).is_file()]
+    files = [root / name for name in MANAGED_ROOT_CANDIDATES if (root / name).is_file()]
     files.extend(sorted((root / "agents").rglob("*.md")))
     files.extend(sorted((root / "agents").rglob("*.yaml")))
     files.extend(sorted((root / "references").glob("*")))

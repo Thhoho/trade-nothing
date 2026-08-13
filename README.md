@@ -1,545 +1,189 @@
 # Trade Nothing
 
-<p align="center">
-  <img src="assets/images/hero_banner.jpg" alt="Trade Nothing — looking beyond consensus" width="900" />
-</p>
+Evidence-bound investment research that finds current material facts first, connects industry
+economics to market behavior by horizon, and produces one auditable decision snapshot.
 
-<p align="center"><strong>Frame the topic. Answer the questions. Find the blind spots. Explain the market.</strong></p>
+[中文](README_zh.md) · [Architecture](docs/architecture.md) ·
+[v0.18.0 release](docs/release-v0.18.0.md) · [Data sources](references/data-sources.md)
 
-<p align="center">
-  <a href="README_zh.md">中文</a> ·
-  <a href="SKILL.md">Runtime contract</a> ·
-  <a href="docs/release-v0.16.0.md">v0.16.0 release</a> ·
-  <a href="docs/hypothesis-led-research-v0.10.md">v0.10 foundation design</a>
-</p>
+## What it is
 
-Trade Nothing is a topic-led, adversarial investment-research skill for agent runtimes. It turns a
-research topic into an answerable Agenda, searches and challenges those questions over bounded
-rounds, surfaces new blind spots, explains market transmission, and maps concrete securities.
+Trade Nothing is a Skill and a small deterministic harness for company, event, industry, thematic,
+A-share, commercial-space, AI-chain and photovoltaic research.
 
-The objective is not minimum risk. It is to search actively for asymmetric opportunity while
-making downside friction, invalidation, evidence gaps, and the price already paid impossible to
-hide.
+It is designed around a simple product test: under the same model, as-of and comparable budget, the
+Skill must find more decision-changing truth and produce a more useful answer than an unassisted
+run. More roles, more URLs and a longer report are not value.
 
-It is a research workflow, not an automated trading system. It does not produce an automatic
-buy/sell instruction, target price, expected return, Kelly allocation, or position size.
+The active v0.18 kernel persists only:
 
-> **v0.16 value-first core implemented.** Current Reality now precedes the Research Agenda:
-> the first Lead call scans the subject's recent official fact surface, known material omissions
-> block decision-ready delivery, and Challenger/Judge calls are conditional rather than ceremonial.
-> The skill still ends at a Deep Research Report with conditional advice. Thesis,
-> Decision, order, position, portfolio, publication workflow, and cross-product handoff are outside
-> the product boundary. CandidateMap, discovery-first dispatch and the new default renderer are now
-> wired; real-theme effectiveness remains unbenchmarked. See
-> [the topic-led product baseline](docs/topic-led-research-product.md).
+- `TaskSpec`: what must be answered;
+- `EvidenceStore`: what was actually observed and checked;
+- `DecisionSnapshot`: the only user-facing semantic truth;
+- `RunLedger`: what the runtime actually executed.
 
-## Current capabilities
+One Value Lead writes the complete Snapshot. An optional child Challenger attacks exact
+load-bearing claims in a separate context but cannot write conclusions. Deterministic code validates
+coverage, evidence lineage, append-only transitions, budget and execution receipts. The report
+renderer creates user and audit views from the same validated Snapshot.
 
-| Layer | What the current version does | Hard boundary |
-|---|---|---|
-| Current truth | Scans named entities across current official disclosures, periodic reports, commercial milestones and capital/regulatory changes; records material events and unresolved leads | Bounded coverage reduces known omissions but cannot prove exhaustive web discovery |
-| Research | Builds a question-native Research Agenda, answers it over bounded adversarial rounds, and keeps blind spots visible | A completed report does not imply that every question is answered |
-| Evidence | Stores model findings and verified host data in one canonical evidence ledger, then recomputes current answers and issues | Historical observations remain auditable but do not stay authoritative forever |
-| Industry → market | Maps causal change → value-transfer path → economic-exposure universe → observed market-carrier universe → horizon-specific setup | Theme membership or price leadership alone cannot establish economic exposure |
-| Securities | Preserves named A-share candidates, compares the closest alternative, and can issue conditional research priorities | No automatic buy/sell instruction, target price, expected return, or position size |
-| Market data | Freezes candidate and benchmark observations from Tushare, BaoStock, AKShare/Tencent, or CSV and binds them with receipts | Market data is context, not issuer evidence or proof of recommendation quality |
-| Stopping | Continues only for a low-cost, decision-relevant test that can be searched now; waiting conditions remain in the report | A round budget is a safety fuse, not a reason to manufacture progress |
-| Output | Produces a Deep Research Report and a separate canonical Evidence Ledger; focused verification remains explicit | Engineering gates and report rendering do not prove Alpha or investment performance |
+Scope ends at a Deep Research Report and conditional advice. It never owns orders, positions,
+portfolios, target prices, publication or downstream handoff.
 
-## v0.16.0: current truth first, challenge on demand
+## v0.18.0: harness-first, portable semantic core
 
-The earlier architecture could complete multiple rigorous rounds while missing a recent company
-event that a same-model single-agent report found. v0.16 fixes the architectural cause:
+v0.18 keeps the four-object semantic kernel from v0.17 and removes the remaining runtime mismatch:
+inside Codex, native tools and one native child agent are the default execution path. External model
+CLIs are optional adapters, not a hidden prerequisite. Research follows one bounded Agent Loop:
 
-- **Retrieval now precedes debate.** `primary_entities` define a subject-level Current Reality Scan
-  before Agenda narrowing. Actual query, checked URL, outcome, and materiality are persisted.
-- **Known omissions fail closed.** An unresolved HIGH material lead or incomplete required fact
-  surface produces `MATERIAL_FACT_GAP`. The report remains available, but decision-ready
-  recommendations are suppressed.
-- **Calls are adaptive.** Agenda-native round 1 normally invokes one Value Lead. A Targeted
-  Challenger runs only for load-bearing answers that need independent attack. Judge runs only for
-  explicit legacy crux audit. Receipts bind the exact roles that actually ran.
-- **The first page exposes value.** Material changes, fact-surface gaps, current judgment,
-  industry-to-market mapping, named alternatives, and the next cheapest validation appear before
-  process diagnostics.
-- **Product value has its own gate.** The current method must match or beat the same-model
-  single-agent baseline on weighted material-fact recall and decision usability, with no more than
-  1.5x cost until incremental value is demonstrated.
-
-> **Calibration status:** v0.16.0 is implemented and deterministic regression gates are in place,
-> but the operational method remains `UNBENCHMARKED_METHOD_CHANGE` until a new same-model,
-> same-question, same-as-of blind comparison is completed. Engineering correctness is not evidence
-> of research effectiveness, Alpha, return, or risk-adjusted return.
-
-Read the [v0.16.0 release note](docs/release-v0.16.0.md) and the concise
-[runtime contract](SKILL.md). The v0.15 section below is retained as architecture history.
-
-## v0.15.0: discovery first, verification on demand
-
-> **The topic defines the work. Each round answers, challenges, and discovers what was missed.**
-
-```mermaid
-flowchart LR
-    A["Research topic"] --> B["Research Agenda"]
-    B --> C["Search + challenge current questions"]
-    C --> X["Answers + new blind spots"]
-    X --> B
-    X --> M["Market mechanics"]
-    M --> D["CandidateMap<br/>named carrier + ticker + role"]
-    D --> E["EVENT_SETUP"]
-    D --> F["ECONOMIC_SETUP"]
-    E --> G["Scenario tree + trigger + invalidation"]
-    F --> G
-    G -. "explicit request only" .-> H["Focused verification"]
-    G --> I["Deep Research Report + advice"]
-    H --> I
+```text
+WorkingSet -> one ActionIntent -> evidence/tool/optional Challenger
+           -> atomic DecisionSnapshot -> validation -> stop or next action
 ```
 
-Discovery and verification are deliberately asymmetric. A mechanism hypothesis may be recorded before
-it has a citation; a concrete named carrier may enter CandidateMap with a `HYPOTHESIS` or
-`INFERENCE` label. Only shortlisted claims need the stricter evidence path. Neither route creates
-an automatic downstream action.
+The important product changes are:
 
-v0.15.0 retains the v0.10 hypothesis-led foundation and makes asymmetric opportunity discovery,
-decision-discriminating evidence, research allocation, and bounded stopping explicit contracts.
+- official disclosure/status index enumeration precedes thematic keyword search; potentially
+  material titles such as loss, impairment, borrowing, incentives, pledges and unlocks cannot be
+  dismissed with a template title reason;
+- every HIGH fact must reach the report, remain an explicit gap, or receive a reasoned disposition;
+- a committed Snapshot is validated against its own evidence frontier; later host or Challenger
+  appends create pending obligations instead of retroactively invalidating or rewriting history;
+- every paid research loop must add an observation and produce a real semantic Snapshot delta;
+- all TaskSpec questions survive in every full Snapshot replacement;
+- evidence can carry several honest roles; market carriers describe what capital is trading while
+  qualified candidates separately express recommendation stance and company reality coverage;
+- opaque numeric strings are rejected. Typed measures own unit, scale, period, basis and display,
+  while a controlled metric registry, explicit subject and registered basis prevent a value from
+  being borrowed across facts or securities;
+- material titles require host-extracted body excerpts with locators and a SourceCheck-bound
+  document hash before the Lead can choose one exclusive outcome; event families are derived rather
+  than freely invented;
+- a named closest alternative must be a canonical security with its own market evidence;
+- frozen Tushare/BaoStock/AKShare/CSV observations now convert directly to canonical host input;
+- Codex uses a native child Challenger by default. Reports distinguish `HARNESS_REPORTED`,
+  caller-observed `PROCESS_REPORTED` and `UNVERIFIED` rather than overclaiming one generic verified mode;
+- the optional CLI adapter cannot mint strong process proof. A future strong attestation must come
+  from an application host that owns process creation, waiting and result capture;
+- user and audit reports are pure, content-addressed, read-only views; a verifier recomputes their
+  complete run/RunLedger, state, method, renderer and content bindings before delivery;
+- timeouts, quota, permission and JSON failures stop once and never auto-retry;
+- old engines are excluded from the active method allowlist and installed Skill bundle.
 
-### What changed from v0.14
+**Calibration status:** v0.18.0 is implemented and deterministic regression gates pass. It remains
+`UNBENCHMARKED_METHOD_CHANGE`: engineering correctness is not evidence of research effectiveness or
+alpha. Blind same-model forward comparisons are still required.
 
-- **The research kernel is question-native.** Research Agenda, canonical evidence, answer merging,
-  and named-instrument identity now share deterministic contracts without turning the workflow into
-  another state machine.
-- **Industry logic now reaches market choice.** `ValueTransferPath` connects state and constraint
-  changes to profit-pool transfer; economic-exposure and observed trading-carrier universes remain
-  separate; recommendations are projected independently for event days, tactical weeks, earnings
-  quarters, and structural years.
-- **Recommendation authority is fail-closed.** A concrete priority requires path-aligned evidence,
-  a closest-alternative comparison, current reasons and switch conditions, a payload-bound
-  multi-role phase receipt, and a host-ingested market artifact with benchmark-relative strength
-  plus activity. Model-authored quotes and valuation-only snapshots cannot self-authorize.
-- **One evidence plane feeds every current view.** Verified host market artifacts mint
-  candidate-bound canonical facts; Agenda answers, bridge issues, candidate readiness, the report,
-  and the Evidence Ledger are deterministic projections rather than append-only copies of old
-  derived state.
-- **Stopping follows information availability.** Only a named low-cost, high-impact test that is
-  searchable now can justify another round. Waiting for a date/event or for user data stays visible
-  in the report without silently spending research budget.
-- **A-share data is reproducible and secret-safe.** Tushare Pro, BaoStock, AKShare Tencent, and CSV
-  feed one frozen adapter contract. Acquisition and adapter receipts bind the candidate, benchmark,
-  session, observations, and derived snapshot; Tushare credentials never enter role prompts, state,
-  receipts, reports, or installed skill copies.
+The [v0.10 foundation design](docs/hypothesis-led-research-v0.10.md) and later historical engines
+remain available for archaeology and replay, not as active semantic authority.
 
-The current method includes:
+## Use
 
-- **Time semantics are fail-closed.** `as_of_date` is the evidence cutoff, `horizon` is the
-  relative decision window, and `forecast_target_date` is an optional exact future target. A
-  future target can never masquerade as evidence coverage.
-- **Deep Research Report is the default artifact.** It leads with conclusions and conditional
-  advice, then shows Agenda answers, challenges, blind spots, market mechanics, concrete carriers,
-  event versus economic capture, price/crowding, triggers and evidence labels. Opportunity Brief,
-  Facts Box, Decision Brief and Candidate Cards remain explicit compatibility views.
-- **Report grade is independent of candidate promotion.** `FORMAL` requires convergence, required
-  Landscape completion, and independent sourcing for every crux. CandidateScreen gates ranking of
-  named securities; snapshot claim verification gates candidate promotion. Zero candidates is a
-  valid formal research outcome.
-- **Research Agenda is the first-class object.** Every new frame asks 4–8 answerable factual,
-  causal, market, candidate, pricing, risk, or forward-looking questions. Each round preserves
-  answers, disputes, missing information, new blind spots and new questions. Hypothesis gardens are
-  optional tools; a full 5–7-path Landscape is required only when explicitly declared.
-- **Faint clues become auditable trails.** A `ProxyTrail` binds an observable clue to its
-  direction, causal link, alternative explanation, source lineage, bounded query, and stop
-  condition. The system does not jump from an interesting clue to an investable claim.
-- **Asymmetry directs attention, not capital.** Qualitative upside shape, convexity, downside
-  friction, time-to-signal, and the cheapest discriminating test prioritize the next research
-  task. They are not probability, expected return, target price, direction, or sizing inputs.
-- **A new source is not automatically new decision evidence.** A citation resets evidence
-  exhaustion only when the Judge accepts it with a non-zero directional signal that separates the
-  non-consensus mechanism from its strongest alternative. New background, balanced, or duplicated
-  information remains auditable but counts as a decision-dry probe.
-- **Round feasibility models settlement work.** Framing budgets the actual number of crux touches
-  needed for directional settlement or sourced bilateral exhaustion under the two-crux dispatch
-  capacity. Source collection and dry probing may overlap; only a frame that cannot fit a complete
-  route is rejected before a run starts.
-- **CandidateMap is lightweight.** It requires a ticker for listed equities and preserves concrete
-  leads even when price, crowding or evidence is still unknown. It does not create a parallel
-  lifecycle, confidence score or expected-return rank.
-- **Recommendation authority has a separate trusted data plane.** Model-authored market metrics,
-  valuation-only snapshots, hypothesis-only value paths, and single-role phase views cannot unlock
-  a conditional priority. A host-ingested receipt must carry relative strength and market activity.
-- **A strict evidence stop no longer erases exploratory value.** `NO_USABLE_SETUP` is allowed only
-  after bounded search-field coverage plus explicit economic-chain, market-carrier,
-  competitor/substitute, failure/adverse and ownership/capital routes. `INSUFFICIENT` remains open;
-  otherwise the result stays `EXPLORE` with the cheapest next test.
-- **Reruns cannot silently forget decisive findings.** Up to eight prior findings may enter the
-  Agenda as URL/date-bearing search leads. They inherit no truth status and must be reverified,
-  superseded, marked out of scope, or left unresolved with current-round evidence boundaries.
-- **Evidence exhaustion can converge honestly.** Repeated zero-signal rounds do not move debate
-  support. A sufficiently sourced, bilaterally probed crux may become `MONITORABLE` only after
-  bounded research adds no new evidence. Never-probed, one-sided, source-thin, or newly introduced
-  cruxes remain fail-closed.
+### Standard Q&A
 
-Read the [v0.15.0 release note](docs/release-v0.15.0.md), the historical
-[v0.10 foundation design](docs/hypothesis-led-research-v0.10.md),
-[hypothesis protocol](references/hypothesis-protocol.md), and
-[report contract](references/report-contract.md).
+Ask a normal investment-research question. The Skill answers directly, uses current sources when
+needed, and states as-of and evidence boundaries. It does not create a registered run for simple
+questions.
 
-> [!IMPORTANT]
-> **Calibration status:** v0.15.0 is implemented and passes the deterministic engineering safety
-> gates, but `scripts/benchmark_current.py --check` currently returns
-> `UNBENCHMARKED_METHOD_CHANGE`. The operational method differs from the last calibrated v0.9.9
-> identity. Existing closed-packet and discovery suites remain historical controls; they are not
-> evidence that v0.15.0 improves opportunity recall, lead quality, alpha, return, or risk-adjusted
-> return. Engineering correctness, research effectiveness, and investment performance are three
-> separate claims.
+### `-deepthink2`
 
-## What is trustworthy
+Give an exact 0–10 round budget. A round is a ceiling, not a quota. The loop stops early when no
+currently executable action can materially change the decision.
 
-- A Judge signal cannot move a crux without a concrete citation containing claim, source, date,
-  and a specific article, filing, or API URL.
-- Judge citations must match evidence already present in the isolated agent payloads.
-- Repeated evidence with the same normalized URL, claim, and number cannot be scored twice.
-- A zero Judge signal never changes debate support, even when a new citation is retained for audit.
-- `wild_hypotheses`, `hypothesis_sparks`, `proxy_trails`, and every `HYPOTHESIS_ONLY` object are
-  invisible to Judge scoring, source counts, convergence, and promotion.
-- `EVIDENCE_BACKED` is still an exploration-maturity label, not an `OpportunitySeed` and not a
-  CandidateScreen entry.
-- `continue`, `fuse_break`, insufficient source diversity, and unresolved required cruxes block the
-  `FORMAL` grade, never the complete graded report bundle.
-- `NO_EDGE` means no usable expectation gap was established under the current frame and evidence.
-  It does not mean `AVOID` or `SHORT`, and it does not require deleting a bounded exploratory path.
-- Reported values are debate-support and workflow heuristics, not calibrated market probabilities.
-- An exploration execution is `typed design → plan → explicit authorization → receipt`: one exact
-  query, at most three documents, no automatic retry, and no ingestion after state or as-of drift.
-- Runtime state is stored under `TRADE_NOTHING_SCRATCH_DIR`, not inside the skill source. The
-  published skill contains no notification, webhook, portfolio, or order-execution entry point.
+Before start, the parent agent compiles explicit `primary_entities` and research questions in the
+same work window. Topic-only deep runs are rejected rather than silently choosing generic fact
+surfaces.
 
-## Isolation is a host responsibility
+In Codex, use the native harness path:
 
-Framer runs inline in the parent context and does not browse. Detective and Inquisitor must run in
-separate contexts with no shared intermediate reasoning; CandidateScreen and claim verification
-have their own isolation contracts. If a host can only role-switch within one model, the run must
-be labelled `degraded` and cannot claim physical multi-agent isolation.
+```bash
+python3 scripts/research_loop.py start \
+  --topic "your question" --task-spec-json task-spec.json --round-budget 3 \
+  --execution-mode HARNESS_ORCHESTRATED
+```
 
-## Installation
+Follow the returned WorkingSet with native tools. If it requests `CHALLENGER`, give that exact
+bounded prompt to one Codex child agent, record a `HARNESS_REPORTED` receipt, submit its JSON, and
+let the parent Lead resolve it. Resume or inspect by immutable run ID:
+
+```bash
+python3 scripts/research_loop.py status --run-id "RUN-..."
+python3 scripts/research_loop.py dispatch --run-id "RUN-..."
+python3 scripts/research_loop.py verify-report --run-id "RUN-..." --bundle "/path/report-bundle-....json"
+```
+
+The exact packet and receipt workflow is in
+[the research-loop contract](references/research-loop-contract.md). A manual parent receipt proves
+prompt/payload lineage but remains `SELF_DECLARED / UNVERIFIED`. The optional
+`research_host_runner.py` adapter is only for an explicitly chosen external process runtime; Claude
+CLI authentication or permission failure cannot block the native Codex path. Its receipt is
+`PROCESS_REPORTED`, not independent execution proof, and its output must be explicitly ingested by
+the host to satisfy official-index or document-body gates.
+
+## Install
 
 ### Natural-language installation for an agent
 
-Paste this into Codex, Claude Code, Gemini CLI, Antigravity, or another coding agent:
+Use this short instruction:
 
-```text
-Install or update Trade Nothing from https://github.com/Thhoho/trade-nothing.git for this runtime.
-Do not start a research run. Use a clean checkout of origin/main, report `git rev-parse HEAD`, and
-run `python3 scripts/version.py` plus `make test`. Detect the runtime's configured skill directory;
-ask if it is unclear. Install with `python3 scripts/install_skill.py --source <checkout> --targets <target>`,
-preserve runtime state and target metadata, verify with `scripts/check_source_sync.py`,
-then report the target, commit, test result, sync result, and any quarantined files.
-```
+> Install or update the `trade-nothing` Skill from the latest reviewed `main` commit. Verify the
+> commit and source sync. Do not start a research run.
 
-That prompt intentionally installs only into the current runtime. To install the same verified
-checkout into the default Gemini, Codex, and Claude directories, explicitly ask the agent to run
-`make install DEV_DIR="<checkout>"` followed by `make status DEV_DIR="<checkout>"`.
-
-### Shell installation
+The agent should use a temporary checkout, record `git rev-parse HEAD`, detach it with
+`git switch --detach`, and run:
 
 ```bash
-git clone --branch main --depth 1 https://github.com/Thhoho/trade-nothing.git
-cd trade-nothing
-git switch --detach
-git rev-parse HEAD
+git clone --branch main --depth 1 https://github.com/Thhoho/trade-nothing.git <checkout>
+python3 <checkout>/scripts/install_skill.py --source <checkout> --targets <target>
+```
+
+For this development checkout, sync Codex, Claude and Gemini together:
+
+```bash
+make install DEV_DIR="<checkout>"
+```
+
+Installation copies only the active allowlisted bundle. Retired managed code in a target is moved
+to a recoverable quarantine; runtime state and credentials are untouched.
+
+## Tushare Pro configuration
+
+Configure one host environment variable, not each agent directory:
+
+```bash
+launchctl setenv TUSHARE_TOKEN "YOUR_TOKEN"
+```
+
+For one terminal session, use `export TUSHARE_TOKEN="YOUR_TOKEN"`, then restart the relevant app.
+Tushare credentials never enter role prompts, state, receipts, reports, Git or installed Skill
+files. BaoStock is the free baseline and AKShare is a bounded fallback. See
+[data sources](references/data-sources.md) for the replacement contract.
+
+## Validate
+
+```bash
+python3 scripts/test_research_core.py
+python3 scripts/test_research_loop.py
+python3 scripts/test_current_reality_regression.py
+python3 scripts/test_research_host_runner.py
+python3 scripts/test_research_market_input.py
 python3 scripts/version.py
 make test
 ```
 
-Install the controlled bundle into the default Gemini, Codex, and Claude skill directories:
+These gates prove contracts and execution behavior, not market usefulness. The forward product gate
+requires zero frozen P0 omissions, no false challenge provenance, no semantic contradiction, usefulness
+above baseline in at least four of five diverse cases, and cost no greater than 1.5 times baseline.
 
-```bash
-make install DEV_DIR="$(pwd)"
-```
+## Daily topic selection
 
-This does not delete runtime JSON, state, scratch data, `.git`, or personal research artifacts.
-Stale files on the managed code surface are moved to a recoverable quarantine. Antigravity and
-Claude Code have bounded process adapters; Codex has manual collaboration receipt builders;
-Gemini, Hermes, and OpenHands remain manual/protocol-only integrations in this release. See
-[`references/runtime-compatibility.md`](references/runtime-compatibility.md) for the exact matrix.
-Nested runtime role contracts are part of the controlled bundle, and installation fails closed if
-the installed operational method identity differs from the verified source checkout.
-
-Then ask the agent, for example:
-
-```text
-Use trade-nothing -deepthink2 in OPPORTUNITY_DISCOVERY mode:
-"Where could AI data-center power constraints create mispriced value transfer over 3–6 months?"
-```
-
-The recommended `-deepthink2` path is:
-
-1. Frame a bounded, falsifiable question and choose `THESIS_CHALLENGE`,
-   `OPPORTUNITY_DISCOVERY`, or `HYBRID`.
-2. Run Framer inline and initialize the deterministic state. The first scheduled Value Lead scans
-   each primary entity's current official fact surface before narrowing into Agenda answers.
-3. Execute only the sealed `required_roles`: use a Targeted Challenger for unchallenged
-   load-bearing answers or explicit Landscape coverage, and Judge only for legacy crux audit.
-4. For opportunity work, advance the Research Agenda and CandidateMap first. CandidateScreen and
-   snapshot-bound claim verification run only when explicitly requested for a short list.
-5. If useful, design one bounded exploration action. Planning does not authorize execution; only
-   explicit authorization for the exact action ID permits one query and one receipt.
-
-Read [SKILL.md](SKILL.md) completely before driving the low-level commands. The exact runtime,
-resume, CandidateScreen, claim-verification, and exploration schemas are normative there.
-
-When bounded A-share observations are needed, acquire and adapt them first, then explicitly attach
-the complete artifact to the registered run with `--ingest-market-snapshot --market-snapshot PATH`.
-This is a data injection step, not a candidate lifecycle transition.
-
-### Market-data configuration and provider replacement
-
-The deterministic core and CSV path use only the Python standard library. Install only the optional
-provider you intend to call:
-
-| `provider` | Local package / credential | Useful coverage |
-|---|---|---|
-| `TUSHARE` | `tushare==1.4.29` and `TUSHARE_TOKEN` | Forward-adjusted equity history, index history, turnover, volume ratio, PE/PB and market cap |
-| `BAOSTOCK` | `baostock==0.8.9`; no token | Free bounded equity/index price-volume history |
-| `AKSHARE_TENCENT` | `akshare>=1.14.0`; no token | Free bounded Tencent equity/index price-volume history |
-| `CSV` | No package; each asset needs `csv_path`, upstream `source_url`, and optional `source` | Vendor export, MCP output, or another dataset normalized locally |
-
-```bash
-python3 -m pip install tushare==1.4.29      # choose one provider only
-# python3 -m pip install baostock==0.8.9
-# python3 -m pip install 'akshare>=1.14.0'
-```
-
-Choose the source explicitly in the request; changing `provider` replaces the acquisition source
-without changing the snapshot adapter or research kernel. There is no `AUTO` mode and no silent
-fallback:
-
-```json
-{
-  "as_of_date": "2026-08-11",
-  "lookback_calendar_days": 180,
-  "provider": "TUSHARE",
-  "candidate": {"name": "贵州茅台", "ticker": "600519", "exchange": "XSHG", "asset_type": "EQUITY"},
-  "benchmark": {"name": "沪深300", "ticker": "000300", "exchange": "XSHG", "asset_type": "INDEX"}
-}
-```
-
-Built-in providers are local Python/API adapters. An MCP service can be used upstream, but its
-result must first be frozen through the `CSV` contract—or a new collector that emits the same
-candidate/benchmark observation packet. It must preserve exact source URLs, dates, closes, and a
-shared latest session; volume, turnover and valuation fields remain optional. A model-authored MCP
-summary is not a trusted market artifact.
-
-#### Tushare Pro configuration
-
-Trade Nothing reads `TUSHARE_TOKEN` from the **parent acquisition process**. Do not put the token in
-this repository, request JSON, committed `.env` files, role prompts, reports, or installed skill
-directories. Codex, Claude Code, and Gemini CLI do not need separate copies; they only need to
-inherit the same host environment.
-
-For terminal-launched runtimes on macOS or Linux, export it in the shell that launches the agent
-(optionally persist the same export in your private shell profile):
-
-```bash
-export TUSHARE_TOKEN="replace-with-your-own-token"
-python3 -c 'import os; print("TUSHARE_TOKEN configured" if os.environ.get("TUSHARE_TOKEN") else "TUSHARE_TOKEN missing")'
-```
-
-For a macOS GUI app that does not inherit the terminal environment, inject the already-exported
-value into the user launch environment, then fully restart the app:
-
-```bash
-launchctl setenv TUSHARE_TOKEN "$TUSHARE_TOKEN"
-```
-
-Run one explicitly bounded request; the adapter never scans the whole market and never silently
-falls back to another provider:
-
-```bash
-python3 scripts/free_market_observations.py --input tushare-request.json \
-  --output market-observations.json
-python3 scripts/market_snapshot_adapter.py --input market-observations.json \
-  --output market-snapshot.json
-```
-
-For BaoStock, AKShare/Tencent, or CSV, keep the same command and change only the explicit request
-fields. The complete schema, provider boundaries, custom-source contract, and run-ingestion command
-are in [`references/data-sources.md`](references/data-sources.md). A successful call proves bounded
-acquisition and deterministic transformation—not issuer fundamentals, recommendation quality, or
-expected return.
-
-#### Daily observation and dynamic topic
-
-There is one daily entrypoint:
+`make daily` produces one market observation and one dynamic topic proposal with a 0–10 round
+budget. It does not start deep research, retry, publish, deploy or trade:
 
 ```bash
 make daily
 ```
 
-It uses the current Codex sign-in for one read-only, ephemeral market scan. From the same fact cutoff
-and source set, it produces a daily observation plus exactly one research topic and a minimum
-sufficient `0-10` round budget:
-
-- `var/daily/YYYY-MM-DD/observation.{json,md}`
-- `var/daily/YYYY-MM-DD/topic-card.{json,md}`
-
-The observation owns the `C1/C2/C3` change evidence; the topic can only reference those IDs instead
-of inventing a second fact narrative. It covers market state, three real changes, the
-industry-to-market bridge, today's boundary, and the next validation. It is a decision brief, not a
-news digest, full report, or recommendation. Insufficient evidence is marked `DEGRADED`; `NO_TOPIC`
-still leaves an observation and a zero-round budget. The script never creates or resumes a research
-run, spends research rounds, changes the website, publishes, or deploys. Closed sessions skip the
-model and record the calendar boundary. Same-day reruns fail closed unless `ARGS="--replace"` is
-explicit.
-
-Inspect the complete prompt without calling a model:
-
-```bash
-make daily ARGS="--dry-run --as-of 2026-08-12"
-```
-
-A scheduler only needs to execute `make daily`. The old `make daily-topic` remains a compatibility
-alias for the same command. Codex CLI uses the existing ChatGPT/Codex sign-in, so no OpenAI API key
-is stored in this repository; `TUSHARE_TOKEN` remains parent-only.
-
-Canonical daily output is post-close only: on an open session the writer stays closed until 18:00
-Asia/Shanghai. A pre-open test cannot consume the end-of-day slot. If an artifact from an older
-version already did so, the completed-close run moves it intact to
-`var/daily-drafts/YYYY-MM-DD/HHMM` before writing the canonical bundle.
-
-Codex scheduled tasks in `workspace-write` cannot normally reach login state outside the project.
-The repository includes `.codex/rules/daily.rules`, a least-privilege project rule that permits only
-the fixed ephemeral, read-only Codex child used by the daily observer. The child receives no token,
-API-key, or secret environment variables. Trust the project and restart Codex after adding the rule.
-Hosts that do not load project rules can validate and persist an outer agent's schema-valid JSON
-without starting a child process:
-
-```bash
-make daily-finalize INPUT=/path/to/daily.json ARGS="--as-of 2026-08-12"
-```
-
-Research rounds now freeze the same way: ingest host market data before role execution. Once any
-successful role payload exists, new data belongs to the next round unless the operator explicitly
-abandons the unsubmitted checkpoint and reruns the whole round. Answers, phases, dual universes,
-candidate interpretations, and market mechanics inherit the sealed dispatch's market-receipt
-lineage instead of reading mutable state at submit time. Formal reports project current host receipts
-and the canonical evidence plane; stale role interpretations remain audit history.
-
-## Minimal manual workflow
-
-```bash
-# Frame, then execute agents/framer.md inline in the host.
-python3 scripts/deepthink_orchestrator_v2.py --frame --topic "TARGET"
-
-# Initialize from the exact Framer JSON.
-python3 scripts/deepthink_orchestrator_v2.py --init \
-  --topic "TARGET" --frame-json '<framer_json>'
-
-# Inspect required_roles, execute only those roles, and use --empty-role for omitted payloads.
-python3 scripts/deepthink_orchestrator_v2.py --submit \
-  --topic "TARGET" --det '<lead_or_typed_empty_json>' \
-  --inq '<challenger_or_typed_empty_json>' --judge '<legacy_judge_or_typed_empty_json>'
-
-# Render at every terminal stop; the deterministic gate controls the grade and allowed claims.
-python3 scripts/deepthink_orchestrator_v2.py --report --topic "TARGET"
-```
-
-The report command returns `deep_research_report_markdown`, a separate
-`evidence_ledger_markdown`, compatibility views, and the structured view model. New hosts deliver
-the Deep Research Report by default. `opportunity`, `brief`, `cards`, and `audit` remain explicit
-compatibility views.
-
-Common terminal or continuation states include:
-
-- `dispatch_subagents`: continue only on the bounded open-crux packet.
-- `ready_for_report`: deterministic convergence and evidence gates passed.
-- `blocked_max_rounds`: the fuse fired; a downgraded report ships alongside the Resolution Memo.
-- `report_data_ready`: report data is available. It is always produced; limitations ride on
-  `report_grade` rather than suppressing output.
-- `no_edge`: no formally usable expectation gap was established; a labelled, bounded exploration
-  action may still remain, but it requires separate authorization.
-
-Report grade and the two hard gates:
-
-- `report_grade` is `FORMAL`, `PROVISIONAL`, or `EXPLORATORY`. Unmet gates lower the grade instead
-  of deleting the research.
-- Its only inputs are convergence, required Landscape completion, and independent crux sourcing.
-  CandidateScreen and claim verification appear under `candidate_lifecycle` and do not lower it.
-- Report grades do not create publication permission or own any downstream workflow.
-- Conditional research and market recommendations may compare named securities when trigger,
-  invalidation, price/crowding, alternative explanation, and evidence boundary are visible.
-- Claims carry a tier: `FACT` may be asserted plainly, `SINGLE_SOURCE` must be marked as
-  uncorroborated, and `INFERENCE` / `HYPOTHESIS` must be labelled but are allowed in the body.
-  Stripping the label is the violation.
-
-The older `-deepthink` single-posterior/LFI pipeline was retired in v0.13.0. Its uncalibrated
-LFI/AFI/EGI/posterior numbers, its separate `scripts/.state/` format, and its harvest path (which
-silently missed `-deepthink2` state) are gone. A `-deepthink` request is answered by `-deepthink2`.
-
-## Evidence schema
-
-Formal citation objects use:
-
-```json
-{
-  "claim": "what the source establishes",
-  "number": "value or null",
-  "source": "organization",
-  "url": "https://example.com/specific-page",
-  "date": "YYYY-MM-DD",
-  "source_tier": "primary"
-}
-```
-
-Bare domains, missing dates, missing sources, future-dated evidence beyond the frozen as-of, and
-invented Judge citations are rejected.
-
-## Configuration
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `TRADE_NOTHING_SKILL_DIR` | auto-detected | Skill installation root |
-| `TRADE_NOTHING_SCRATCH_DIR` | `~/.trade-nothing/scratch` | State and issue files |
-| `TRADE_NOTHING_OUTPUT_DIR` | `~/trade-nothing-outputs` | Generated artifacts |
-| `TRADE_NOTHING_VAULT_DIR` | `~/trade-nothing-vault` | Research vault |
-| `TRADE_NOTHING_EVOLUTION_PATH` | `<vault>/Methodology/Evolution.md` | Negative-prior memory |
-| `TRADE_NOTHING_MODEL_DEEP` | host default | Quality-critical roles and Judge |
-| `TUSHARE_TOKEN` | unset | Parent-only Tushare Pro credential for bounded A-share acquisition |
-
-## Verification and maintenance
-
-`~/Documents/trade-nothing` is the single source of truth in the default local setup.
-
-```bash
-# Current deterministic safety and regression gates
-make test
-
-# Complete offline unit-test discovery
-python3 -B -m unittest discover -s scripts -p 'test_*.py'
-
-# Version and benchmark-identity checks
-python3 scripts/version.py
-python3 scripts/benchmark_current.py --check --source-repo .
-
-# Sync controlled source files, quarantine retired managed code, then verify exact hashes
-make install DEV_DIR="$(pwd)"
-make status DEV_DIR="$(pwd)"
-```
-
-Installed packages run benchmark checks in explicit package mode and report that pinned Git-object
-verification is unavailable there. Run `--source-repo .` only from the canonical Git checkout.
-
-## Repository layout
-
-```text
-agents/       Isolated role contracts
-scripts/      Orchestrators, deterministic engines, validators, and tests
-references/   Normative research and report protocols; legacy handoff files are compatibility only
-docs/         Architecture and design notes
-benchmarks/   Frozen evaluation packets and method bindings
-assets/       Report templates and README illustrations
-legacy/       Source-only archived v0.9 execution and historical design surfaces; never installed
-SKILL.md      Main runtime contract
-```
-
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. Research output is not investment advice or an execution authorization.
