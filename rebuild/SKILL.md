@@ -40,6 +40,7 @@ description: >
 - 多角度检索，不拿一个公司名查到底：因果、瓶颈、替代、客户、供应商、监管、融资、估值、证伪各查一遍。检索到 ≠ 读到，读到 ≠ 有边际。
 - **发现驱动的重定向**：允许 2–3 次"新线索 → 更新假设 → 再搜"循环（探索不只验证）；每次重定向必须说明它可能改变哪条承重主张或认知锚，否则不做。
 - 可选硬锚（无 key，实测可用）：`python3 scripts/tier1_providers.py`（FRED / EDGAR / Comtrade）。
+- 可选 A 股行情硬锚（价格锚用，脚本已随包安装）：`python3 scripts/free_market_observations.py --input req.json --output obs.json`；req 含 `provider`（TUSHARE / BAOSTOCK / AKSHARE_TENCENT）、`as_of_date`、`lookback_calendar_days`、`candidate{exchange,symbol}`、可选 `benchmark`。TUSHARE 需环境变量 `TUSHARE_TOKEN`，无 token 用 BAOSTOCK 或 AKSHARE_TENCENT。价格数字只引用输出包（带获取收据）；token 永不进入 prompt、报告、锚库或仓库文件。
 - 反例诚实：自己提的反例就叫 self-countercase；没有真正独立的第二上下文，就不写"独立质证"。
 
 ### 3. 非对称审计（对每个候选载体）
@@ -69,8 +70,9 @@ description: >
 - 你不是自己的独立质疑者。
 
 ## 认知锚的持久化（文件约定，非工具）
-- 研究开始前：若 `anchors/` 下有相关主题的文件，先读它，把仍有效的锚带入本次研究。
+- 研究开始前：若 `anchors/` 下有相关主题的文件，先读它（及 `anchors/index.md`），把仍有效的锚带入本次研究。
 - 研究结束后：把新/更新的锚写入 `anchors/<主题>.md`（锚命题 + 证据等级 + 更新触发器 + 日期）。每主题活跃锚 ≤5 条；被证据推翻的锚标 `[失效]` 并注明推翻它的事实，不删除。
+- 同步 `anchors/index.md`（主题行：活跃锚数、证据分布、下一触发器日期）；并在 `journal/decisions.md` 记一行（结论 → 我做了什么，含"没做" → 验证点）。
 
 ## 封闭语料模式（基准/历史复盘）
 只使用给定证据包中的文档；禁止外部检索、文件系统和事后信息；引用用包的 `source_id`；报告结尾附"决定性主张 × 来源 ID"审计表；明确标出语料无法裁决的事实。
